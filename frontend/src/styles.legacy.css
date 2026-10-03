@@ -1,0 +1,275 @@
+/* styles.legacy.css — what is left of the pre-token-system stylesheet (v1 screens deleted 2026-09, Phase 6).
+ *
+ * Loaded BEFORE styles.css so the design system wins shared selectors. Everything here is only kept
+ * because a surviving screen/component still renders these class names. When a survivor migrates onto
+ * the token system (ui/ + styles.css), delete its block here.
+ *
+ * Survivors that still depend on this file:
+ *   .shell                         components/Skeleton.tsx (SkeletonScreen), components/ErrorBoundary.tsx
+ *   .grid / .content               pages/UsersPage, LogPage, HelpPage (section.grid); layout/AppShell (main.content)
+ *   .panel, .panel h2/.error/button/textarea/input/select, .panel-sub
+ *                                  pages/UsersPage, LogPage, HelpPage, ErrorBoundary
+ *   .toast-stack, .toast, .toast-{success,error,info}, @keyframes toast-in
+ *                                  components/ToastProvider.tsx
+ *   .list, .list li, .list.compact li
+ *                                  pages/LogPage, HelpPage
+ *   .form-grid, .form-actions, .whitelist-row
+ *                                  pages/UsersPage
+ *   .skeleton*, @keyframes skeleton-shimmer, .error-boundary-detail
+ *                                  components/Skeleton.tsx, components/ErrorBoundary.tsx
+ *   small                          bare <small> in the pages above
+ */
+
+small {
+  color: var(--text-dim);
+}
+
+.shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 24px 28px 28px;
+}
+
+.content,
+.grid {
+  display: grid;
+  gap: 16px;
+}
+
+.grid {
+  /* min(320px, 100%): a bare 320px floor is wider than a 320px phone once the shell
+     has taken its padding, and the track then pushes the whole page sideways */
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+}
+
+.panel {
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+}
+
+.panel h2 {
+  margin-top: 0;
+}
+
+.panel.error {
+  border-color: var(--danger);
+}
+
+.toast-stack {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 70;
+  display: grid;
+  gap: 12px;
+  width: min(360px, calc(100vw - 24px));
+}
+
+.toast {
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(10px);
+  display: grid;
+  gap: 4px;
+  animation: toast-in 180ms ease-out;
+}
+
+.toast strong {
+  font-size: 14px;
+}
+
+.toast span {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.toast-success {
+  border-color: var(--border-strong);
+}
+
+.toast-error {
+  border-color: var(--danger);
+}
+
+.toast-info {
+  border-color: var(--blue);
+}
+
+.list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.list.compact li {
+  gap: 2px;
+}
+
+.panel-sub {
+  padding: 16px;
+}
+
+.panel-sub h3 {
+  margin-top: 0;
+}
+
+.panel button {
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease, background 140ms ease;
+}
+
+.panel button:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 var(--glow, 16px) var(--accent);
+  transform: translateY(-1px);
+}
+
+.panel button {
+  min-height: 34px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: inherit;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.panel button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.panel button.danger {
+  border-color: var(--danger);
+}
+
+.panel textarea,
+.panel input,
+.panel select {
+  width: 100%;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: inherit;
+  padding: 9px 10px;
+}
+
+.list li {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.form-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.form-grid input,
+.form-grid select,
+.form-actions button,
+.whitelist-row button {
+  min-height: 36px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: inherit;
+  padding: 0 12px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: end;
+}
+
+.whitelist-row button {
+  width: fit-content;
+  min-height: 32px;
+}
+
+@media (max-width: 900px) {
+  .shell {
+  padding: 20px;
+  }
+  .form-grid {
+  grid-template-columns: 1fr;
+  }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--border-strong);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+  animation: skeleton-shimmer 1.3s ease-in-out infinite;
+}
+
+.skeleton-panel { min-height: 150px; }
+
+.skeleton-title { height: 22px; width: 45%; margin-bottom: 18px; }
+
+.skeleton-line { height: 13px; margin-bottom: 11px; }
+
+.skeleton-label {
+  display: block;
+  margin-top: 16px;
+  opacity: 0.6;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.error-boundary-detail {
+  white-space: pre-wrap;
+  opacity: 0.7;
+  font-size: 12px;
+  margin: 10px 0 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}

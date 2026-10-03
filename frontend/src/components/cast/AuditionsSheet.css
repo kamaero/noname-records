@@ -1,0 +1,100 @@
+.aud-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.aud-item {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+}
+
+.aud-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.aud-actor { font-size: 14px; }
+.aud-when { font-size: 12px; white-space: nowrap; }
+
+.aud-player {
+  width: 100%;
+  height: 34px;
+  display: block;
+}
+
+.aud-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.aud-file {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.aud-assigned {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Утверждение и удаление — два разных решения об одной пробе, рядом, чтобы
+   имя файла слева не спорило с ними за место при переносе строки. */
+.aud-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Кнопка в таблице каста: сколько проб пришло на роль. */
+.cast-auditions {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.cast-auditions:hover { background: var(--surface-2); }
+
+/* реакция автора на пробу */
+.aud-react-group { display: inline-flex; gap: 4px; }
+.aud-react {
+  min-width: 34px;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  filter: grayscale(1);
+  opacity: .65;
+}
+.aud-react:hover { opacity: 1; }
+.aud-react[aria-pressed="true"] { filter: none; opacity: 1; background: var(--surface-2); border-color: var(--text-dim); }
+.aud-react:disabled { cursor: progress; }
+.aud-reaction { font-size: 13px; white-space: nowrap; }
+.aud-rejection { margin: 6px 0 0; font-size: 12px; color: var(--text-dim); }
+.aud-rejection-no_account, .aud-rejection-ambiguous, .aud-rejection-failed { color: var(--amber); }
+.cast-aud-votes { margin-left: 6px; font-size: 12px; white-space: nowrap; }

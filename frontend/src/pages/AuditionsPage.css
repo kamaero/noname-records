@@ -1,0 +1,56 @@
+/* ============================================================
+   Пробы — лента. Tokens only (styles.css).
+   ============================================================ */
+.aufeed { display: flex; flex-direction: column; gap: var(--gap); width: 100%; min-width: 0; max-width: 1000px; margin: 0 auto; }
+.aufeed-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.aufeed-head select {
+  height: 36px; padding: 0 8px; font-size: 13.5px; color: var(--text); max-width: 100%;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.aufeed-search {
+  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 160px; max-width: 280px; height: 36px; padding: 0 10px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-faint);
+}
+.aufeed-search svg { width: 15px; height: 15px; flex: none; }
+.aufeed-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); outline: none; font-size: 13.5px; }
+.aufeed-chip {
+  height: 30px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; cursor: pointer;
+  background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border);
+}
+.aufeed-chip.is-on { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-line); }
+.aufeed-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.aufeed-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.aufeed-item.is-new { border-color: var(--accent-line); box-shadow: inset 3px 0 0 var(--accent); }
+.aufeed-play {
+  display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex: none;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer;
+}
+.aufeed-play svg { width: 14px; height: 14px; }
+.aufeed-play.is-on, .aufeed-play:hover { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+.aufeed-stop { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
+.aufeed-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.aufeed-line { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.aufeed-actor { font-weight: 600; font-size: 14px; color: var(--text); text-decoration: none; }
+.aufeed-actor:hover { color: var(--accent); text-decoration: underline; }
+.aufeed-role { font-size: 13.5px; }
+.aufeed-new { font-size: 11px; padding: 0 7px; border-radius: 999px; color: var(--accent); background: var(--accent-soft); }
+.aufeed-sub { font-size: 12px; color: var(--text-dim); overflow-wrap: anywhere; }
+.aufeed-state.is-ok { color: var(--accent); }
+.aufeed-state.is-maybe { color: var(--text); }
+.aufeed-actions { display: flex; gap: 8px; align-items: center; flex: none; }
+.aufeed-react { display: inline-flex; gap: 2px; }
+.aufeed-react button {
+  width: 32px; height: 30px; border-radius: var(--radius); border: 1px solid transparent; background: none; cursor: pointer; font-size: 15px;
+  filter: grayscale(1); opacity: 0.6;
+}
+.aufeed-react button[aria-pressed="true"] { filter: none; opacity: 1; border-color: var(--accent-line); background: var(--accent-soft); }
+.aufeed-react button:hover { opacity: 1; }
+.aufeed-reaction { font-size: 12.5px; color: var(--text-dim); }
+@media (max-width: 720px) {
+  .aufeed-item { flex-wrap: wrap; }
+  .aufeed-actions { width: 100%; justify-content: flex-end; }
+  .aufeed-search { max-width: none; }
+}

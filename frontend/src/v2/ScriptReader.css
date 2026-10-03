@@ -1,0 +1,918 @@
+/* ============================================================
+   v2 ScriptReader — the actor's reading view.
+   Tokens only (styles.css); the sole non-token colours are cast
+   colours, passed in as --role-color / --role-text per span.
+   ============================================================ */
+
+.v2r {
+  --v2r-font: 17px;
+  --v2r-lh: 1.7;
+  --v2r-measure: 74ch;
+  --v2r-rail-w: 250px;
+  --v2r-cast-w: 285px;
+  min-width: 0;
+}
+.v2r--font-s { --v2r-font: 15px; --v2r-lh: 1.6; }
+.v2r--font-l { --v2r-font: 20px; --v2r-lh: 1.75; }
+
+/* ---------- toolbar ---------- */
+.v2r-toolbar {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px 14px; margin-bottom: var(--gap);
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-1);
+}
+.v2r-toolbar-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.v2r-toolbar-row--title { flex-wrap: nowrap; }
+.v2r-title { min-width: 0; flex: 1; display: flex; flex-direction: column; line-height: 1.2; }
+.v2r-title-book { font-size: 11.5px; color: var(--text-faint); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
+.v2r-title-chapter { margin: 2px 0 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2r-title-index { color: var(--text-faint); margin-right: 4px; }
+/* «слова автора к проверке: N» — a navigation cue for the operator, not a warning */
+.v2r-title-remarks { margin-top: 2px; font-size: 11.5px; color: var(--text-faint); }
+.v2r-nav { display: flex; gap: 6px; flex-shrink: 0; }
+.v2r-nav--bottom { justify-content: space-between; margin: 28px 0 8px; }
+.v2r-btn { min-height: 36px; }
+.v2r-btn.is-on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.v2r-btn:disabled { opacity: 0.45; cursor: default; }
+.v2r-btn:disabled:hover { background: var(--surface-2); }
+
+.v2r-search {
+  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; max-width: 360px;
+  height: 36px; padding: 0 10px; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-faint);
+}
+.v2r-search svg { width: 15px; height: 15px; flex-shrink: 0; }
+.v2r-search:focus-within { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+.v2r-search-input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); outline: none; font-size: 13.5px; }
+.v2r-search-input::placeholder { color: var(--text-faint); }
+
+.v2r-radius { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-dim); }
+.v2r-select {
+  height: 36px; padding: 0 8px; background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius); outline: none;
+}
+.v2r-seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); }
+.v2r-seg-btn { min-width: 32px; height: 28px; border: 0; background: transparent; border-radius: 5px; color: var(--text-dim); font-size: 12.5px; font-weight: 600; }
+.v2r-seg-btn.is-on { background: var(--surface-1); color: var(--text); box-shadow: var(--shadow-1); }
+/* «Ударения: нет · редкие · все» — the label sits inside the group it names */
+.v2r-stress-seg { align-items: center; }
+.v2r-seg-label { padding: 0 6px 0 8px; font-size: 12.5px; color: var(--text-dim); white-space: nowrap; }
+.v2r-stress-seg .v2r-seg-btn { padding: 0 8px; }
+.v2r-print { margin-left: auto; }
+/* the fold: on a wide screen these controls sit on the row like everything else */
+.v2r-toolbar-more { display: contents; }
+.v2r-toolbar-more[hidden] { display: none; }
+/* «проверено» — the author's mark, next to the chapter it belongs to */
+.v2r-approve { flex-shrink: 0; }
+.v2r-approve.is-done { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.v2r-rail-approved { margin-left: auto; color: var(--accent); font-size: 12px; flex-shrink: 0; }
+
+/* ---------- body: rail + main ---------- */
+.v2r-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); align-items: start; }
+.v2r--rail .v2r-body { grid-template-columns: var(--v2r-rail-w) minmax(0, 1fr); }
+/* the cast is a column of its own on a wide screen — the mirror of the chapter rail */
+.v2r--cast .v2r-body { grid-template-columns: minmax(0, 1fr) var(--v2r-cast-w); }
+.v2r--rail.v2r--cast .v2r-body { grid-template-columns: var(--v2r-rail-w) minmax(0, 1fr) var(--v2r-cast-w); }
+.v2r-cast {
+  display: flex; flex-direction: column; min-width: 0;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1); position: sticky; top: 12px;
+  max-height: calc(100vh - 24px); overflow: auto; overscroll-behavior: contain;
+}
+.v2r-cast-head {
+  display: flex; align-items: flex-start; gap: 8px; justify-content: space-between;
+  padding: 12px 12px 10px; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--surface-1); z-index: 1;
+}
+.v2r-cast-titles { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.v2r-cast-titles strong { font-size: 13.5px; font-weight: 600; }
+.v2r-cast-titles .faint { font-size: 11.5px; }
+.v2r-cast-close { flex-shrink: 0; }
+.v2r-cast-body { padding: 10px 12px 14px; }
+/* inside the column the legend is bare chips, one per row */
+.v2r-cast .v2r-legend { position: static; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.v2r-cast .v2r-roles { flex-direction: column; align-items: stretch; gap: 4px; margin-top: 8px; }
+/* a 250px column is not a chip row: the name goes above the actor, and both are
+   clipped rather than allowed to run out of the panel */
+.v2r-cast .v2r-role-wrap { display: flex; width: 100%; }
+.v2r-cast .v2r-role-wrap .v2r-role { flex: 1; }
+.v2r-cast .v2r-role {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; width: 100%;
+  min-height: 0; padding: 6px 10px; border-radius: var(--radius);
+}
+.v2r-cast .v2r-role-wrap .v2r-role { border-radius: var(--radius) 0 0 var(--radius); }
+.v2r-cast .v2r-role-edit { min-width: 32px; border-radius: 0 var(--radius) var(--radius) 0; }
+.v2r-cast .v2r-role-chip { justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.v2r-cast .v2r-role-meta { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 8px; }
+.v2r-cast .v2r-role-actor { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.v2r-cast .v2r-legend-hint { font-size: 12px; white-space: normal; }
+.v2r-cast .v2r-legend-conflicts { flex-direction: column; align-items: flex-start; gap: 6px; }
+.v2r-legend-all { margin-top: 10px; width: 100%; justify-content: center; }
+/* per role: the way to its lines through the whole book, next to the palette button */
+.v2r-role-all {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 38px; align-self: stretch; padding: 0 6px;
+  border: 1px solid var(--border); border-left: 0; background: var(--surface-2);
+  color: var(--text-dim); font-size: 11.5px; letter-spacing: 0.02em;
+  transition: background 120ms, color 120ms;
+}
+.v2r-role-all:hover { background: var(--accent-soft); color: var(--accent); }
+.v2r-role-wrap .v2r-role-all:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.v2r-main { min-width: 0; }
+
+.v2r-rail {
+  display: none; flex-direction: column;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1); position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto;
+}
+.v2r--rail .v2r-rail.is-open { display: flex; }
+.v2r-rail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 12px 10px; border-bottom: 1px solid var(--border); }
+.v2r-rail-book { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.v2r-rail-book strong { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2r-rail-book span { font-size: 11.5px; }
+.v2r-rail-close { display: none; }
+.v2r-rail-list { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 1px; }
+.v2r-rail-item {
+  display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 10px;
+  border-radius: var(--radius); border: 1px solid transparent; color: var(--text);
+  transition: background 120ms, border-color 120ms;
+}
+.v2r-rail-item:hover { background: var(--surface-2); }
+.v2r-rail-item.is-active { background: var(--accent-soft); border-color: var(--accent-line); }
+.v2r-rail-item.is-empty { color: var(--text-faint); }
+.v2r-rail-index { width: 28px; flex-shrink: 0; color: var(--text-faint); font-size: 12px; text-align: right; }
+.v2r-rail-item.is-active .v2r-rail-index { color: var(--accent); }
+.v2r-rail-title { font-size: 13px; line-height: 1.3; }
+.v2r-backdrop { display: none; }
+
+/* ---------- cast legend (sticky) ---------- */
+/* in the sheet the legend is just its chips; the sticky card it used to be is gone */
+.ui-sheet .v2r-legend { position: static; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.ui-sheet .v2r-roles { margin-top: 10px; }
+.ui-sheet .v2r-legend-head { margin-bottom: 2px; }
+.v2r-cast-btn { gap: 8px; }
+/* the printed legend: hidden on screen, the first thing on paper */
+.v2r-legend--print { display: none; }
+
+.v2r-legend {
+  position: sticky; top: 0; z-index: 5;
+  padding: 8px 12px 10px; margin-bottom: 18px;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-2);
+}
+.v2r-legend-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.v2r-legend-toggle {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px 0 4px;
+  border: 0; background: transparent; color: var(--text); border-radius: var(--radius-sm);
+}
+.v2r-legend-toggle:hover { background: var(--surface-2); }
+.v2r-legend-title { font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; color: var(--text-faint); }
+.v2r-legend-count { font-size: 11px; background: var(--surface-3); color: var(--text-dim); border-radius: 999px; padding: 1px 7px; }
+.v2r-legend-caret { color: var(--text-faint); font-size: 12px; }
+.v2r-legend-hint { font-size: 12px; color: var(--text-dim); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2r-legend--role-mode .v2r-legend-hint { color: var(--accent); font-weight: 500; }
+.v2r-legend-clear { margin-left: auto; }
+
+.v2r-roles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.v2r-role {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 10px 4px 5px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); color: var(--text);
+  text-align: left; transition: border-color 120ms, box-shadow 120ms, opacity 120ms;
+}
+.v2r-role:hover { border-color: var(--border-strong); }
+.v2r-role.is-on { border-color: var(--accent-line); box-shadow: 0 0 0 2px var(--accent-soft); }
+.v2r-legend--role-mode .v2r-role:not(.is-on) { opacity: 0.55; }
+.v2r-role-chip {
+  display: inline-flex; align-items: center; min-height: 26px; padding: 0 10px; border-radius: 999px;
+  background: var(--role-color); color: var(--role-text);
+  font-weight: var(--role-weight, 700); font-style: var(--role-style, normal); font-size: 12.5px;
+  white-space: nowrap;
+}
+.v2r-role--unsure .v2r-role-chip { background: transparent; color: var(--amber); border: 1.5px dashed var(--amber); }
+.v2r-role-meta { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.v2r-role-actor { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.v2r-role-n { font-size: 11px; color: var(--text-faint); }
+
+/* ---------- the page ---------- */
+.v2r-notice {
+  margin: 0 auto 16px; max-width: var(--v2r-measure);
+  padding: 10px 12px; border-radius: var(--radius);
+  background: var(--amber-soft); color: var(--text); border: 1px solid var(--amber);
+  font-size: 13.5px;
+}
+.v2r-page {
+  max-width: var(--v2r-measure); margin: 0 auto;
+  font-size: var(--v2r-font); line-height: var(--v2r-lh);
+  color: var(--text);
+  hyphens: auto; overflow-wrap: anywhere;
+}
+.v2r-h { font-size: 1.35em; line-height: 1.3; font-weight: 600; margin: 1.5em 0 0.7em; letter-spacing: -0.01em; }
+.v2r-h:first-child { margin-top: 0.2em; }
+.v2r-h--dim { opacity: 0.45; }
+.v2r-p {
+  margin: 0 0 0.85em; padding: 0.1em 0 0.1em 0.7em;
+  border-left: 3px solid var(--p-color, transparent);
+  break-inside: avoid; page-break-inside: avoid;
+  transition: opacity 120ms;
+}
+.v2r-p--dim { opacity: 0.45; }
+/* the line the arrows are standing on */
+.v2r-p--current {
+  outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-sm);
+  scroll-margin-block: 40vh;
+}
+.v2r-cursor { display: inline-flex; align-items: center; gap: 4px; }
+.v2r-cursor-count { font-size: 12px; color: var(--text-dim); min-width: 4.5em; text-align: center; }
+.v2r-p--dim:hover { opacity: 0.8; }
+
+.v2r-span {
+  background: color-mix(in oklab, var(--role-color) 28%, transparent);
+  font-weight: var(--role-weight, 600);
+  font-style: var(--role-style, normal);
+  border-radius: 3px; padding: 0.05em 0.2em;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+.v2r-span--unsure {
+  background: transparent;
+  outline: 1.5px dashed var(--amber); outline-offset: 1px;
+}
+.v2r-chip {
+  display: inline-block; vertical-align: 0.12em; margin-right: 0.35em; padding: 0 0.5em;
+  border-radius: 999px; font-size: 0.7em; line-height: 1.55; letter-spacing: 0.01em;
+  font-family: var(--font-sans); font-weight: 700; font-style: normal;
+  background: var(--role-color); color: var(--role-text);
+  user-select: none;
+}
+.v2r-span--unsure .v2r-chip { background: transparent; color: var(--amber); border: 1px dashed var(--amber); }
+
+.v2r-stress {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.12em;
+}
+.v2r-hit { background: var(--amber-soft); color: inherit; box-shadow: 0 0 0 1px var(--amber); border-radius: 2px; }
+
+.v2r-gap {
+  display: block; width: 100%; min-height: 40px; margin: 0.2em 0 0.9em; padding: 8px 12px;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius); background: transparent;
+  color: var(--text-faint); font-size: 0.8em; text-align: center;
+}
+.v2r-gap:hover { background: var(--surface-2); color: var(--text-dim); }
+
+.v2r-empty {
+  display: grid; place-items: center; gap: 12px; text-align: center;
+  padding: 48px 20px; color: var(--text-dim);
+}
+.v2r-empty svg { width: 32px; height: 32px; opacity: 0.5; }
+.v2r-empty p { margin: 0; font-size: 15px; }
+
+/* ---------- book picker ---------- */
+.v2r-books { max-width: 640px; margin: 0 auto; }
+.v2r-books-title { font-size: 22px; margin: 0 0 4px; font-weight: 600; }
+.v2r-books-list { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.v2r-book {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 48px; padding: 10px 14px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  transition: border-color 120ms, background 120ms;
+}
+.v2r-book:hover { border-color: var(--accent-line); background: var(--surface-2); }
+.v2r-book strong { font-weight: 600; }
+
+/* ---------- mobile: single column, page scrolls, 40px targets ---------- */
+@media (max-width: 760px) {
+  .v2r { --v2r-font: 18px; }
+  .v2r--font-s { --v2r-font: 16px; }
+  .v2r--font-l { --v2r-font: 21px; }
+  .v2r-body, .v2r--rail .v2r-body, .v2r--cast .v2r-body, .v2r--rail.v2r--cast .v2r-body { grid-template-columns: minmax(0, 1fr); }
+  .v2r-cast { display: none; }
+  .v2r-toolbar { padding: 10px; border-radius: var(--radius); gap: 8px; }
+  .v2r-toolbar-row--title { flex-wrap: wrap; }
+  .v2r-title { flex-basis: 100%; order: -1; }
+  .v2r-title-chapter { white-space: normal; font-size: 16px; }
+  .v2r-nav--top { margin-left: auto; }
+  /* «Пред. / След.» keep their arrows and drop their words: four buttons on one row */
+  .v2r-nav-label { display: none; }
+  /* the folded half becomes its own wrapping row under the primary controls */
+  .v2r-toolbar-more { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-basis: 100%; }
+  .v2r-more { margin-left: auto; }
+  .v2r-btn, .v2r-select, .v2r-search, .v2r-legend-toggle { min-height: 40px; }
+  .v2r-seg-btn { min-width: 40px; height: 34px; }
+  .v2r-search { max-width: none; flex-basis: 100%; }
+  .v2r-print { margin-left: 0; }
+  .v2r-radius-label { display: none; }
+  .v2r-legend { border-radius: var(--radius); box-shadow: var(--shadow-1); padding: 6px 10px 8px; }
+  .v2r-legend-hint { flex-basis: 100%; }
+  .v2r-roles { gap: 5px; }
+  .v2r-role-actor { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; }
+  .v2r-page { hyphens: auto; }
+  .v2r-p { padding-left: 0.5em; }
+
+  .v2r-rail {
+    display: flex; position: fixed; top: 0; left: 0; bottom: 0; z-index: 40;
+    width: min(86vw, 340px); max-height: none; border-radius: 0;
+    transform: translateX(-104%); transition: transform 160ms ease-out;
+    box-shadow: var(--shadow-2);
+  }
+  .v2r-rail.is-mobile-open { transform: none; }
+  .v2r-rail-close { display: inline-flex; }
+  .v2r-backdrop { display: block; position: fixed; inset: 0; z-index: 39; background: rgba(0, 0, 0, 0.45); }
+  .v2r-nav--bottom { flex-direction: column; }
+  .v2r-nav--bottom .v2r-btn { width: 100%; min-height: 44px; }
+}
+
+/* ============================================================
+   Editor layer — only rendered when the payload says can_edit.
+   ============================================================ */
+
+/* clickable words in the prose */
+.v2r--editor .v2r-word { cursor: pointer; border-radius: 3px; transition: background 100ms, box-shadow 100ms; }
+.v2r--editor .v2r-word:hover { background: var(--accent-soft); }
+.v2r--editor .v2r-word.is-active { background: var(--accent-soft); box-shadow: 0 0 0 1.5px var(--accent-line); }
+
+/* remark candidates: author's words spotted inside a replica (author/operator only,
+   never rendered for a plain dictor — see Paragraph's `remarkCandidates` prop). A
+   dashed UNDERLINE rather than a filled highlight so a screen with hundreds of
+   candidates stays readable; a filled hover state and pointer cursor confirm the
+   click target without disturbing stress marks drawn inside it. */
+.v2r--editor .v2r-remark {
+  cursor: pointer; border-radius: 2px;
+  text-decoration: underline; text-decoration-style: dashed;
+  text-decoration-color: var(--text-faint); text-underline-offset: 0.16em;
+  transition: background 100ms;
+}
+.v2r--editor .v2r-remark:hover { background: var(--accent-soft); }
+
+/* free-selection «→ Рассказчику» (remark picker §5): a small floating pill positioned
+   from the live selection's bounding box (see RemarkSelectionButton in ScriptReader.tsx) */
+.v2r-remark-btn { position: fixed; z-index: 12; box-shadow: var(--shadow-2); }
+
+/* toolbar buttons */
+.v2r-editor-btns { display: inline-flex; gap: 6px; }
+.v2r-editor-btn { white-space: nowrap; }
+
+/* stress constructor — docked under the toolbar, sticks while the page scrolls */
+.v2r-dock {
+  position: sticky; top: 8px; z-index: 8;
+  display: flex; flex-direction: column; gap: 10px;
+  margin-bottom: var(--gap); padding: 10px 14px;
+  background: var(--surface-1); border: 1px solid var(--accent-line); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2); outline: none;
+}
+.v2r-dock:focus-visible { box-shadow: var(--shadow-2), 0 0 0 3px var(--accent-soft); }
+.v2r--editing .v2r-legend { position: static; }
+.v2r-dock-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.v2r-dock-title { font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; color: var(--text-faint); }
+.v2r-dock-preview { font-size: 20px; font-weight: 600; letter-spacing: 0.01em; color: var(--text); }
+.v2r-dock-source { font-size: 12.5px; color: var(--text-dim); flex: 1; min-width: 0; }
+.v2r-dock-close { margin-left: auto; }
+.v2r-dock-hint { font-size: 12px; color: var(--text-faint); }
+.v2r-letters { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.v2r-letter {
+  min-width: 40px; height: 40px; padding: 0 6px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2);
+  color: var(--text); font-size: 18px; font-weight: 600; line-height: 1;
+  transition: background 100ms, border-color 100ms;
+}
+.v2r-letter:disabled { opacity: 0.4; cursor: default; }
+.v2r-letter--vowel:not(:disabled):hover { border-color: var(--accent-line); background: var(--accent-soft); }
+.v2r-letter.is-on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.v2r-letter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.v2r-dock-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* legend: edit affordance next to each chip + conflicts line */
+.v2r-role-wrap { display: inline-flex; align-items: stretch; }
+.v2r-role-wrap .v2r-role { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right-width: 0; }
+.v2r-role-edit {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 40px; min-height: 40px; padding: 0;
+  border: 1px solid var(--border); border-radius: 0 999px 999px 0;
+  background: var(--surface-2); color: var(--text-faint);
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.v2r-role-edit svg { width: 15px; height: 15px; }
+.v2r-role-edit:hover:not(:disabled) { background: var(--surface-3); color: var(--text); border-color: var(--border-strong); }
+.v2r-role-edit:disabled { opacity: 0.45; cursor: default; }
+.v2r-role-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.v2r-role-wrap.is-on .v2r-role-edit { border-color: var(--accent-line); }
+.v2r-legend--role-mode .v2r-role-wrap:not(.is-on) { opacity: 0.55; }
+.v2r-legend--role-mode .v2r-role-wrap:not(.is-on) .v2r-role { opacity: 1; }
+.v2r-legend-conflicts {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border);
+  font-size: 12.5px; color: var(--text-dim);
+}
+.v2r-legend-conflicts.is-bad { color: var(--text); }
+.v2r-legend-conflicts.is-bad strong { color: var(--danger); }
+.v2r-legend-conflicts-list { color: var(--text-dim); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2r-legend-conflicts-total { color: var(--text-faint); font-weight: 400; }
+.v2r-legend-conflicts.is-bad .v2r-legend-conflicts-total .num { color: var(--text-faint); }
+
+/* a speaker the cast table does not know (import artefact): neutral until its lines are reassigned */
+.v2r-role--foreign .v2r-role-chip { background: var(--surface-3); color: var(--text-dim); border: 1px solid var(--border-strong); font-weight: 600; font-style: normal; }
+.v2r-role--foreign { border-style: dashed; }
+/* «завести роль» — the last row of the picker, the way out of a name the cast lacks */
+.v2r-pick--create .v2r-role-chip { background: var(--accent-soft); color: var(--accent); border: 1px dashed var(--accent-line); font-weight: 600; }
+.v2r-pick--create .v2r-role-actor { color: var(--accent); }
+
+/* ---------- role reassignment (editor) ---------- */
+/* the inline chip becomes a button: same look, a hit area a little taller than the glyphs */
+.v2r-chip--btn {
+  appearance: none; border: 0; cursor: pointer; font: inherit;
+  font-size: 0.7em; line-height: 1.55; font-family: var(--font-sans); font-weight: 700;
+  padding: 0.25em 0.5em; margin: -0.25em 0.35em -0.25em 0;
+  transition: box-shadow 100ms;
+}
+/* the glyphs stay small; the hit area is stretched to ≈40px without moving the text */
+.v2r-chip--btn { position: relative; }
+.v2r-chip--btn::before { content: ""; position: absolute; inset: -9px -4px; }
+.v2r-chip--btn:hover, .v2r-chip--btn.is-active { box-shadow: 0 0 0 2px var(--accent-line); }
+.v2r-chip--btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.v2r-span--unsure .v2r-chip--btn { padding-top: calc(0.25em - 1px); padding-bottom: calc(0.25em - 1px); }
+
+/* narration has no chip: a «роль» tab in the gutter, visible on hover / focus */
+.v2r-p, .v2r-h { position: relative; }
+.v2r-role-hint {
+  position: absolute; right: 100%; top: 0.35em; margin-right: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 40px; height: 28px; padding: 0 9px;
+  border: 1px dashed var(--border-strong); border-radius: 999px; background: var(--surface-1);
+  color: var(--text-faint); font-family: var(--font-sans); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; line-height: 1; white-space: nowrap;
+  opacity: 0; transition: opacity 120ms, background 120ms, border-color 120ms, color 120ms;
+}
+.v2r-role-hint::before { content: ""; position: absolute; inset: -6px -4px; }
+.v2r-p:hover .v2r-role-hint, .v2r-role-hint:focus-visible, .v2r-role-hint.is-active { opacity: 1; }
+.v2r-role-hint:hover, .v2r-role-hint.is-active { color: var(--text); border-color: var(--accent-line); background: var(--accent-soft); }
+.v2r-role-hint:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.v2r-p--picking { background: var(--accent-soft); border-radius: 0 var(--radius) var(--radius) 0; }
+
+/* provenance: a paragraph whose spans carry an operator decision */
+.v2r-op {
+  position: absolute; left: -12px; top: 0.7em;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--blue); cursor: help;
+}
+.v2r-h .v2r-op { top: 0.55em; }
+
+/* the picker dock */
+.v2r-dock--role .v2r-dock-source strong { color: var(--text); font-weight: 600; }
+.v2r-dock--role .v2r-seg { flex-wrap: wrap; }
+.v2r-dock--role .v2r-seg-btn { padding: 0 10px; }
+.v2r-dock--role .v2r-seg-btn:disabled { opacity: 0.45; cursor: default; }
+.v2r-dock--role .v2r-seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.v2r-dock-quote {
+  margin: 0; font-size: 13px; color: var(--text-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.v2r-dock-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.v2r-search--dock { max-width: 320px; }
+.v2r-pick-list {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start;
+  max-height: 152px; overflow: auto; padding: 2px; margin: -2px;
+}
+.v2r-pick {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 10px 4px 5px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); color: var(--text);
+  text-align: left; cursor: pointer;
+  transition: border-color 120ms, box-shadow 120ms, background 120ms;
+}
+.v2r-pick:hover, .v2r-pick.is-active { border-color: var(--accent-line); box-shadow: 0 0 0 2px var(--accent-soft); }
+.v2r-pick.is-current { border-style: dashed; }
+.v2r-pick.is-current .v2r-role-actor::after { content: " · сейчас"; color: var(--text-faint); }
+.v2r-pick--book { background: var(--surface-1); }
+.v2r-pick:disabled { opacity: 0.6; cursor: default; }
+
+/* side sheet (queue, profile) */
+.v2r-sheet-backdrop { position: fixed; inset: 0; z-index: 45; background: rgba(0, 0, 0, 0.45); }
+.v2r-sheet {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 46;
+  width: min(92vw, 440px); display: flex; flex-direction: column;
+  background: var(--surface-1); border-left: 1px solid var(--border); box-shadow: var(--shadow-2);
+}
+.v2r-sheet-head { display: flex; align-items: flex-start; gap: 10px; padding: 14px 14px 10px; border-bottom: 1px solid var(--border); }
+.v2r-sheet-titles { flex: 1; min-width: 0; }
+.v2r-sheet-title { margin: 0; font-size: 16px; font-weight: 600; }
+.v2r-sheet-subtitle { margin-top: 2px; font-size: 12px; color: var(--text-dim); }
+.v2r-sheet-close { min-width: 40px; min-height: 40px; }
+.v2r-sheet-body { flex: 1; overflow: auto; padding: 12px 14px 20px; display: flex; flex-direction: column; gap: 18px; }
+.v2r-sheet-foot { padding: 12px 14px; border-top: 1px solid var(--border); background: var(--surface-2); }
+.v2r-sheet-section { display: flex; flex-direction: column; gap: 8px; }
+.v2r-sheet-h { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; color: var(--text-faint); }
+.v2r-sheet-note { margin: 0; font-size: 12.5px; color: var(--text-dim); }
+.v2r-sheet-empty { margin: 0; font-size: 13px; color: var(--text-faint); }
+.v2r-sheet-error { margin: 0; padding: 10px 12px; border-radius: var(--radius); background: var(--danger-soft); color: var(--text); border: 1px solid var(--danger); font-size: 13px; }
+
+.v2r-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.v2r-chip-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 4px 12px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); color: var(--text);
+  font-size: 14px; transition: border-color 120ms, background 120ms;
+}
+.v2r-chip-btn:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+.v2r-chip-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.v2r-chip-n { font-size: 11.5px; color: var(--text-faint); }
+
+.v2r-kv { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.v2r-kv-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 28px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+.v2r-kv-row:last-child { border-bottom: 0; }
+.v2r-kv dt { font-size: 13px; color: var(--text-dim); }
+.v2r-kv dd { margin: 0; font-size: 13.5px; text-align: right; word-break: break-word; }
+.v2r-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--surface-3); color: var(--text-dim); font-size: 12px; font-family: var(--font-mono); }
+.v2r-summary { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
+.v2r-summary-text { margin: 0; font-size: 13px; }
+.v2r-profile-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.v2r-check { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; font-size: 12.5px; color: var(--text-dim); cursor: pointer; }
+.v2r-check input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+@media (max-width: 760px) {
+  .v2r-dock { top: 4px; padding: 8px 10px; border-radius: var(--radius); }
+  .v2r-dock-preview { font-size: 18px; }
+  .v2r-dock-hint { display: none; }
+  /* three editor buttons on a 390px row: let them wrap and shrink, never run off it */
+  .v2r-editor-btns { flex-basis: 100%; flex-wrap: wrap; }
+  .v2r-editor-btn { flex: 1 1 auto; min-width: 0; }
+  .v2r-sheet { width: 100vw; border-left: 0; }
+  /* no gutter on a phone: the affordance sits inline and stays visible */
+  /* relative, не static: иначе `::before` (зона нажатия) растягивается на весь абзац и
+     перехватывает нажатия по словам и меткам звука */
+  .v2r-role-hint { position: relative; inset: auto; opacity: 1; margin: 0 0.4em 0 0; vertical-align: middle; height: 26px; min-width: 44px; }
+  .v2r-op { left: -10px; }
+  .v2r-search--dock { max-width: none; flex-basis: 100%; }
+  .v2r-pick-list { max-height: 200px; }
+  /* the picker head: title · «сейчас» · ✕ on one row, the scope switch across the next */
+  .v2r-dock--role .v2r-dock-close { order: 1; }
+  .v2r-dock--role .v2r-seg { order: 2; flex-basis: 100%; }
+  .v2r-dock--role .v2r-seg-btn { flex: 1 1 auto; }
+  /* the keyboard hint stays hidden; the «loading» / «nothing found» notes are content */
+  .v2r-dock-row .v2r-dock-hint, .v2r-pick-list .v2r-dock-hint { display: inline; }
+}
+
+/* «Все реплики роли» opens with what the role is, before the lines themselves */
+.v2r-rolecard {
+  max-width: var(--v2r-measure); margin: 0 auto 20px; padding: 12px 14px;
+  background: var(--surface-1); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+}
+.v2r-rolecard p { margin: 0; }
+.v2r-rolecard-note { font-size: 14px; line-height: 1.5; color: var(--text); }
+.v2r-rolecard-facts { margin-top: 4px !important; font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
+/* «В главах: 1, 2, 6…» — where the role speaks, across the whole book */
+.v2r-rolecard-chapters { font-size: 13px; line-height: 1.55; color: var(--text-dim); }
+.v2r-rolecard-note + .v2r-rolecard-chapters,
+.v2r-rolecard-facts + .v2r-rolecard-chapters { margin-top: 6px !important; }
+.v2r-rolecard-chapters a { color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--border-strong, var(--border)); }
+.v2r-rolecard-chapters a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.v2r-rolescript-chapter { scroll-margin-top: 12px; }
+
+/* «Мои роли»: one actor, two voices — the page is always one of them, picked explicitly */
+.v2r-myroles { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.v2r-myroles-label { font-size: 12.5px; color: var(--text-dim); margin-right: 2px; }
+.v2r-myrole {
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2);
+  color: var(--text-dim); font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+.v2r-myrole:hover { color: var(--text); }
+.v2r-myrole.is-on { background: var(--surface-1); color: var(--text); border-color: var(--role-color, var(--accent)); box-shadow: inset 0 0 0 1px var(--role-color, var(--accent)); }
+.v2r-myrole-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--role-color, var(--accent)); }
+.v2r-myrole-count { font-weight: 500; color: var(--text-faint); }
+.v2r-title-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: 0.05em; }
+@media print { .v2r-myroles { display: none; } }
+
+/* «Слова-ловушки»: a word list to read before the session, not prose */
+.v2r-traps-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 0 0 18px; }
+.v2r-traps-lead { margin: 0; flex: 1 1 320px; font-size: 13.5px; line-height: 1.5; color: var(--text-dim); }
+.v2r-traps-words { margin: 0; font-size: 17px; line-height: 1.9; color: var(--text-faint); }
+.v2r-trap { color: var(--text); white-space: nowrap; }
+.v2r-trap--unmarked { color: var(--amber); }
+.v2r-trap--unmarked sup { font-weight: 700; margin-left: 1px; }
+@media print { .v2r-traps-head .v2r-seg { display: none; } }
+
+/* the author's word about a role, where the dictor reads the role */
+.v2r-role-about {
+  display: block; grid-column: 1 / -1; margin-top: 2px;
+  font-size: 11.5px; line-height: 1.35; color: var(--text-faint);
+  text-align: left; white-space: normal;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* ---------- спорные ударения: слово, его чтения, его места ---------- */
+.v2r-homo { border-top: 1px solid var(--border); }
+.v2r-homo:first-of-type { border-top: 0; }
+.v2r-homo-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  width: 100%; padding: 9px 2px; text-align: left;
+  background: none; border: 0; color: var(--text); cursor: pointer;
+}
+.v2r-homo-head:hover { background: var(--surface-2); }
+.v2r-homo-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.v2r-homo-word { font-size: 14px; font-weight: 600; }
+.v2r-homo-readings { display: inline-flex; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-dim); }
+.v2r-homo-reading .num { color: var(--text-faint); }
+/* «по-разному» is the signal: the model read this word two ways in the same book */
+.v2r-homo-flag {
+  margin-left: auto; font-size: 11px; padding: 1px 8px; border-radius: 999px;
+  background: var(--amber-soft); color: var(--amber); border: 1px solid var(--amber);
+}
+.v2r-homo-places { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.v2r-homo-place {
+  padding: 9px 11px; border-radius: var(--radius);
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+/* the rare reading for this word — where a mistake hides */
+.v2r-homo-place.is-rare { border-color: var(--amber); background: var(--amber-soft); }
+.v2r-homo-text { margin: 0 0 7px; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+.v2r-homo-text mark { background: var(--accent-soft); color: var(--text); font-weight: 600; border-radius: 3px; padding: 0 2px; }
+.v2r-homo-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.v2r-homo-where { font-size: 11.5px; color: var(--text-faint); margin-right: 2px; }
+
+/* ---------- очередь ударений: вкладки, поиск, «не нужно» ---------- */
+.v2r-queue-tabs { display: inline-flex; margin-bottom: 8px; }
+.v2r-queue-tabs .v2r-seg-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; height: 30px; }
+.v2r-queue-more { margin-top: 10px; }
+/* the word and its dismissal are one thing: «×» must not look like another chip */
+.v2r-chip-pair { display: inline-flex; align-items: stretch; }
+.v2r-chip-pair .v2r-chip-btn { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right-width: 0; }
+.v2r-chip-skip {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 26px; padding: 0 4px; font-size: 12px; line-height: 1;
+  border: 1px solid var(--border); border-radius: 0 999px 999px 0;
+  background: var(--surface-2); color: var(--text-faint);
+  transition: background 120ms, color 120ms;
+}
+.v2r-chip-skip:hover { background: var(--amber-soft); color: var(--amber); }
+.v2r-chip-skip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---------- «Мои реплики»: finding a role across the whole book ---------- */
+/* The button is a peer of «Каст главы», not a part of it: one asks about this
+   chapter, the other about the book. */
+.v2r-mine.is-on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.v2r-findgroup { display: flex; flex-direction: column; gap: 4px; margin-bottom: 18px; }
+.v2r-findgroup-title {
+  margin: 0 0 4px; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase;
+  font-weight: 600; color: var(--text-faint);
+}
+/* `.v2r-search` carries `flex: 1` for the toolbar row; in this column that grows it
+   vertically into a full-height box, so the group states its own sizing. */
+.v2r-findgroup .v2r-search { flex: none; max-width: none; margin-bottom: 6px; }
+.v2r-findrole {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px;
+  width: 100%; min-height: 44px; padding: 8px 11px; text-align: left;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); cursor: pointer;
+  transition: border-color 120ms, background 120ms;
+}
+.v2r-findrole:hover { border-color: var(--accent-line); background: var(--surface-3); }
+.v2r-findrole:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.v2r-findrole-name {
+  display: inline-flex; align-items: center; gap: 7px; min-width: 0;
+  font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.v2r-findrole-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+/* the counts are the answer to «где я вообще говорю», so they sit on the name's line */
+.v2r-findrole-meta { font-size: 11.5px; color: var(--text-dim); white-space: nowrap; align-self: center; }
+.v2r-findrole-actor {
+  grid-column: 1 / -1; font-size: 11.5px; color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.v2r-find-note { margin: 0 0 10px; font-size: 13px; color: var(--text-dim); }
+
+/* ---------- «все реплики роли»: the actor's own script through the book ---------- */
+.v2r--rolescript .v2r-page { max-width: var(--v2r-measure); }
+.v2r-rolescript-count { font-size: 12.5px; color: var(--text-dim); flex-shrink: 0; }
+.v2r-rolescript-chapter { margin: 0 0 26px; }
+.v2r-rolescript-h {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin: 26px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+  font-size: 13px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-faint);
+}
+.v2r-rolescript-h a { color: var(--text-dim); }
+.v2r-rolescript-h a:hover { color: var(--accent); }
+.v2r-rolescript-chapter:first-child .v2r-rolescript-h { margin-top: 0; }
+/* a phone puts the chapter heading on two lines already; its counter goes under it */
+@media (max-width: 760px) {
+  .v2r-rolescript-h { flex-wrap: wrap; gap: 2px 12px; }
+  .v2r-rolescript-h a { flex-basis: 100%; }
+  .v2r-rolescript-h .num { white-space: nowrap; }
+  .v2r--rolescript .v2r-cursor-count { min-width: 3.5em; }
+}
+/* a jump inside the same chapter: the paragraphs before it were left out */
+.v2r-rolescript-island { border-top: 1px dashed var(--border); margin-top: 14px; padding-top: 14px; }
+
+/* ---------- disputed lines: the review queue ---------- */
+.v2r-dispute-list { display: flex; flex-direction: column; gap: 6px; }
+.v2r-dispute {
+  display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left;
+  padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-2); color: var(--text); cursor: pointer;
+  transition: border-color 120ms, background 120ms;
+}
+.v2r-dispute:hover { border-color: var(--accent-line); background: var(--surface-3); }
+.v2r-dispute-head { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }
+.v2r-dispute-tag {
+  font-size: 11px; letter-spacing: 0.02em; padding: 1px 7px; border-radius: 999px;
+  background: var(--surface-3); color: var(--text-dim); border: 1px solid var(--border);
+}
+.v2r-dispute-tag--unsure { color: var(--amber); background: var(--amber-soft); border-color: var(--amber); border-style: dashed; }
+.v2r-dispute-where { font-size: 11px; color: var(--text-faint); flex-shrink: 0; }
+.v2r-dispute-text {
+  font-size: 13px; line-height: 1.45; color: var(--text-dim);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* ---------- split view: the author's original next to the script ---------- */
+/* Two independent scrollers side by side. The panes own the scrolling here (the
+   page itself does not), which is what lets them be linked — and unlinked. */
+/* the height comes from useSplitView, which measures what is left of the window */
+.v2r-split { display: flex; align-items: stretch; gap: 0; min-width: 0; height: calc(100vh - 260px); min-height: 320px; }
+.v2r-pane {
+  display: flex; flex-direction: column; min-width: 0; flex-grow: 0; flex-shrink: 0;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg);
+}
+.v2r-pane-label {
+  padding: 8px 14px 7px; border-bottom: 1px solid var(--border);
+  font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; color: var(--text-faint);
+}
+.v2r-pane-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 18px 20px 40px; }
+.v2r--compare .v2r-page { max-width: none; }
+/* the paragraph gutter (role affordance, operator mark) needs room inside a narrow pane */
+.v2r--compare .v2r-pane-scroll { scrollbar-gutter: stable; }
+
+.v2r-splitter {
+  flex: 0 0 18px; align-self: stretch; display: flex; align-items: center; justify-content: center;
+  border: 0; padding: 0; background: transparent; cursor: col-resize; touch-action: none;
+}
+.v2r-splitter span { display: block; width: 3px; height: 100%; border-radius: 999px; background: var(--border); transition: background 120ms ease-out; }
+.v2r-splitter:hover span, .v2r-splitter:focus-visible span { background: var(--accent); }
+.v2r-splitter:focus-visible { outline: none; }
+body.is-resizing { cursor: col-resize; user-select: none; }
+
+/* the original: plain prose, deliberately without roles, colours or stress */
+.v2r-src-h, .v2r-src-p {
+  font-size: var(--v2r-font); line-height: var(--v2r-lh); color: var(--text-dim);
+  hyphens: auto; overflow-wrap: anywhere;
+}
+.v2r-src-h { font-size: 1.35em; font-weight: 600; line-height: 1.3; margin: 1.5em 0 0.7em; color: var(--text); }
+.v2r-src-h:first-child { margin-top: 0.2em; }
+.v2r-src-p { margin: 0 0 0.85em; }
+.v2r-src-p--gap { border-left: 3px solid var(--amber); padding-left: 0.7em; color: var(--text); }
+.v2r-src-gap-tag {
+  display: inline-block; margin-right: 8px; padding: 1px 7px; border-radius: 999px;
+  background: var(--amber-soft); color: var(--amber); border: 1px dashed var(--amber);
+  font-size: 11px; letter-spacing: 0.02em; vertical-align: 2px;
+}
+.v2r-src-empty { color: var(--text-faint); font-size: 13px; }
+.v2r-compare-btns { display: inline-flex; gap: 6px; }
+/* the panes own the window; chapter steps stay in the toolbar so nothing hangs below */
+.v2r--compare .v2r-nav--bottom { display: none; }
+.v2r--compare .v2r-rail { max-height: var(--v2r-avail, calc(100vh - 24px)); }
+
+/* «оригинал ↔ сценарий» is two columns already; a third would leave none of them room */
+.v2r--compare .v2r-cast { display: none; }
+.v2r--compare.v2r--cast .v2r-body { grid-template-columns: minmax(0, 1fr); }
+.v2r--compare.v2r--rail.v2r--cast .v2r-body { grid-template-columns: var(--v2r-rail-w) minmax(0, 1fr); }
+
+@media (max-width: 1100px) {
+  /* the rail and two columns together leave neither enough room */
+  .v2r--compare.v2r--rail .v2r-body { grid-template-columns: minmax(0, 1fr); }
+  .v2r--compare .v2r-rail { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v2r-rail, .v2r-role-hint, .v2r-chip--btn, .v2r-pick, .v2r-p { transition: none; }
+}
+
+/* ---------- print: keep colours, hide chrome, legend on page one ---------- */
+@media print {
+  :root, :root[data-theme="light"] {
+    --bg: #ffffff; --surface-1: #ffffff; --surface-2: #ffffff; --surface-3: #f2f2f2;
+    --text: #000000; --text-dim: #333333; --text-faint: #666666;
+    --border: #cccccc; --border-strong: #999999;
+    --shadow-1: none; --shadow-2: none;
+  }
+  *, *::before, *::after { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .v2r-legend--print { display: block; }
+  .ui-sheet, .ui-sheet-backdrop,
+  .topbar, .tabnav, .v2r-toolbar, .v2r-rail, .v2r-backdrop, .v2r-nav, .v2r-gap,
+  .v2r-legend-clear, .v2r-legend-hint, .v2r-legend-caret, .tweaks-fab, #tweaks,
+  .v2r-dock, .v2r-sheet, .v2r-sheet-backdrop, .v2r-role-edit, .v2r-legend-conflicts,
+  .v2r-role-hint, .v2r-op, .v2r-cons-mark,
+  .books-palette-modal-backdrop { display: none !important; }
+  /* Метка находки и подсветка «источника» — рабочие пометки консилиума, не часть
+     сценария: печать отдаёт актёру текст, а не следы разбора спорных мест. */
+  .v2r-p--cons, .v2r-p--cons-active, .v2r-p--evidence { background: transparent; outline: none; box-shadow: none; }
+  .v2r-role-wrap .v2r-role { border-radius: 999px; border-right-width: 1px; }
+  .v2r--editor .v2r-word, .v2r--editor .v2r-word.is-active { background: transparent; box-shadow: none; }
+  .v2r-chip--btn, .v2r-chip--btn.is-active { box-shadow: none; }
+  .v2r-p--picking { background: transparent; }
+  .content { padding: 0; }
+  .v2r { --v2r-font: 12pt; --v2r-lh: 1.55; --v2r-measure: none; }
+  .v2r-body, .v2r--rail .v2r-body { grid-template-columns: minmax(0, 1fr); }
+  .v2r-legend { position: static; break-after: avoid; page-break-after: avoid; border-radius: 0; padding: 0 0 8pt; margin-bottom: 12pt; border-width: 0 0 1px; }
+  .v2r-legend--role-mode .v2r-role:not(.is-on) { opacity: 1; }
+  .v2r-role { min-height: 0; padding: 2pt 6pt 2pt 2pt; }
+  .v2r-page { max-width: none; }
+  .v2r-p { break-inside: avoid; page-break-inside: avoid; }
+  .v2r-p--dim, .v2r-h--dim { opacity: 0.7; }
+  .v2r-hit { box-shadow: none; background: transparent; }
+  /* printing a split screen means printing the script: the original is a checking aid */
+  .v2r-splitter, .v2r-pane-label, .v2r-split > .v2r-pane:first-child { display: none !important; }
+  .v2r-split { display: block; height: auto; min-height: 0; }
+  .v2r-split > .v2r-pane { display: block; flex-basis: auto !important; border: 0; background: transparent; }
+  .v2r-pane-scroll { overflow: visible; padding: 0; }
+  a { color: inherit; }
+}
+
+/* консилиум: панель */
+.v2r-cons-toggle { display: flex; align-items: center; gap: 8px; margin: 4px 0 12px; font-size: 12.5px; color: var(--text-dim); }
+.v2r-cons-row.is-decided { opacity: 0.62; }
+.v2r-cons-tag--proven { background: var(--accent-soft); color: var(--text); border-color: var(--accent-line); }
+
+/* консилиум: абзац, карточка */
+.v2r-p--cons { position: relative; background: color-mix(in srgb, var(--accent-soft) 45%, transparent); border-radius: var(--radius); }
+.v2r-p--cons-active { outline: 2px solid var(--accent-line); outline-offset: 4px; }
+.v2r-p--evidence { box-shadow: inset 3px 0 0 var(--accent); }
+.v2r-cons-mark {
+  position: absolute; left: -34px; top: 2px;
+  min-width: 26px; height: 20px; padding: 0 5px;
+  border: 1px solid var(--accent-line); border-radius: 999px; background: var(--surface-1);
+  color: var(--accent); font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; line-height: 1;
+  user-select: none;
+}
+.v2r-cons-mark:hover, .v2r-cons-mark:focus-visible { background: var(--accent-soft); outline: none; }
+/* у абзаца рассказчика на тех же полях живёт «роль»: без сдвига она ложится поверх метки и забирает клик */
+@media (min-width: 761px) { .v2r-p--cons .v2r-role-hint { margin-right: 40px; } }
+@media (max-width: 720px) { .v2r-cons-mark { position: static; margin-right: 6px; vertical-align: 2px; } }
+.v2r-dock--cons { gap: 8px; }
+.v2r-cons-note { margin: 0; font-size: 12.5px; color: var(--text-dim); }
+.v2r-cons-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; font-size: 13.5px; }
+.v2r-cons-facts dt { color: var(--text-faint); font-size: 12px; padding-top: 1px; }
+.v2r-cons-facts dd { margin: 0; min-width: 0; }
+@media (max-width: 520px) { .v2r-cons-facts { grid-template-columns: 1fr; } .v2r-cons-facts dt { padding-top: 6px; } }
+.v2r-cons-quote { margin: 4px 0; padding-left: 10px; border-left: 2px solid var(--accent-line); color: var(--text); }
+.v2r-cons-reason { display: block; font-size: 12.5px; color: var(--text-dim); }
+.v2r-cons-reason--weak { color: var(--text-faint); }
+/* `.btn.` — иначе `.btn-sm` (он в сборке позже) сжимает кнопку до 30px и срезает подпись */
+.btn.v2r-cons-pick { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; height: auto; padding-block: 5px; text-align: left; }
+.v2r-cons-backers { font-size: 11px; opacity: 0.75; font-weight: 400; }
+.v2r-cons-other { display: flex; flex-direction: column; gap: 6px; }
+.v2r-cons-names { display: flex; flex-wrap: wrap; gap: 4px; max-height: 180px; overflow-y: auto; }
+.v2r-cons-done { font-size: 13px; color: var(--text-dim); }
+.v2r-cons-impact { display: block; margin-top: 4px; font-size: 12px; line-height: 1.35; white-space: normal; text-align: left; color: var(--text-dim); }
+.v2r-cons-impact--warn { color: var(--danger); }
+.btn-primary .v2r-cons-impact--warn { color: var(--on-accent); background: rgba(0, 0, 0, 0.18); border-radius: 4px; padding: 2px 6px; }
+.v2r-cons-name--warn { border-color: var(--danger); }
+
+/* «Кто это» над репликами роли: что энциклопедия автора говорит об этом персонаже.
+   Актёру это нужно до первой реплики, поэтому строка стоит в шапке, а не в панели. */
+.v2r-canon {
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.v2r-canon-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.v2r-canon-text { font-size: 13.5px; line-height: 1.45; color: var(--text); }
+/* Свёрнуто до двух строк (на телефоне — трёх): описание бывает в 600 знаков. */
+.v2r-canon-text.is-clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+@media (max-width: 760px) {
+  .v2r-canon-text.is-clamped { -webkit-line-clamp: 3; line-clamp: 3; }
+}
+.v2r-canon-more {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.v2r-canon-more:hover { text-decoration: underline; }
+/* На широком экране кнопка — справа от текста, а не лишней строкой под ним */
+@media (min-width: 761px) {
+  .v2r-canon-body { flex-direction: row; align-items: flex-end; gap: 10px; }
+  .v2r-canon-text { flex: 1; min-width: 0; }
+  .v2r-canon-more { flex: none; white-space: nowrap; }
+}
+/* Значок вместо портрета: без явного размера SVG растягивается на всю ширину строки */
+.v2r-canon > svg { flex: none; width: 20px; height: 20px; margin: 1px 0; color: var(--text-muted); }
+/* Портрет в строке «кто это»: мелкий, чтобы не съедать экран перед репликами */
+.v2r-canon-portrait {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  flex: none;
+}

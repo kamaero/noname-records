@@ -1,0 +1,149 @@
+/* ============================================================
+   Звуковой слой Читалки: полосы сцен, пунктир переходов, метки звуков.
+   Только токены (styles.css). Только редактор; в печати скрыт.
+   ============================================================ */
+
+.snd-scene {
+  margin: 18px 0 8px; padding: 8px 10px;
+  border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: var(--radius-sm);
+  font-size: 12.5px; line-height: 1.45; hyphens: none;
+}
+.snd-scene.is-active { outline: 2px solid var(--accent-line); outline-offset: 2px; }
+.snd-scene-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.snd-scene-title { font-weight: 600; letter-spacing: 0.02em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.snd-scene-line { color: var(--text-dim); margin-top: 2px; }
+.snd-badge { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+.snd-edit {
+  margin-left: auto; flex: none; border: 0; background: transparent; color: var(--text-faint);
+  font: inherit; font-size: 13px; padding: 0 4px; cursor: pointer;
+}
+.snd-edit:hover, .snd-edit:focus-visible { color: var(--text); }
+.snd-queries { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.snd-query {
+  border: 1px solid var(--border); background: transparent; color: var(--text-dim);
+  font: inherit; font-size: 11.5px; line-height: 1.5; padding: 1px 6px; border-radius: var(--radius-sm); cursor: pointer;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.snd-query:hover, .snd-query:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
+
+.snd-transition {
+  display: flex; align-items: center; gap: 8px; width: 100%; margin: 10px 0; padding: 0;
+  border: 0; background: transparent; color: var(--text-faint);
+  font: inherit; font-size: 11.5px; line-height: 1.4; cursor: pointer;
+}
+.snd-transition > span { flex: none; max-width: 80%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.snd-transition::before, .snd-transition::after { content: ""; flex: 1; border-top: 1px dashed var(--border-strong); }
+.snd-transition:hover, .snd-transition:focus-visible, .snd-transition.is-active { color: var(--text-dim); outline: none; }
+
+/* Метки звука. По умолчанию (телефон и страница без правого поля) — плашки
+   «● описание» в конце абзаца, переносятся под текст; описание режется на ~28ch,
+   целиком оно в подсказке вместе с цитатой. */
+.snd-marks { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; max-width: 100%; vertical-align: 1px; }
+.snd-mark {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%;
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent); border-radius: 999px;
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  padding: 0 7px; font: inherit; font-size: 11.5px; line-height: 1.6; hyphens: none;
+  color: var(--amber); cursor: pointer; text-align: left;
+}
+.snd-mark:hover, .snd-mark:focus-visible { border-color: var(--amber); outline: none; }
+.snd-mark-text { max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+.snd-mark:hover .snd-mark-text, .snd-mark:focus-visible .snd-mark-text { color: var(--text); }
+
+/* Широкий экран, где справа от страницы есть поле (`.snd-roomy` ставит Читалка по замеру):
+   метка стоит на поле напротив абзаца, с описанием. */
+.snd-roomy .snd-marks {
+  position: absolute; left: calc(100% + 16px); top: 0.25em; width: 160px; margin: 0;
+  flex-direction: column; gap: 2px;
+}
+.snd-roomy .snd-mark { display: flex; border: 0; background: transparent; padding: 0 2px; line-height: 1.4; }
+.snd-roomy .snd-mark-text { display: block; min-width: 0; max-width: none; }
+
+/* Телефон: название сцены переносится, а не режется; плашка звука — палец попадает. */
+@media (max-width: 720px) {
+  .snd-scene-title { white-space: normal; }
+  .snd-mark { min-height: 24px; }
+}
+
+::highlight(snd-quote) { background-color: color-mix(in srgb, var(--amber) 30%, transparent); }
+
+/* ---------- Карточка маркера (лист справа) ---------- */
+.snd-card-form { gap: 12px; }
+.snd-card-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.snd-card-label { font-size: 12.5px; color: var(--text-dim); font-weight: 500; }
+.snd-card-hint { font-size: 12px; color: var(--text-faint); line-height: 1.4; }
+.snd-card-text { height: auto; min-height: 40px; padding: 8px 11px; line-height: 1.45; resize: vertical; font: inherit; font-size: 14px; }
+.snd-card-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.snd-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.snd-card-danger { color: var(--danger); margin-left: auto; }
+.snd-card-danger:hover { color: var(--danger); background: var(--danger-soft); }
+.snd-card-add { align-self: flex-start; }
+.snd-card-subform {
+  display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2);
+}
+.snd-card-foot { display: flex; justify-content: flex-end; }
+.snd-card-lost {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px 12px;
+  border: 1px solid var(--amber); border-radius: var(--radius); background: var(--amber-soft);
+}
+.snd-card-lost p { margin: 0; font-size: 13px; line-height: 1.45; }
+.snd-lost-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.snd-lost { display: flex; align-items: center; gap: 8px; }
+.snd-lost-open {
+  flex: 1; min-width: 0; border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer;
+  font: inherit; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.snd-lost-open:hover, .snd-lost-open:focus-visible { color: var(--accent); outline: none; }
+.snd-lost-kind { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+
+/* ---------- Лист «Места книги» ---------- */
+.snd-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.snd-pair, .snd-place {
+  display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2);
+}
+.snd-pair { border-color: var(--amber); background: var(--amber-soft); }
+.snd-pair-names { font-size: 14px; line-height: 1.4; }
+.snd-pair-names span { color: var(--text-faint); padding: 0 2px; }
+.snd-pair-reason { margin: 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }
+.snd-place-head { display: flex; align-items: center; gap: 8px; }
+.snd-place-name { font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+.snd-place-desc { margin: 0; font-size: 13px; color: var(--text-dim); line-height: 1.45; }
+.snd-place-chapters { display: flex; flex-wrap: wrap; gap: 4px; }
+.snd-place-ch {
+  font-size: 11.5px; line-height: 1.6; padding: 0 7px; border-radius: 999px;
+  border: 1px solid var(--border-strong); color: var(--text-dim); text-decoration: none; white-space: nowrap;
+}
+a.snd-place-ch:hover, a.snd-place-ch:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
+.snd-place-ch.is-here { border-color: var(--accent-line); background: var(--accent-soft); color: var(--text); }
+.snd-query--static { cursor: default; }
+.snd-place .snd-queries { margin-top: 0; }
+.snd-place .snd-card-subform { padding: 4px 0 0; border: 0; background: transparent; }
+
+/* ---------- Режим «выберите абзац» ---------- */
+.snd-pick-banner {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center;
+  max-width: calc(100vw - 32px); padding: 8px 10px 8px 14px;
+  background: var(--surface-1); border: 1px solid var(--accent); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2); font-size: 13.5px; color: var(--text);
+}
+.snd-pick-esc { font-size: 12px; color: var(--text-faint); white-space: nowrap; }
+.snd-picking, .snd-picking * { cursor: crosshair !important; }
+.snd-picking [data-seg]:hover { outline: 2px dashed var(--accent); outline-offset: 4px; border-radius: 2px; }
+
+@media (max-width: 720px) {
+  .snd-card-pair { grid-template-columns: 1fr; }
+  .snd-pick-banner { top: auto; bottom: 12px; left: 16px; right: 16px; transform: none; max-width: none; justify-content: space-between; gap: 6px 12px; }
+  .snd-pick-banner > span:first-child { flex-basis: 100%; }
+}
+
+@media print {
+  .snd-scene, .snd-transition, .snd-marks, .snd-pick-banner { display: none !important; }
+}
+
+/* ---------- Эмбиент сцены в карточке ---------- */
+.snd-ambient-status { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-dim); overflow-wrap: anywhere; }
+.snd-ambient-status.is-bad { color: var(--danger); }
+.snd-ambient-player { width: 100%; height: 36px; }

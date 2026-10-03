@@ -1,0 +1,38 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.venv312/
+.env
+*.bak*
+*_bak_*
+.DS_Store
+.claude/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+*.db-shm
+*.db-wal
+uploads/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.cache/
+.idea/
+.vscode/
+*.egg-info/
+# No trailing slash: in a git worktree this is a symlink to the main checkout's
+# node_modules (the toolchain is not duplicated per worktree), and a directory-only
+# rule would leave that symlink showing up as untracked.
+frontend/node_modules
+frontend/dist/
+frontend/*.tsbuildinfo
+backups/
+data/
+
+# Отчёты агентов при работе над релизом — локальные
+.codex-report.md

@@ -1,0 +1,5 @@
+.deadline-chip {
+  display: inline-block; font-size: 11px; line-height: 1.5; padding: 0 7px; border-radius: 999px; white-space: nowrap;
+  color: var(--text-dim); background: var(--surface-2); border: 1px solid var(--border);
+}
+.deadline-chip.is-overdue { color: var(--danger); background: var(--danger-soft); border-color: transparent; }

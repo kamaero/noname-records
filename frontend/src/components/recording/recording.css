@@ -1,0 +1,202 @@
+/* ============================================================
+   Запись — reader on the left, the upload panel on the right.
+   Tokens only (styles.css). The reader keeps its own stylesheet;
+   this file only trims its toolbar in embedded mode.
+   ============================================================ */
+
+.rec-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--gap);
+  align-items: start;
+}
+.rec-stage { min-width: 0; }
+
+/* embedded reader: no book line, no top prev/next, no print, no radius — search / stress / font stay */
+.v2r--embedded { --v2r-rail-w: 220px; }
+.v2r--embedded .v2r-title-book,
+.v2r--embedded .v2r-nav--top,
+.v2r--embedded .v2r-print,
+.v2r--embedded .v2r-radius { display: none; }
+.v2r--embedded .v2r-seg { margin-left: auto; }
+
+/* ---------- panel ---------- */
+.rec-panel {
+  position: sticky; top: var(--gap);
+  display: flex; flex-direction: column; gap: 16px;
+  padding: var(--pad);
+  max-height: calc(100vh - 56px - 42px - 2 * var(--gap));
+  overflow: auto;
+}
+.rec-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.rec-panel-title { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.rec-panel-actor { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+.rec-label {
+  margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--text-faint);
+}
+.rec-book-line { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: 13.5px; }
+.rec-book-line .rec-label { margin: 0; }
+.rec-book-line strong { font-weight: 600; }
+.rec-role { display: flex; flex-direction: column; gap: 8px; }
+.rec-select { padding-right: 8px; }
+.rec-section { min-width: 0; }
+.rec-note { margin: 0; }
+
+/* ---------- drop zone ---------- */
+.rec-drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  min-height: 96px; padding: 14px 12px;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius);
+  background: var(--surface-2); color: var(--text-dim);
+  text-align: center; font-size: 13px; line-height: 1.4; cursor: pointer;
+  transition: border-color 120ms, background 120ms, color 120ms;
+}
+.rec-drop svg { width: 20px; height: 20px; opacity: 0.7; }
+.rec-drop:hover, .rec-drop.is-over { border-color: var(--accent-line); background: var(--accent-soft); color: var(--text); }
+.rec-drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rec-drop.is-disabled { opacity: 0.55; cursor: default; }
+.rec-drop.is-disabled:hover { border-color: var(--border-strong); background: var(--surface-2); color: var(--text-dim); }
+.rec-drop-input { display: none; }
+
+.rec-files { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.rec-file {
+  display: flex; flex-direction: column; gap: 2px; padding: 6px 8px;
+  border: 1px solid transparent; border-radius: var(--radius-sm); background: var(--surface-2);
+  font-size: 12.5px;
+}
+.rec-file.is-bad { border-color: var(--danger); background: var(--danger-soft); }
+.rec-file-name { color: var(--text); overflow-wrap: anywhere; }
+.rec-file-as { color: var(--text-faint); font-size: 11.5px; overflow-wrap: anywhere; }
+.rec-file-as--bad { color: var(--danger); }
+
+/* Отказ chapter_mismatch снимает только сам диктор — галочка, а не автопропуск. */
+.batch-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--text);
+}
+.batch-confirm input { margin-top: 2px; }
+
+.rec-upload-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.rec-status { margin: 8px 0 0; font-size: 12.5px; line-height: 1.4; color: var(--text-dim); }
+.rec-status--error { color: var(--danger); }
+.rec-status--success { color: var(--accent); }
+
+/* ---------- last files ---------- */
+.rec-table .ui-table { font-size: 12.5px; }
+.rec-file-cell { font-size: 11.5px; overflow-wrap: anywhere; }
+.rec-table-empty { margin: 0; font-size: 12.5px; color: var(--text-faint); }
+
+/* ---------- narrow: the panel stacks under the reader ---------- */
+@media (max-width: 999px) {
+  .rec-layout { grid-template-columns: minmax(0, 1fr); }
+  .rec-panel { position: static; max-height: none; overflow: visible; }
+}
+/* On a phone «under the reader» means «past the whole chapter»: a dictor would have
+   scrolled three thousand words to reach the button that uploads his take. The panel
+   is the tool, the script is what you scroll — so the tool goes first. */
+@media (max-width: 760px) {
+  .rec-panel { order: -1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rec-drop { transition: none; }
+}
+
+/* the way from «моя роль» to the actor's own script through the whole book */
+.rec-role-all { display: inline-block; margin-top: 6px; font-size: 12.5px; color: var(--accent); }
+
+/* Не переключатель, а сообщение: диктора не спрашивают, проба это или дубль — ему
+   говорят, что вышло. Спрашивать было нечестно: он не обязан помнить, на что утверждён. */
+.rec-kind-badge {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.rec-kind-badge.is-audition { border-left-color: var(--amber); }
+.rec-kind-badge strong { font-size: 13px; }
+.rec-kind-badge span { font-size: 12px; line-height: 1.35; color: var(--text-muted); }
+
+.rec-file-warn {
+  display: block;
+  font-size: 12px;
+  color: var(--amber);
+  line-height: 1.3;
+}
+
+/* Точное имя файла — не образец. Диктор копирует его и называет файл ровно так. */
+.rec-naming {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.rec-naming-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.rec-naming-name {
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-all;
+  min-width: 0;
+}
+
+.rec-naming-copy {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+}
+
+.rec-naming-copy:hover { background: var(--surface-1); }
+
+.rec-naming-empty,
+.rec-naming-rule {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.rec-naming-rule code { font-size: 11px; }
+
+/* Полоса отправки: восемьдесят мегабайт идут минутами, и «Загружаю…» без числа
+   неотличимо от «зависло». */
+.rec-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.rec-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 120ms linear;
+}

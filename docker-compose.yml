@@ -1,0 +1,96 @@
+x-app-environment: &app-environment
+  DATABASE_URL: "${DATABASE_URL:-sqlite:///./data/noname.db}"
+  AUDIO_STORAGE_PATH: "${AUDIO_STORAGE_PATH:-/app/data/recordings}"
+  AUDIO_NAS_PATH: "${AUDIO_NAS_PATH:-}"
+  REDIS_URL: "${REDIS_URL:-redis://redis:6379/0}"
+  APP_BASE_URL: "${APP_BASE_URL:-http://localhost:8080}"
+  COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+
+x-app-service: &app-service
+  image: noname-records:local
+  build:
+    context: .
+    dockerfile: Dockerfile
+  init: true
+  env_file:
+    - path: .env
+      required: false
+  environment: *app-environment
+  volumes:
+    - ./data:/app/data
+  depends_on:
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+  stop_signal: SIGTERM
+  stop_grace_period: 30s
+
+services:
+  web:
+    <<: *app-service
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips=*
+    ports:
+      - "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-8080}:8000"
+
+  worker:
+    <<: *app-service
+    command: ["python", "-m", "app.worker"]
+
+  worker-consilium:
+    <<: *app-service
+    command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *app-environment
+      RQ_QUEUES: consilium
+
+  scheduler:
+    <<: *app-service
+    working_dir: /app
+    command: ["python", "-m", "scripts.scheduler_loop"]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    environment:
+      DOMAIN: "${DOMAIN:-localhost}"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+
+volumes:
+  redis-data:
+  caddy-data:
+  caddy-config:

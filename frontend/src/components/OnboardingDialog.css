@@ -1,0 +1,42 @@
+/* Приветственное окно диктора — внутренности; само окно рисует ui/Dialog */
+.onb-dialog { width: min(100%, 540px); }
+.onb-step { display: flex; flex-direction: column; gap: 10px; min-height: 196px; }
+.onb-step p { margin: 0; line-height: 1.55; color: var(--text); }
+.onb-step-title { margin: 0 0 2px; font-size: 15px; font-weight: 600; color: var(--accent); }
+
+.onb-status {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border);
+  font-size: 13.5px; line-height: 1.45;
+}
+.onb-status-mark {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 20px; height: 20px; border-radius: 50%; font-size: 12px; font-weight: 700;
+}
+.onb-status--ok { background: var(--accent-soft); border-color: var(--accent-line); }
+.onb-status--ok .onb-status-mark { background: var(--accent); color: var(--on-accent); }
+.onb-status--bad { background: var(--danger-soft); border-color: var(--danger); }
+.onb-status--bad .onb-status-mark { background: var(--danger); color: #fff; }
+.onb-status--unknown { background: var(--amber-soft); border-color: var(--amber); }
+.onb-status--unknown .onb-status-mark { background: var(--amber); color: var(--bg); }
+
+.onb-status--checking { background: var(--surface-2); color: var(--text-dim); }
+.onb-status--checking .onb-status-mark { background: var(--surface-3); color: var(--text-dim); }
+
+.onb-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.onb-more {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; margin-top: auto;
+  padding-top: 4px; font-size: 13px; color: var(--text-dim); text-decoration: underline; text-underline-offset: 3px;
+}
+.onb-more svg { width: 14px; height: 14px; }
+.onb-more:hover { color: var(--text); }
+.onb-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+.onb-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.onb-nav { display: flex; gap: 8px; margin-left: auto; }
+
+@media (max-width: 720px) {
+  .onb-dialog { width: 100%; }
+  .onb-step { min-height: 0; }
+}

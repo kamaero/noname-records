@@ -1,0 +1,183 @@
+/* Character palette editor modal. Extracted from the deleted v1 Books page stylesheet;
+   the modal lives on under v2/LegendEditor and cast/CastPaletteHost. */
+.books-palette-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 8, 12, 0.6);
+  backdrop-filter: blur(5px);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  z-index: 40;
+}
+
+.books-palette-modal {
+  width: min(680px, 100%);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-2);
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.books-palette-modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.books-palette-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.books-palette-modal-header p {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+}
+
+.books-palette-close {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.books-palette-close:hover {
+  background: var(--surface-3);
+}
+
+.books-palette-preview {
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 14px 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.books-palette-preview span {
+  opacity: 0.82;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.books-palette-preview strong {
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.books-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.books-palette-field {
+  display: grid;
+  gap: 8px;
+}
+
+.books-palette-field span {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.books-palette-color-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.books-palette-field input[type="color"] {
+  width: 56px;
+  height: 44px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: 4px;
+}
+
+.books-palette-field input[type="text"],
+.books-palette-field select {
+  width: 100%;
+  min-height: 44px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 10px 12px;
+  font: inherit;
+  outline: none;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+
+.books-palette-field input[type="text"]:focus,
+.books-palette-field select:focus {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.books-palette-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.books-palette-primary,
+.books-palette-secondary {
+  min-height: 40px;
+  border-radius: var(--radius);
+  padding: 0 14px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+}
+
+.books-palette-secondary {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.books-palette-secondary:hover {
+  background: var(--surface-3);
+}
+
+.books-palette-primary {
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.books-palette-primary:hover:not(:disabled) {
+  background: var(--accent-press);
+}
+
+.books-palette-primary:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+@media (max-width: 1080px) {
+  .books-palette-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* roles this colour could be confused with — a warning next to the choice, not a refusal */
+.books-palette-warning {
+  margin-top: 14px; padding: 10px 12px; border-radius: var(--radius);
+  background: var(--amber-soft); border: 1px solid var(--amber);
+  font-size: 12.5px; line-height: 1.5; color: var(--text);
+}
+.books-palette-warning strong { font-weight: 600; }
+.books-palette-warning ul { margin: 6px 0 0; padding-left: 18px; }

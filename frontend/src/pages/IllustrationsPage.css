@@ -1,0 +1,54 @@
+/* Экран привязки: картинка крупно слева, текст и выбор справа. На узком экране —
+   друг под другом, картинка первой: узнают героя всё равно по ней. */
+.ill { display: flex; flex-direction: column; gap: 14px; }
+.ill-body { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); gap: 18px; align-items: start; }
+@media (max-width: 900px) { .ill-body { grid-template-columns: minmax(0, 1fr); } }
+
+.ill-figure { margin: 0; }
+.ill-figure img {
+  display: block;
+  width: 100%;
+  max-height: 72vh;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.ill-figure figcaption { margin-top: 6px; }
+
+.ill-side { display: flex; flex-direction: column; gap: 12px; }
+.ill-h { margin: 0 0 6px; font-size: 14px; }
+.ill-dim { color: var(--text-dim); font-size: 13px; line-height: 1.5; margin: 0; }
+
+/* Текст вокруг картинки — это улика, по которой опознают героя, поэтому он читаемый,
+   а не мелкая подпись; длинный кусок прокручивается, а не растягивает страницу. */
+.ill-context {
+  max-height: 34vh;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.ill-here { background: var(--accent-soft); color: var(--text); padding: 0 4px; border-radius: 4px; }
+
+.ill-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.ill-key {
+  display: inline-block;
+  min-width: 16px;
+  padding: 0 3px;
+  margin-right: 4px;
+  border-radius: 4px;
+  background: var(--surface-3, var(--surface-2));
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: center;
+}
+.ill-search { display: flex; align-items: center; gap: 8px; }
+.ill-search svg { width: 16px; height: 16px; flex: none; color: var(--text-dim); }
+.ill-search .ui-input { flex: 1; min-width: 0; }
+.ill-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ill-nav { display: flex; align-items: center; gap: 8px; margin-left: auto; }

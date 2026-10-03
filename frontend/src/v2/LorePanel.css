@@ -1,0 +1,83 @@
+/* Панель «Лор»: оглавление, поиск и статья. Читают её с телефона не реже, чем с
+   монитора, — поэтому одна колонка и крупный текст, а не две колонки. */
+.lore { display: flex; flex-direction: column; gap: 14px; }
+
+.lore-search { display: flex; align-items: center; gap: 8px; }
+/* svg без размера растягивается на всю панель — у иконки его нет своего */
+.lore-search svg { width: 16px; height: 16px; flex: none; color: var(--text-dim); }
+.lore-search .ui-input { flex: 1; min-width: 0; }
+
+.lore-group {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.lore-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.lore-list button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+.lore-list button:hover { background: var(--surface-2); }
+.lore-list button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lore-list strong { font-weight: 600; }
+
+.lore-dim { color: var(--text-dim); font-size: 13px; line-height: 1.5; margin: 0; }
+.lore-hint { margin-top: 14px; }
+.lore-back { align-self: flex-start; }
+
+.lore-article { font-size: 15px; line-height: 1.65; }
+.lore-article p { margin: 0 0 12px; }
+.lore-article-title { margin: 0 0 10px; font-size: 18px; }
+
+/* Карта раздела: в панели уменьшена, по клику раскрывается во весь экран — на
+   карте Полумрака подписаны гхьеты, читать их в колонке невозможно. */
+.lore-map {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+.lore-map img { display: block; width: 100%; height: auto; }
+
+.lore-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.85);
+  cursor: zoom-out;
+}
+.lore-zoom img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+/* Портрет героя — авторская иллюстрация, привязанная человеком на экране «Иллюстрации» */
+.lore-portrait {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  margin: 0 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
