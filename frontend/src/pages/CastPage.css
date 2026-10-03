@@ -1,0 +1,340 @@
+/* Cast page — tokens only (styles.css / ui.css). */
+
+.cast { display: flex; flex-direction: column; min-width: 0; margin-top: -12px; }
+.cast .ui-pagehead { margin-bottom: 8px; }
+.cast .ui-pagehead-actions { align-items: center; }
+
+.cast-sr {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---------- компактная отметка проверки карты ---------- */
+.cast-check-control { display: inline-flex; align-items: center; gap: 4px; }
+.cast-check-status {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 9px;
+  border: 1px solid currentColor; border-radius: 999px; font-size: 12.5px; font-weight: 500;
+  white-space: nowrap;
+}
+.cast-check-status svg { width: 14px; height: 14px; flex-shrink: 0; }
+.cast-check-status.is-checked { color: var(--accent); background: var(--accent-soft); }
+.cast-check-status.is-unchecked { color: var(--amber); background: var(--amber-soft); }
+
+/* ---------- признанные пересечения в боковом листе ---------- */
+.cast-ack-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.cast-ack-item {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.cast-ack-item:last-child { border-bottom: 0; }
+.cast-ack-pair { font-size: 13px; flex: 1 1 220px; min-width: 0; }
+.cast-ack-reason { font-size: 13px; color: var(--text-dim); flex: 1 1 220px; min-width: 0; font-style: italic; }
+.cast-ack-source { font-size: 12px; white-space: nowrap; }
+
+/* ---------- header search ---------- */
+.cast-search {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 40px; padding: 0 11px; width: 260px; max-width: 100%;
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius);
+  color: var(--text-faint);
+  transition: border-color var(--ui-motion), box-shadow var(--ui-motion);
+}
+.cast-search svg { width: 15px; height: 15px; flex-shrink: 0; }
+.cast-search input {
+  flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; outline: none;
+  color: var(--text); font-size: 13.5px;
+}
+.cast-search input::placeholder { color: var(--text-faint); }
+.cast-search input::-webkit-search-cancel-button { filter: grayscale(1); opacity: 0.6; }
+.cast-search:focus-within { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* ---------- budget line ---------- */
+.cast-budget { margin: -6px 0 12px; }
+.cast-budget--skeleton {
+  height: 16px; width: min(560px, 80%); border-radius: 4px; background: var(--surface-3); margin-bottom: 20px;
+}
+.cast-budget-line {
+  margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px;
+  font-size: 13px; color: var(--text-dim); line-height: 1.6;
+}
+.cast-budget-line strong { color: var(--text); font-weight: 600; }
+.cast-budget-item + .cast-budget-item::before { content: "·"; margin-right: 6px; color: var(--text-faint); }
+.cast-budget-summary { color: var(--text-dim); font-family: var(--font-sans); }
+.cast-budget-key { color: var(--text-faint); font-family: var(--font-sans); }
+.cast-budget-edit-btn { margin-left: 4px; font-family: var(--font-sans); }
+.cast-budget-form {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;
+  margin-top: 10px; padding: 12px 14px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1);
+}
+.cast-budget-form .ui-field { width: 200px; }
+.cast-budget-form-actions { display: flex; gap: 8px; }
+
+/* ---------- toolbar ---------- */
+.cast-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; min-height: 32px; }
+.cast-toolbar-count { font-size: 12.5px; color: var(--text-faint); }
+.cast-toggle[aria-pressed="true"] {
+  background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent);
+}
+.cast-toggle[aria-pressed="true"]:hover:not(:disabled) { background: var(--accent-soft); }
+
+/* ---------- palette conflicts ---------- */
+.cast-conflicts {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+  margin-bottom: 10px; padding: 8px 12px;
+  background: var(--amber-soft); border: 1px solid var(--amber); border-radius: var(--radius);
+  font-size: 13px; color: var(--text); line-height: 1.4;
+}
+.cast-conflicts-title { white-space: nowrap; }
+.cast-conflicts-title strong { color: var(--danger); font-weight: 600; }
+.cast-conflicts-list { display: flex; flex-wrap: wrap; gap: 4px 10px; flex: 1; min-width: 0; color: var(--text-dim); }
+.cast-conflicts-pair { white-space: nowrap; }
+.cast-conflicts-more { color: var(--text-faint); font-size: 12px; }
+
+/* ---------- table ---------- */
+/* Таблица подстраивается под экран, а не экран под таблицу.
+
+   `table-layout: fixed` — потому что колонки должны слушаться заданных долей, а не
+   раздуваться под самое длинное имя роли: при автоматической раскладке одна
+   «Тот-Кто-Знает-Где-Твоя-Смерть» растягивала строку и уводила таблицу за правый край.
+
+   Доли — в процентах, не в пикселях: сумма процентов равна ширине таблицы при любой
+   ширине, сумма пикселей на узком экране всегда больше.
+
+   Ширина не задана ровно одной колонке, и это не забывчивость: при `table-layout: fixed`
+   остаток достаётся колонкам без заданной ширины. Пока такой колонки нет, остаток
+   уходит первой попавшейся — стоило скрыть «Сумму», и слева от «Роли» зияла дыра
+   в полэкрана.
+
+   Остаток забирает «Персонаж»: три строки текста — раса, характер, заметка о голосе —
+   и есть то, чему место нужнее всех. «Роль» же держит свою долю: лишняя ширина у неё
+   оборачивалась пустотой между именем роли и именем актёра. Там, где «Персонаж»
+   скрыт, остаток снова уходит «Роли» — колонке без ширины быть обязательно. */
+.cast-table { min-width: 0; container-type: inline-size; }
+.cast-table .ui-table { table-layout: fixed; width: 100%; min-width: 0; }
+/* Горизонтальной прокрутки у каста больше нет: ширина всегда равна экрану. */
+.cast-table .ui-table-wrap { overflow-x: hidden; }
+
+.cast-table .cast-col-swatch { width: 44px; }
+.cast-table .cast-col-role { width: 19%; }
+.cast-table .cast-col-actor { width: 13%; }
+.cast-table .cast-col-lines { width: 7%; }
+.cast-table .cast-col-auditions { width: 7%; }
+/* Деньги ушли в развёртку строки — их процентную долю забрали главы и
+   пересечения, но им, в отличие от денег, тесниться незачем: обе колонки
+   короткие и держатся на фиксированной ширине, а не на проценте от таблицы. */
+.cast-col-chapters { width: 62px; }
+.cast-col-cross { width: 118px; }
+
+/* Чем уже — тем меньше колонок, по убыванию нужности; оставшиеся забирают долю ушедшей,
+   иначе «Реплик» ужимается до пяти букв и заголовок обрезается.
+
+   Условие — по ширине самой таблицы, а не окна: таблица живёт внутри рамки с боковой
+   панелью, и окно шире её на добрых две сотни пикселей. Медиазапрос прятал бы колонку
+   не тогда, когда ей тесно, а когда тесно окну. */
+@container (max-width: 1150px) {
+  .cast-table .cast-col-role { width: 20%; }
+  .cast-table .cast-col-actor { width: 14%; }
+  .cast-table .cast-col-lines { width: 8%; }
+  .cast-table .cast-col-auditions { width: 8%; }
+}
+
+@container (max-width: 950px) {
+  .cast-table .cast-col-chapters { display: none; }
+  .cast-table .cast-col-role { width: 22%; }
+  .cast-table .cast-col-actor { width: 16%; }
+  .cast-table .cast-col-lines { width: 10%; }
+  .cast-table .cast-col-auditions { width: 10%; }
+}
+
+@container (max-width: 780px) {
+  .cast-table .cast-col-who { display: none; }
+  /* «Персонаж» ушёл — остаток снова забирает «Роль», иначе его возьмёт колонка цвета */
+  .cast-table .cast-col-role { width: auto; }
+  .cast-table .cast-col-actor { width: 24%; }
+  .cast-table .cast-col-lines { width: 13%; }
+  .cast-table .cast-col-auditions { width: 13%; }
+}
+
+@container (max-width: 560px) {
+  .cast-table .cast-col-lines { display: none; }
+  .cast-table .cast-col-actor { width: 30%; }
+  .cast-table .cast-col-auditions { width: 18%; }
+}
+
+/* Содержимое режется многоточием, а не переносится: строки одной высоты — условие,
+   на котором держится оконная прокрутка (высота строки измеряется по одной из них). */
+.cast-table .ui-table td > * { min-width: 0; }
+.cast-role-name { min-width: 0; }
+.cast-role-name,
+.cast-who-note,
+.cast-table .cast-col-actor .cast-cell-btn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cast-table .ui-table thead th { padding: 0 10px; }
+.cast-table .ui-table tbody td { padding: 0 10px; }
+.cast-table .ui-table tbody td:first-child { padding-right: 4px; }
+.cast-table .ui-table tbody tr:has(.cast-spacer) td { border-bottom: 0; padding: 0; height: auto; }
+.cast-table .ui-table tbody tr:has(.cast-spacer):hover td { background: transparent; }
+.cast-spacer { width: 1px; }
+
+.cast-sort {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 36px; margin: 0 -6px; padding: 0 6px; border: 0; background: transparent;
+  font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit;
+  cursor: pointer; border-radius: var(--radius-sm);
+  transition: color var(--ui-motion);
+}
+.cast-sort:hover { color: var(--text-dim); }
+.cast-sort:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cast-sort-icon {
+  width: 12px; height: 12px; opacity: 0; transform: rotate(90deg);
+  transition: opacity var(--ui-motion), transform var(--ui-motion);
+}
+.cast-sort.is-active { color: var(--text); }
+.cast-sort.is-active .cast-sort-icon { opacity: 1; }
+.cast-sort.is-active.is-asc .cast-sort-icon { transform: rotate(-90deg); }
+.ui-table th.is-right .cast-sort { flex-direction: row-reverse; }
+
+.cast-swatch {
+  width: 24px; height: 24px; padding: 0; border-radius: 999px;
+  border: 1px solid transparent; cursor: pointer; display: inline-grid; place-items: center;
+  font-size: 11px; line-height: 1; box-shadow: none !important;
+  transition: transform 80ms;
+}
+.cast-swatch:hover:not(:disabled) { transform: scale(1.08); }
+.cast-swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cast-swatch:disabled { cursor: default; opacity: 0.7; }
+
+.cast-role-cell { display: flex; align-items: stretch; gap: 4px; min-width: 0; }
+/* Раскрыватель — полоса во всю высоту строки, а не значок.
+   Кликать по самой строке нельзя: она почти целиком из управляющих элементов —
+   имя, актёр, раса, характер и заметка правятся в ячейке и занимают её на всю
+   ширину, реплики это ссылка, пробы и пересечения кнопки. Зона раскрытия вышла
+   бы рваной. Полоса вдоль левой кромки даёт крупную и предсказуемую цель. */
+.cast-disc {
+  flex: none; width: 30px; min-height: 40px; align-self: stretch;
+  margin-left: -9px; display: inline-grid; place-items: center;
+  border: 0; background: transparent; padding: 0; border-radius: var(--radius-sm);
+  color: var(--text-faint); cursor: pointer; transition: color var(--ui-motion), background var(--ui-motion);
+}
+/* Полоса невидима в покое — на двухстах строках это был бы шум. Она
+   проявляется, как только курсор входит в строку: человек видит, куда жать,
+   ровно тогда, когда собрался жать. */
+.ui-table tbody tr:hover .cast-disc { background: var(--surface-3); color: var(--text-dim); }
+.cast-disc:hover { color: var(--text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.cast-disc[aria-expanded="true"] { color: var(--accent); }
+.cast-disc:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cast-disc-icon { width: 17px; height: 17px; transition: transform var(--ui-motion) ease-out; }
+.cast-disc[aria-expanded="true"] .cast-disc-icon { transform: rotate(90deg); }
+.cast-role { display: flex; flex-direction: column; justify-content: center; min-height: 40px; padding: 6px 0; gap: 2px; min-width: 0; }
+.cast-role-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.cast-role-name { font-weight: 600; font-size: 13.5px; letter-spacing: -0.005em; }
+.cast-alias-toggle {
+  border: 0; background: transparent; padding: 0 3px; margin: 0; cursor: pointer;
+  font-size: 11.5px; color: var(--text-faint); border-radius: var(--radius-sm);
+  transition: color var(--ui-motion);
+}
+.cast-alias-toggle:hover, .cast-alias-toggle[aria-expanded="true"] { color: var(--text-dim); }
+.cast-alias-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cast-aliases { font-size: 12px; color: var(--text-dim); line-height: 1.4; white-space: normal; }
+
+.cast-muted { color: var(--text-faint); }
+.cast-chapters { cursor: help; text-decoration: underline dotted var(--border-strong); text-underline-offset: 3px; }
+.cast-chapters.is-mismatch { color: var(--amber); }
+.cast-chapters-claimed { color: var(--text-faint); }
+.cast-cross {
+  display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px;
+  border: 0; border-radius: 999px; font: 500 11.5px/1 var(--font-sans); cursor: pointer;
+}
+.cast-cross.is-bad { background: var(--danger-soft); color: var(--danger); }
+.cast-cross.is-warn { background: var(--amber-soft); color: var(--amber); }
+.cast-cross.is-info { background: var(--blue-soft); color: var(--blue); }
+
+/* inline editable cells: a quiet button at rest, a 30px input while editing */
+.cast-cell { display: block; width: 100%; height: 30px; padding: 0 7px; margin: 0 -7px; box-sizing: content-box; font-size: 13.5px; line-height: 30px; }
+.cast-cell.is-right { text-align: right; }
+.cast-cell-btn {
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm);
+  color: var(--text); cursor: text; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: border-color var(--ui-motion), background var(--ui-motion);
+}
+.cast-cell-btn.is-empty { color: var(--text-faint); }
+.cast-cell-btn:hover:not(:disabled) { border-color: var(--border-strong); }
+.cast-cell-btn:focus-visible { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cast-cell-btn:disabled { cursor: default; opacity: 0.7; }
+.cast-cell-btn[aria-busy="true"] { opacity: 0.5; }
+.cast-cell-input {
+  background: var(--surface-1); border: 1px solid var(--accent-line); border-radius: var(--radius-sm);
+  color: var(--text); outline: none; box-shadow: 0 0 0 3px var(--accent-soft);
+  font-family: inherit;
+}
+.cast-cell-input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+.cast-cell-input::-webkit-outer-spin-button, .cast-cell-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.cast-cell-input::placeholder { color: var(--text-faint); }
+
+/* Рассказчик: поле актёра агенту недоступно вовсе. Тот же размер и отступы, что
+   у `cast-cell-btn` в покое, но приглушённый цвет, без рамки и без курсора-
+   указателя — читается как текст, а не как поле, которое почему-то не открывается. */
+.cast-actor-static {
+  display: block; height: 30px; padding: 0 7px; margin: 0 -7px; box-sizing: content-box;
+  font-size: 13.5px; line-height: 30px; color: var(--text-dim); cursor: default;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.cast-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* ---------- narrow ---------- */
+@media (max-width: 720px) {
+  .cast { margin-top: -5px; }
+  .ui-pagehead .cast-search { width: 100%; }
+  .cast .ui-pagehead-actions { width: 100%; flex-wrap: wrap; }
+  .cast-check-control { flex-wrap: wrap; }
+  .cast-budget-form .ui-field { width: 100%; }
+  .cast-toolbar { flex-wrap: wrap; }
+  .cast-search, .cast-toggle { min-height: 40px; }
+  /* the note stacks: count, the pairs, then the action on its own row */
+  .cast-conflicts { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .cast-conflicts-list { width: 100%; flex: none; }
+  .cast-conflicts-pair { white-space: normal; }
+  /* «Похожие цвета у ролей из одной главы: 309» is one unbreakable line at 320px */
+  .cast-conflicts-title { white-space: normal; }
+  .cast-conflicts > .ui-btn { min-height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cast-swatch:hover:not(:disabled) { transform: none; }
+}
+
+/* The line count is the way to the lines: «271» opens that role's own script
+   through the whole book. A number that leads somewhere has to look like it does. */
+.cast-lines { color: var(--accent); text-decoration: none; }
+.cast-lines:hover { text-decoration: underline; }
+.cast-lines:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+/* «Персонаж»: три строки, каждая правится на месте — раса, характер, заметка автора.
+   То, что придумал пайплайн, — черновик, а не приговор. */
+.cast-who { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 4px 0; height: 62px; }
+/* One line each, always: the table windows its rows by a single height, so a cell
+   that grows with its text makes the scrollbar lie and shake. The whole text is in
+   the tooltip and in the editor a click away. */
+.cast-who .cast-cell-btn {
+  font-size: 12px; line-height: 1.4; text-align: left;
+  display: block; width: 100%; height: 19px; padding: 0 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cast-who .cast-cell-btn.is-empty { font-size: 11.5px; }
+.cast-who-note { color: var(--text); }
+.cast-cell-area {
+  width: 100%; min-height: 58px; padding: 5px 7px; resize: vertical;
+  font: inherit; font-size: 12.5px; line-height: 1.4;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--accent-line); border-radius: var(--radius); outline: none;
+}
+.cast-cell-area:focus { box-shadow: 0 0 0 3px var(--accent-soft); }
+.cast .ui-table tbody td { vertical-align: top; }
+.cast .ui-table tbody td.cast-col-swatch { vertical-align: middle; }
+
+/* Слияние ролей: цена вперёд, выбор цели, и только второе явное нажатие
+   запускает необратимое действие — тот же арм-и-подтверди шаг, что у удаления. */
+.cast-merge-cost { margin: 0; font-size: 13.5px; line-height: 1.5; }
+.cast-merge-actions { display: flex; gap: 6px; flex-wrap: wrap; }

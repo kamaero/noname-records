@@ -1,0 +1,118 @@
+/* ============================================================
+   Пользователи — the studio's accounts, as an operation.
+   Tokens only (styles.css); the table primitives come from ui.css.
+   ============================================================ */
+
+.usr { display: flex; flex-direction: column; gap: var(--gap); width: 100%; min-width: 0; max-width: 1100px; margin: 0 auto; }
+.usr-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.usr-head h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.usr-count { font-size: 12.5px; color: var(--text-dim); }
+.usr-head .usr-spacer { flex: 1; }
+
+.usr-search {
+  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; max-width: 320px;
+  height: 36px; padding: 0 10px; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-faint);
+}
+.usr-search svg { width: 15px; height: 15px; flex: none; }
+.usr-search:focus-within { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+.usr-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); outline: none; font-size: 13.5px; }
+
+/* the row: name over login, then how they get in, roles, and the actions */
+.usr-name {
+  display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25;
+  min-width: 0; width: 100%; padding: 2px 4px; margin-left: -4px; text-align: left;
+  background: none; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer;
+}
+.usr-name:hover { background: var(--surface-2); border-color: var(--border); }
+.usr-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.usr-name strong { font-size: 13.5px; font-weight: 600; }
+.usr-login { font-size: 11.5px; color: var(--text-dim); font-family: var(--font-mono); }
+.usr-auth { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.usr-twin { display: block; font-size: 11px; color: var(--text-faint); }
+.usr-roles { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.usr-role {
+  font-size: 11px; padding: 1px 8px; border-radius: 999px;
+  background: var(--surface-3); color: var(--text-dim); border: 1px solid var(--border);
+}
+.usr-role--admin { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-line); }
+.usr-off { opacity: 0.55; }
+/* one row, always: a wrapped action strip doubles the height of 52 of 65 rows */
+.usr-actions { display: inline-flex; gap: 6px; flex-wrap: nowrap; justify-content: flex-end; align-items: center; white-space: nowrap; }
+.usr-rolepick {
+  height: 30px; padding: 0 6px; font-size: 12px;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius); outline: none;
+}
+.usr-rolepick:focus-visible { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* a password is shown once; it must not look like part of the table */
+.usr-secret {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: var(--radius);
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+}
+.usr-secret code { font-family: var(--font-mono); font-size: 15px; font-weight: 600; color: var(--text); }
+.usr-secret-note { font-size: 12px; color: var(--text-dim); }
+
+.usr-bulk { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--text-dim); }
+.usr-bulk strong { color: var(--text); }
+
+@media (max-width: 760px) {
+  .usr-head { align-items: stretch; }
+  .usr-search { max-width: none; flex-basis: 100%; }
+  .usr-actions { justify-content: flex-start; }
+  .usr .ui-table thead th, .usr .ui-table tbody td { padding-left: 8px; padding-right: 8px; }
+}
+
+/* Пути входа: их может быть два сразу, и в этом весь смысл. */
+.usr-ways { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.usr-way {
+  font-size: 11.5px; padding: 1px 6px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-dim); white-space: nowrap;
+}
+.usr-way--tg { color: var(--accent); }
+
+/* Выбор учётки, с которой сливаем. */
+.usr-merge-search {
+  display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 11px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-2); margin-bottom: 12px;
+}
+.usr-merge-search svg { width: 15px; height: 15px; flex-shrink: 0; }
+.usr-merge-search input {
+  flex: 1; min-width: 0; height: 100%; border: 0; background: transparent;
+  outline: none; color: var(--text); font: inherit;
+}
+
+.usr-merge-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.usr-merge-pick {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  padding: 8px 10px; border: 1px solid transparent; border-radius: var(--radius);
+  background: transparent; color: var(--text); font: inherit; cursor: pointer;
+}
+.usr-merge-pick:hover:not(:disabled) { background: var(--surface-2); }
+.usr-merge-pick.is-suggested { border-color: var(--border-strong); }
+.usr-merge-pick:disabled { opacity: 0.5; cursor: default; }
+.usr-merge-hint { margin-left: auto; font-size: 11.5px; color: var(--text-faint); white-space: nowrap; }
+.usr-merge-empty { padding: 10px; color: var(--text-faint); font-size: 13px; }
+
+/* Привязка телеграма живёт в строке человека — там, где на него и смотрят. */
+.usr-way--tg, .usr-way--add { border: 0; font: inherit; cursor: pointer; }
+.usr-way--add { color: var(--text-faint); border: 1px dashed var(--border-strong); }
+.usr-way--add:hover, .usr-way--tg:hover { background: var(--surface-1); color: var(--accent); }
+.usr-way--tg:disabled, .usr-way--add:disabled { cursor: default; opacity: 0.6; }
+
+.whitelist-linked { color: var(--text-dim); }
+.whitelist-loose { color: var(--amber); }
+
+.usr-reach-note { font-size: 12.5px; line-height: 1.5; color: var(--text-dim); margin: 0 0 14px; }
+.usr-reach-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.usr-reach {
+  display: flex; align-items: baseline; gap: 10px; padding: 6px 0;
+  border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.usr-reach:last-child { border-bottom: 0; }
+.usr-reach-who { flex: 1; min-width: 0; }
+.usr-reach-state { font-size: 12px; color: var(--text-faint); white-space: nowrap; }
+.usr-reach-state--bad { color: var(--amber); }

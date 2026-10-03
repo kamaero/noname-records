@@ -1,0 +1,316 @@
+/* ============================================================
+   Книга (hub) — one page, no tabs. Tokens only; buttons, chips,
+   tables and empty states come from ui.css.
+   ============================================================ */
+
+.hub { display: flex; flex-direction: column; gap: var(--gap); width: 100%; min-width: 0; max-width: 1320px; margin: 0 auto; }
+.hub .ui-pagehead { margin-bottom: 0; }
+.hub-title { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hub-title .ui-chip { position: relative; top: -1px; }
+.hub-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.hub-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- cards ---------- */
+.hub-card { display: flex; flex-direction: column; gap: 12px; padding: var(--pad); min-width: 0; }
+.hub-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.hub-card-title { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+.hub-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-dim); }
+.hub-card-foot-actions { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.hub-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* legacy `label` rules would grid this apart; pin the primitive's layout */
+.hub-check { display: inline-flex; width: auto; flex: 0 0 auto; grid-template-columns: none; min-height: 32px; font-size: 12.5px; color: var(--text-dim); }
+.hub-check span { white-space: nowrap; }
+.hub-dim { color: var(--text-dim); }
+.hub-danger { color: var(--danger); }
+.hub-text { margin: 0; font-size: 13.5px; line-height: 1.5; }
+.hub-wrap { white-space: pre-wrap; word-break: break-word; }
+
+.hub-columns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); align-items: stretch; min-width: 0; }
+.hub-col { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+/* «Запись» тянется до высоты «Каста», её кнопка — к низу карточки */
+.hub-col > .hub-card:last-child { flex: 1 1 auto; }
+.hub-col > .hub-card:last-child > .hub-card-actions:last-child { margin-top: auto; }
+
+/* key / value rows, like the reader's sheet */
+.hub-kv { margin: 0; display: flex; flex-direction: column; }
+.hub-kv > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; min-height: 30px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.hub-kv > div:last-child { border-bottom: 0; }
+.hub-kv dt { font-size: 13px; color: var(--text-dim); flex-shrink: 0; }
+.hub-kv dd { margin: 0; font-size: 13.5px; text-align: right; min-width: 0; }
+.hub-kv dd.num { font-size: 13px; }
+
+/* progress bar: 6px pill track, accent fill */
+.hub-bar { height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; width: 100%; }
+.hub-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width 300ms ease-out; }
+.hub-bar--lg { height: 8px; }
+.hub-bar-slot { height: 6px; }
+
+/* ---------- stepper ---------- */
+.hub-next { font-size: 13px; color: var(--text-dim); }
+.hub-next--blue { color: var(--blue); }
+.hub-next--amber { color: var(--amber); }
+.hub-next--danger { color: var(--danger); }
+
+.hub-stepper { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+/* state lives in the glyph and the words, not in a coloured stripe */
+.hub-step { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding-top: 10px; border-top: 1px solid var(--border); }
+.hub-step.is-skipped .hub-step-glyph { background: transparent; border: 1px dashed var(--border-strong); }
+.hub-step-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.hub-step-glyph {
+  width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-3); color: var(--text-faint); font-size: 11.5px; font-weight: 600;
+}
+.hub-step-glyph svg { width: 13px; height: 13px; }
+.hub-step.is-done .hub-step-glyph { background: var(--accent); color: var(--on-accent); }
+.hub-step.is-running .hub-step-glyph { background: var(--blue-soft); color: var(--blue); }
+.hub-step.is-failed .hub-step-glyph { background: var(--danger-soft); color: var(--danger); }
+.hub-step-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); animation: hub-pulse 1.4s ease-in-out infinite; }
+@keyframes hub-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .hub-step-pulse { animation: none; } .hub-bar > span { transition: none; } }
+.hub-step-label { font-size: 13.5px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-step.is-pending .hub-step-label, .hub-step.is-skipped .hub-step-label { color: var(--text-dim); font-weight: 500; }
+/* Two lines whether or not there are two: the detail is what stands between the
+   label and the buttons, so its height is what puts every column's buttons on the
+   same line. */
+.hub-step-detail {
+  font-size: 12px; color: var(--text-dim); line-height: 1.35;
+  min-height: calc(2 * 1.35em);
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.hub-step.is-failed .hub-step-detail { color: var(--danger); }
+.hub-step.is-pending .hub-step-detail { color: var(--text-faint); }
+/* One strip per step: a column with three actions grows downward, and the first
+   row of every column still starts where the others do. */
+.hub-step-foot {
+  display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px;
+  min-height: 72px;
+}
+.hub-step-foot:empty { display: none; }
+/* a sixth of the card is about 200px — a button must clip, never push the card wider */
+.hub-step-foot .ui-btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.hub-step-foot .hub-check { max-width: 100%; }
+.hub-step-foot .hub-check span { white-space: normal; }
+
+/* ---------- cast ---------- */
+/* Карточка — вход в Каст, не таблица: сам список ролей смотрят на
+   `/books/:id/cast`, здесь только счётчики, что решают, идти ли туда. */
+.hub-cast-summary { display: flex; align-items: center; gap: 6px 16px; flex-wrap: wrap; font-size: 13.5px; color: var(--text-dim); }
+.hub-cast-summary:empty { display: none; }
+.hub-cast-summary .num { color: var(--text); }
+.hub-cast-summary .is-bad { color: var(--danger); }
+.hub-cast-summary .is-bad .num { color: var(--danger); }
+.hub-conflicts strong { color: var(--text); }
+.hub-conflicts.is-bad strong { color: var(--danger); }
+
+/* Каст как список дел: роли без актёра, пересечения, конфликты палитры — top to bottom. */
+.hub-cast-todo { display: flex; flex-direction: column; gap: 12px; }
+.hub-cast-section { display: flex; flex-direction: column; gap: 6px; }
+.hub-cast-section-title { margin: 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-faint); }
+.hub-cast-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hub-cast-row {
+  display: flex; align-items: center; gap: 8px; padding: 5px 0;
+  font-size: 13.5px; color: var(--text); text-decoration: none; border-bottom: 1px solid var(--border);
+}
+.hub-cast-list li:last-child .hub-cast-row { border-bottom: 0; }
+.hub-cast-row:hover { color: var(--accent); }
+.hub-cast-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-cast-crossing { font-size: 13px; color: var(--text-dim); padding: 3px 0; }
+.hub-cast-crossing b { color: var(--text); font-weight: 600; }
+.hub-cast-more { align-self: flex-start; font-size: 12.5px; color: var(--accent); text-decoration: none; }
+.hub-cast-more:hover { text-decoration: underline; }
+.hub-cast-conflicts { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
+/* Портреты героев: сколько иллюстраций привязано и куда идти размечать */
+.hub-cast-portraits { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12.5px; margin-top: 10px; }
+
+/* ---------- menu (details popover) ---------- */
+.hub-menu { position: relative; }
+.hub-menu-summary { list-style: none; cursor: pointer; }
+.hub-menu-summary::-webkit-details-marker { display: none; }
+.hub-menu[open] .hub-menu-summary { background: var(--surface-2); }
+.hub-menu-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30;
+  min-width: 260px; padding: 6px;
+  background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-2);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.hub-menu-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  width: 100%; min-height: 36px; padding: 7px 10px; text-align: left;
+  background: transparent; border: 0; border-radius: var(--radius); color: var(--text);
+  font-size: 13.5px; font-weight: 500; cursor: pointer;
+  transition: background var(--ui-motion), color var(--ui-motion);
+}
+.hub-menu-item small { font-size: 11.5px; color: var(--text-faint); font-weight: 400; }
+.hub-menu-item:hover:not(:disabled) { background: var(--surface-2); }
+.hub-menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.hub-menu-item:disabled { color: var(--text-faint); cursor: default; }
+.hub-menu-item.is-danger { color: var(--danger); }
+.hub-menu-item.is-danger:hover { background: var(--danger-soft); }
+.hub-menu-sep { height: 1px; margin: 4px 2px; background: var(--border); }
+
+.hub-confirm { display: flex; flex-direction: column; gap: 10px; padding: 10px; border-radius: var(--radius); background: var(--danger-soft); border: 1px solid var(--danger); }
+.hub-confirm p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text); }
+.hub-confirm-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.hub-menu-pop .hub-confirm { max-width: 320px; }
+
+.hub-consilium { display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 6px; }
+.hub-consilium-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.hub-consilium-line { font-size: 12.5px; color: var(--text-dim); }
+.hub-consilium-line--warn { color: var(--danger, var(--text)); }
+/* Шаг — шестая часть карточки: сумма, причина блокировки и строка итога длиннее кнопки.
+   Обрезка по краю съедала и деньги, и причину — здесь подпись переносится. */
+.hub-step-foot .hub-consilium .ui-btn {
+  height: auto; min-height: 32px; padding-block: 7px;
+  white-space: normal; line-height: 1.3; text-align: left; justify-content: flex-start;
+}
+
+/* ---------- service (collapsed) ---------- */
+.hub-service { gap: 0; padding: 0; }
+.hub-service-summary {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 var(--pad);
+  list-style: none; cursor: pointer; border-radius: var(--radius-lg); font-size: 13px;
+}
+.hub-service-summary::-webkit-details-marker { display: none; }
+.hub-service-summary svg { width: 14px; height: 14px; color: var(--text-faint); transition: transform var(--ui-motion); }
+.hub-service[open] .hub-service-summary svg { transform: rotate(90deg); }
+.hub-service-summary:hover { background: var(--surface-2); }
+.hub-service-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.hub-service-body { display: flex; flex-direction: column; gap: 12px; padding: 4px var(--pad) var(--pad); border-top: 1px solid var(--border); }
+.hub-service-body .hub-kv dd { text-align: left; }
+.hub-service-body .hub-kv > div { justify-content: flex-start; }
+.hub-service-body .hub-kv dt { width: 110px; }
+
+/* «Настройки книги»: `ModelCard`/`ProfileCard` keep their own `.panel` markup
+   (their content is not ours to change), but one `.panel` nested inside another
+   reads as a card stuck inside a card — strip the inner chrome here, keep the
+   padding, and separate the two with a thin rule instead of a second
+   border+shadow. Scoped to this card's own body class so `ServiceCard` and any
+   other `.panel` are unaffected. */
+.hub-settings-body > .panel {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  border-radius: 0;
+}
+.hub-settings-body > .panel + .panel {
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- skeleton ---------- */
+.hub-skel { display: flex; flex-direction: column; gap: 10px; }
+.hub-skel > span { display: block; height: 13px; border-radius: 4px; background: var(--surface-3); width: 70%; animation: hub-shimmer 1.3s ease-in-out infinite; }
+.hub-skel > span:nth-child(2) { width: 46%; }
+.hub-skel > span:nth-child(3) { width: 58%; }
+.hub-skel > span:nth-child(4) { width: 32%; }
+.hub-skel--head > span:first-child { height: 22px; width: 38%; }
+@keyframes hub-shimmer { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .hub-skel > span { animation: none; } }
+
+/* ---------- narrow ---------- */
+@media (max-width: 900px) {
+  .hub-columns { grid-template-columns: 1fr; }
+  .hub-stepper { grid-template-columns: 1fr; gap: 0; }
+  .hub-step { padding: 10px 0; border-top: 1px solid var(--border); }
+  .hub-step:first-child { border-top: 0; padding-top: 0; }
+  .hub-step-label { white-space: normal; }
+  .hub-step-detail { min-height: 0; -webkit-line-clamp: 3; }
+  .hub-step-foot { min-height: 0; }
+  .hub-bar-slot:empty { display: none; }
+  .hub .ui-pagehead-actions { width: 100%; }
+  .hub .ui-pagehead-actions > .ui-btn:first-child, .hub .ui-pagehead-actions > a:first-child { flex: 1; }
+  .hub-menu-pop { min-width: 240px; }
+  .hub-service-body .hub-kv > div { flex-direction: column; gap: 2px; }
+  .hub-service-body .hub-kv dt { width: auto; }
+}
+
+
+/* ---------- «Модель разметки»: the choice with its price and its consent ---------- */
+.hub-models { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.hub-model {
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+  padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2);
+}
+.hub-model.is-on { border-color: var(--accent-line); background: var(--accent-soft); }
+.hub-model-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hub-model-badge {
+  font-size: 11px; padding: 1px 7px; border-radius: 999px;
+  background: var(--surface-3); color: var(--text-dim); border: 1px solid var(--border);
+}
+.hub-model-badge--warn { color: var(--amber); background: var(--amber-soft); border-color: var(--amber); border-style: dashed; }
+.hub-model-price { font-size: 12px; color: var(--text-dim); }
+.hub-model-note { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-faint); }
+.hub-model-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--text); }
+.hub-model-accuracy { font-size: 12px; color: var(--text-dim); }
+/* «Название книги»: два поля в строку на широком экране, друг под другом на телефоне */
+.hub-title-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 10px; }
+.hub-title-actions { display: flex; gap: 8px; margin-top: 10px; }
+@media (max-width: 640px) {
+  .hub-title-fields { grid-template-columns: minmax(0, 1fr); }
+}
+/* the publish step's own switch: approved chapters go out by themselves */
+.hub-autopublish {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-dim);
+}
+.hub-autopublish input { margin: 2px 0 0; }
+.hub-autopublish span { min-width: 0; overflow-wrap: anywhere; }
+
+/* Главы в записи: короткий список того, что сейчас в работе, и кнопка забрать готовую. */
+.hub-chapters {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hub-chapter {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.hub-chapter:last-child { border-bottom: 0; }
+
+.hub-chapter-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.hub-chapter.is-ready .hub-chapter-name { color: var(--text); }
+
+.hub-chapter-count {
+  font-size: 12px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.hub-chapter.is-ready .hub-chapter-count { color: var(--accent); }
+
+.hub-chapter-get {
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.hub-chapter-get:hover { background: var(--surface-2); }

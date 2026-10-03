@@ -1,0 +1,80 @@
+/* ============================================================
+   App shell — topbar + tab bar (desktop), one-row bar + menu sheet (phone).
+   Tokens only. The base .topbar/.tabnav/.tab rules live in styles.css;
+   everything here is scoped with .shell-* so it wins regardless of order.
+   ============================================================ */
+
+.shell-brand { color: inherit; border-radius: var(--radius); min-height: 40px; }
+.shell-brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.shell-search { min-width: 0; }
+.shell-search input { min-width: 0; }
+.shell-search:focus-within { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.shell-iconbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; padding: 0; flex-shrink: 0;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface-2); color: var(--text);
+  transition: background 160ms, border-color 160ms;
+}
+.shell-iconbtn svg { width: 17px; height: 17px; }
+.shell-iconbtn:hover { background: var(--surface-3); }
+.shell-iconbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.shell-iconbtn--inline { width: 32px; height: 28px; border-color: transparent; background: transparent; color: var(--text-dim); }
+.shell-iconbtn--inline:hover { background: var(--surface-3); color: var(--text); }
+
+.tabnav.shell-tabs .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
+
+/* ---------- menu sheet (phone) ---------- */
+.shell-menu { display: flex; flex-direction: column; gap: 2px; }
+.shell-menu-row {
+  display: flex; align-items: center; gap: 11px;
+  min-height: 44px; padding: 0 12px; border-radius: var(--radius);
+  color: var(--text-dim); font-size: 14.5px; font-weight: 500;
+  border: 1px solid transparent;
+  transition: background 160ms, color 160ms, border-color 160ms;
+}
+.shell-menu-row svg { width: 17px; height: 17px; opacity: 0.85; }
+.shell-menu-row:hover { background: var(--surface-2); color: var(--text); }
+.shell-menu-row.is-active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--text); }
+.shell-menu-row.is-active svg { color: var(--accent); opacity: 1; }
+.shell-menu-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.shell-menu-divider { margin: 8px 4px; }
+
+/* «?» — приветственное окно; знак вместо иконки, чтобы не путать с «Помощью» во вкладках */
+.shell-helpbtn { width: 32px; height: 32px; border-radius: 50%; font-size: 15px; font-weight: 600; color: var(--text-dim); }
+.shell-helpbtn:hover { color: var(--text); }
+.shell-menu-footwrap { display: flex; flex-direction: column; gap: 10px; }
+.shell-menu-helprow { width: 100%; background: transparent; text-align: left; font: inherit; font-size: 14.5px; font-weight: 500; }
+.shell-helpmark {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 18px; height: 18px; border: 1.5px solid currentColor; border-radius: 50%; font-size: 11px; font-weight: 700;
+}
+.shell-menu-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.shell-menu-user { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.shell-menu-userinfo { text-align: left; min-width: 0; }
+.shell-menu-userinfo strong, .shell-menu-userinfo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The shell is a single-column grid; a wide table inside must scroll in its own
+   wrapper, never widen the page (auto tracks grow to min-content otherwise). */
+.app { grid-template-columns: minmax(0, 1fr); }
+.content.shell-content { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+
+/* ---------- phone layout ---------- */
+@media (max-width: 719.98px) {
+  .topbar.shell-topbar { flex-direction: row; flex-wrap: nowrap; height: 56px; padding: 0 12px; gap: 10px; }
+  .shell-topbar .shell-right { margin-left: auto; }
+  .shell-topbar .brand-sub { display: none; }
+  .shell-topbar .brand-name { font-size: 12px; }
+  .shell-topbar .brand-mark { width: 32px; height: 32px; }
+  .shell-topbar.is-searching .brand-text { display: none; }
+  .shell-topbar .shell-right { gap: 8px; }
+  .shell-search--mobile { flex: 1; max-width: none; height: 40px; padding: 0 4px 0 11px; }
+  .shell-search--mobile input { font-size: 15px; }
+  .content.shell-content { padding: 14px 12px 28px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-iconbtn, .shell-menu-row { transition: none; }
+}

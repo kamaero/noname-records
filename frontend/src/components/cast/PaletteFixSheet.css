@@ -1,0 +1,10 @@
+/* ---------- «Развести цвета»: the preview behind the auto-fix ---------- */
+.pal-note { margin: 0 0 14px; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+.pal-pairs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.pal-pairs li { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; }
+.pal-pair-meta { font-size: 11.5px; color: var(--text-faint); flex-shrink: 0; }
+.pal-pair-more { color: var(--text-faint); font-size: 12px; }
+.pal-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pal-changes li { display: flex; align-items: center; gap: 8px; }
+.pal-swatch { padding: 2px 9px; border-radius: 999px; font-size: 12.5px; white-space: nowrap; }
+.pal-arrow { color: var(--text-faint); flex-shrink: 0; }

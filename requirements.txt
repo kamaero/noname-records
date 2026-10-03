@@ -1,0 +1,25 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+jinja2==3.1.4
+python-multipart==0.0.12
+itsdangerous==2.2.0
+sqlalchemy==2.0.35
+requests==2.32.3
+python-docx==1.1.2
+EbookLib==0.18
+openpyxl==3.1.5
+pypdf==5.4.0
+redis==5.2.1
+rq==2.1.0
+Levenshtein==0.26.1
+slowapi==0.1.9
+alembic==1.14.0
+defusedxml==0.7.1
+numpy>=2.0
+
+# Контекстный слой ударений: локальная модель, решает омографы по фразе.
+# Необязательная по коду (импорт падает — слой пропускается), но без неё
+# «спорных ударений» в очереди всегда ноль. Тянет transformers 5 и onnxruntime,
+# torch не нужен. Веса (~700 МБ) качаются при первой загрузке в site-packages,
+# поэтому сервису нужен writable HF_HOME (см. .env на проде).
+ruaccent
