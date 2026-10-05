@@ -191,6 +191,7 @@ def _transcribe_with_service(path: str, *, phrases: list[str] | None = None) -> 
     import tempfile
 
     from app.config import settings
+    from app.services.provider_keys import provider_key
 
     compressed = os.path.join(tempfile.gettempdir(), f"asr-{os.path.basename(path)}.mp3")
     try:
@@ -199,7 +200,7 @@ def _transcribe_with_service(path: str, *, phrases: list[str] | None = None) -> 
         if provider == "azure":
             return transcribe_file_azure(
                 compressed,
-                key=settings.azure_speech_key,
+                key=provider_key("azure"),
                 endpoint=settings.azure_speech_endpoint,
                 locale=settings.azure_speech_locale,
                 phrases=phrases or [],
@@ -208,7 +209,7 @@ def _transcribe_with_service(path: str, *, phrases: list[str] | None = None) -> 
         routerai = provider == "routerai"
         return transcribe_file(
             compressed,
-            api_key=settings.routerai_api_key if routerai else settings.openai_api_key,
+            api_key=provider_key("routerai") if routerai else provider_key("openai"),
             base_url=settings.routerai_base_url if routerai else OPENAI_BASE_URL,
             model=settings.asr_model,
             language=settings.asr_language,

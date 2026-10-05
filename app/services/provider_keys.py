@@ -10,6 +10,7 @@ import base64
 import time
 
 from cryptography.fernet import Fernet, InvalidToken
+from sqlalchemy.exc import SQLAlchemyError
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
@@ -25,6 +26,10 @@ ENV_NAMES = {
     "openrouter": ("OPENROUTER_API_KEY",), "elevenlabs": ("ELEVENLABS_API_KEY",),
     "zai": ("ZAI_API_KEY",), "azure": ("AZURE_SPEECH_KEY",),
 }
+#: то же значение, прочитанное из окружения при старте: тесты и старый код задают его так
+SETTINGS_ATTRS = {"deepseek": "deepseek_api_key", "claude": "claude_api_key", "openai": "openai_api_key",
+                  "routerai": "routerai_api_key", "openrouter": "openrouter_api_key",
+                  "elevenlabs": "elevenlabs_api_key", "zai": "zai_api_key", "azure": "azure_speech_key"}
 CACHE_SECONDS = 30
 _CACHE: dict[str, tuple[float, str]] = {}
 
@@ -60,7 +65,7 @@ def _env_key(name: str) -> str:
         value = env_value(env_name)
         if value:
             return value
-    return ""
+    return str(getattr(settings, SETTINGS_ATTRS.get(name, ""), "") or "").strip()
 
 
 def provider_key(name: str) -> str:
@@ -69,10 +74,14 @@ def provider_key(name: str) -> str:
         return hit[1]
     value = ""
     if name in PROVIDERS:
-        with SessionLocal() as db:
-            row = db.get(ProviderKey, name)
-            if row is not None and row.ciphertext:
-                value = _decrypt(row) or ""
+        try:
+            with SessionLocal() as db:
+                row = db.get(ProviderKey, name)
+                if row is not None and row.ciphertext:
+                    value = _decrypt(row) or ""
+        except SQLAlchemyError:
+            # Таблицы ещё нет (до миграции) — ключ сайта ничем не отличается от отсутствующего.
+            value = ""
     value = value or _env_key(name)
     _CACHE[name] = (_now(), value)
     return value

@@ -56,23 +56,25 @@ def strict_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
 
 
 def _resolve_provider(provider_name: str) -> tuple[str, str, str]:
+    from app.services.provider_keys import provider_key
+
     providers = {
-        "openai": (env_value("OPENAI_API_KEY") or env_value("LLM_API_KEY"), settings.openai_base_url, "openai"),
-        "claude": (env_value("CLAUDE_API_KEY"), settings.claude_base_url, "anthropic"),
+        "openai": ("openai", settings.openai_base_url, "openai"),
+        "claude": ("claude", settings.claude_base_url, "anthropic"),
         # deepseek-v4-pro via the Anthropic Messages endpoint (unified path + tool-use).
-        "deepseek": (env_value("DEEPSEEK_API_KEY"), settings.deepseek_anthropic_base_url, "anthropic"),
+        "deepseek": ("deepseek", settings.deepseek_anthropic_base_url, "anthropic"),
         # Legacy OpenAI-compatible DeepSeek route, kept for rollback / non-tool calls.
-        "deepseek-openai": (env_value("DEEPSEEK_API_KEY"), settings.deepseek_base_url, "openai"),
-        "z.ai": (env_value("ZAI_API_KEY"), settings.zai_base_url, "openai"),
-        "zai": (env_value("ZAI_API_KEY"), settings.zai_base_url, "openai"),
-        "openrouter": (env_value("OPENROUTER_API_KEY"), settings.openrouter_base_url, "openai"),
-        "routerai.ru": (env_value("ROUTERAI_API_KEY"), settings.routerai_base_url, "openai"),
-        "routerai": (env_value("ROUTERAI_API_KEY"), settings.routerai_base_url, "openai"),
+        "deepseek-openai": ("deepseek", settings.deepseek_base_url, "openai"),
+        "z.ai": ("zai", settings.zai_base_url, "openai"),
+        "zai": ("zai", settings.zai_base_url, "openai"),
+        "openrouter": ("openrouter", settings.openrouter_base_url, "openai"),
+        "routerai.ru": ("routerai", settings.routerai_base_url, "openai"),
+        "routerai": ("routerai", settings.routerai_base_url, "openai"),
     }
     if provider_name not in providers:
         raise RuntimeError(f"Неподдерживаемый провайдер: {provider_name}")
-    api_key, base_url, mode = providers[provider_name]
-    return api_key, base_url.rstrip("/"), mode
+    key_name, base_url, mode = providers[provider_name]
+    return provider_key(key_name), base_url.rstrip("/"), mode
 
 
 def call_chat(

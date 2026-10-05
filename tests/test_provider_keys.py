@@ -81,3 +81,19 @@ def test_delete_falls_back_to_env(factory):
 def test_an_unknown_provider_is_refused(factory):
     with factory() as db, pytest.raises(ValueError):
         pk.set_key(db, "zai", "x" * 20, actor="admin")
+
+
+def test_settings_loaded_at_start_count_as_env(factory, monkeypatch):
+    """Ключ, прочитанный из окружения при старте (settings), — тот же .env: его видят все шаги."""
+    monkeypatch.setattr(settings, "elevenlabs_api_key", "xi-from-settings")
+    assert pk.provider_key("elevenlabs") == "xi-from-settings"
+
+
+def test_a_database_without_the_table_is_not_fatal(monkeypatch):
+    """До миграции (или в чужой тестовой базе) таблицы ключей нет — ключ берётся из .env."""
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    monkeypatch.setattr(pk, "SessionLocal", sessionmaker(bind=engine))
+    monkeypatch.setattr(pk, "env_value", lambda name, default="": {"CLAUDE_API_KEY": "env-claude"}.get(name, default))
+    pk.clear_cache()
+    assert pk.provider_key("claude") == "env-claude"
+    pk.clear_cache()

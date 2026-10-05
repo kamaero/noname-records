@@ -87,3 +87,14 @@ def _clean_nas_state():
     nas_health.reset_state()
     yield
     nas_health.reset_state()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_key_cache():
+    """Кэш ключей живёт 30 секунд — в проде это нарочно, а в тестах ключ из соседнего теста
+    подменил бы «ключа нет». Чистим до и после каждого теста."""
+    from app.services import provider_keys
+
+    provider_keys.clear_cache()
+    yield
+    provider_keys.clear_cache()
