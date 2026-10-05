@@ -1601,6 +1601,16 @@ export interface AiStep {
   source: "site" | "default";
   default: { provider: string; model: string };
   providers: string[];
+  options: AiStepOption[];
+}
+
+export interface AiStepOption {
+  provider: string;
+  model: string;
+  label: string;
+  price: string;
+  trains_on_text: boolean;
+  note: string;
 }
 
 export interface AiSettings {

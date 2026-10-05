@@ -88,3 +88,20 @@ def test_a_database_without_the_table_gives_the_defaults(monkeypatch):
     monkeypatch.setattr(sm, "SessionLocal", sessionmaker(bind=engine))
     sm.clear_cache()
     assert sm.step_model("sound") == ("routerai", "anthropic/claude-opus-5")
+
+
+def test_markup_steps_offer_the_catalog_with_prices_and_consent(factory):
+    with factory() as db:
+        view = {s["step"]: s for s in sm.steps_view(db)}
+    options = view["attribution"]["options"]
+    deepseek = next(o for o in options if o["model"] == "deepseek-v4-pro")
+    assert deepseek["provider"] == "deepseek" and deepseek["price"] and deepseek["trains_on_text"] is False
+    assert any(o["trains_on_text"] for o in options)  # дешёвый тариф, который учится на текстах
+    assert view["characters"]["options"] == options
+
+
+def test_other_steps_offer_at_least_their_default(factory):
+    with factory() as db:
+        view = {s["step"]: s for s in sm.steps_view(db)}
+    assert {"provider": "routerai", "model": "anthropic/claude-opus-5"} in [
+        {"provider": o["provider"], "model": o["model"]} for o in view["sound"]["options"]]

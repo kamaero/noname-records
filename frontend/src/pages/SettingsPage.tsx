@@ -120,6 +120,23 @@ function StepRow({ step, keyed, onSaved }: { step: AiStep; keyed: Set<string>; o
       {missing ? <p className="st-warning">Нет ключа {PROVIDER_LABELS[step.provider] || step.provider} — этот шаг не запустится.</p> : null}
       {editing ? (
         <form className="st-step-edit" onSubmit={(event) => { event.preventDefault(); if (model.trim()) save.mutate(); }}>
+          {step.options.length > 1 || step.options[0]?.price ? (
+            <ul className="st-options" aria-label="Проверенные модели">
+              {step.options.map((option) => {
+                const chosen = option.provider === provider && option.model === model;
+                return (
+                  <li key={`${option.provider}/${option.model}`}>
+                    <button type="button" className={`st-option${chosen ? " is-chosen" : ""}`} aria-pressed={chosen}
+                            onClick={() => { setProvider(option.provider); setModel(option.model); }}>
+                      <strong>{option.label}</strong>
+                      <span>{PROVIDER_LABELS[option.provider] || option.provider}{option.price ? ` · ${option.price}` : ""}</span>
+                      {option.trains_on_text ? <span className="st-warning">Провайдер может учиться на ваших текстах.</span> : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
           <Field label="Провайдер">
             {(props) => (
               <select {...props} className="ui-input" value={provider} onChange={(event) => setProvider(event.target.value)}>
