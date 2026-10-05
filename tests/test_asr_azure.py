@@ -238,6 +238,22 @@ class TestChoosingTheProvider:
         assert called["model"] == settings.asr_model
 
 
+    def test_the_site_choice_wins_over_env(self, db, monkeypatch):
+        from app.config import settings
+        from app.services import asr_run, step_models
+
+        called = {}
+        monkeypatch.setattr(settings, "asr_provider", "openai")
+        monkeypatch.setattr(step_models, "step_model", lambda key: ("routerai", "vendor/asr-model"))
+        monkeypatch.setattr(settings, "routerai_api_key", "rk")
+        monkeypatch.setattr(asr_run, "compress_for_asr", lambda src, dst: dst)
+        monkeypatch.setattr(asr_run, "transcribe_file", lambda path, **kw: called.update(kw) or {"text": "ок", "segments": []})
+
+        asr_run.run_asr_for_take(db, "a1")
+
+        assert (called["model"], called["api_key"]) == ("vendor/asr-model", "rk")
+
+
 class TestRouterAi:
     """RouterAI — тот же формат, что у OpenAI, но свой адрес, ключ и модели."""
 

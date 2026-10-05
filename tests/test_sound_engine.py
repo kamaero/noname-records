@@ -195,3 +195,29 @@ def test_rest_run_with_nothing_new_to_read_skips_merge_call(book, tmp_path):
     with book() as db:
         from app.models import SoundPlace
         assert db.query(SoundPlace).count() == 2  # оба места — от первого прогона
+
+
+def test_the_sound_step_model_from_settings_reaches_the_call(book, tmp_path, monkeypatch):
+    from app.services.sound_engine import run_sound
+    from app.services import step_models
+    monkeypatch.setattr(step_models, "step_model", lambda key: ("openrouter", "vendor/sound-model"))
+    monkeypatch.setattr(step_models, "require_key_for", lambda key: None)
+    seen = []
+
+    def ask(model, system, user, schema):
+        seen.append(model)
+        return fake_ask([])(model, system, user, schema)
+    run_sound(session_factory=book, book_id=BOOK, run_id=new_run(book), mode="chapter", chapter_id="c2",
+              ask=ask, read_credits=lambda: None, notify=lambda _t: None, root=str(tmp_path))
+    assert seen and set(seen) == {"vendor/sound-model"}
+
+
+def test_sound_without_its_key_stops_before_any_call(book, tmp_path, monkeypatch):
+    from app.services.sound_engine import run_sound
+    from app.services import provider_keys
+    monkeypatch.setattr(provider_keys, "provider_key", lambda name: "")
+    monkeypatch.setattr("app.pipeline.llm_client.call_chat",
+                        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("платный вызов без ключа")))
+    result = run_sound(session_factory=book, book_id=BOOK, run_id=new_run(book), mode="all",
+                       read_credits=lambda: None, notify=lambda _t: None, root=str(tmp_path))
+    assert result["status"] == "stopped" and "RouterAI" in result["reason"]

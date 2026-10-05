@@ -366,9 +366,11 @@ def step_cast(db, book, run: V2Run, ctx: RunContext) -> dict:
         .first()
     )
     if job is None:
+        from app.services.step_models import step_model
+
         job = ScriptJob(
             book_id=book.id, chapter_id="", chapter_index=0, stage="char_extraction", status="processing",
-            provider=settings.default_char_extraction_provider, model=settings.default_char_extraction_model,
+            provider=step_model("characters")[0], model=step_model("characters")[1],
         )
         db.add(job)
         db.flush()

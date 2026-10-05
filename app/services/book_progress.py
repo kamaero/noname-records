@@ -4,6 +4,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import settings
+from app.services.step_models import step_model
 from app.constants import CHAPTER_READY_FOR_REVIEW, status_label
 from app.models import ScriptChapter, ScriptJob
 from app.time_utils import utcnow_naive
@@ -317,7 +318,7 @@ def collect_books_progress(db, books: list) -> dict[str, dict]:
         out[book.id]["effective_status"] = derive_book_pipeline_status(book, out[book.id])
         out[book.id]["effective_status_label"] = status_label(out[book.id]["effective_status"])
         if out[book.id]["effective_status"] == "char_extracting":
-            out[book.id]["action_hint"] = f"{settings.default_char_extraction_model} извлекает персонажей по всей книге и собирает полный CHAR_MEMORY."
+            out[book.id]["action_hint"] = f"{step_model('characters')[1]} извлекает персонажей по всей книге и собирает полный CHAR_MEMORY."
         elif out[book.id]["char_extraction_failed"] > 0 and out[book.id]["effective_status"] == "processing":
             out[book.id]["action_hint"] = "CHAR_EXTRACTION упал, но downstream продолжает работу с ослабленным контекстом. Проверь CHAR_MEMORY и качество speaker attribution."
         elif out[book.id]["effective_status"] == "stalled":

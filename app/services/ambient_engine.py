@@ -1,6 +1,6 @@
 """Эмбиент по главе: по уникальному инструментальному треку на каждую сцену.
 
-Промпт пишет Opus (`default_ask` консилиума), музыку — ElevenLabs (`compose_music`). Трек
+Промпт пишет модель шага «ambient_text» (`routed_ask` консилиума), музыку — ElevenLabs (`compose_music`). Трек
 ложится файлом в папку главы рядом с дублями (`AudioFile(kind='ambient')`) и строкой
 `ambient_tracks`; каждый сохраняется сразу — оборвавшийся прогон продолжается со сцен без
 готового трека, готовое повторно не оплачивается. Строка хода — `BackgroundRun`, очередь —
@@ -12,7 +12,7 @@ import logging
 import re
 from typing import Callable
 
-from app.services.consilium_engine import STOP_TEXT, _finish, checkpoint_run, default_ask
+from app.services.consilium_engine import STOP_TEXT, _finish, checkpoint_run
 from app.services.audio_mirror import LocalDiskFull
 from app.services.elevenlabs_client import (
     BadKey,
@@ -26,6 +26,7 @@ from app.services.elevenlabs_client import (
 logger = logging.getLogger(__name__)
 
 KIND = "ambient"
+#: модель по умолчанию; настоящая берётся из шага «ambient_text» в начале прогона
 MODEL = "anthropic/claude-opus-5"
 ATTEMPTS = 2
 #: сколько прежних треков книги видит Opus — чтобы не повторять их инструменты и фактуру
@@ -260,7 +261,7 @@ def _short(exc: BaseException) -> str:
 
 
 def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str = "",
-                prompt_override: str = "", ask=default_ask, compose=compose_music,
+                prompt_override: str = "", ask=None, compose=compose_music,
                 notify: Callable[[str], None] | None = None) -> dict:
     from app.models import AmbientTrack, ScriptBook, ScriptChapter
     from app.pipeline.ambient import PROMPT_SCHEMA, PROMPT_SYSTEM, parse_prompt, prompt_user
@@ -300,7 +301,20 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
         if checkpoint_run(session_factory, run_id, meta):
             raise StopRun("stopped_by_user")
 
+    from app.services.consilium_engine import routed_ask
+    from app.services.step_models import MissingKeyError, require_key_for, step_model
+
+    text_provider, text_model = step_model("ambient_text")  # один раз на прогон
+    real_calls = ask is None  # подменный ask в тестах не тратит деньги — ключ ему не нужен
+    if real_calls:
+        ask = routed_ask({text_model: text_provider})
+
     try:
+        if real_calls:
+            try:
+                require_key_for("ambient_text")
+            except MissingKeyError as err:
+                raise StopRun(str(err))
         with session_factory() as db:
             chapter = db.get(ScriptChapter, str(chapter_id or ""))
             if chapter is None:
@@ -355,7 +369,7 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
             for _attempt in range(ATTEMPTS):
                 try:
                     if not prompt:
-                        answer = ask(MODEL, PROMPT_SYSTEM,
+                        answer = ask(text_model, PROMPT_SYSTEM,
                                      prompt_user(item["scene"], excerpt, item["seconds"], previous), PROMPT_SCHEMA)
                         prompt, summary = parse_prompt(answer)
                         scene["prompt"] = prompt

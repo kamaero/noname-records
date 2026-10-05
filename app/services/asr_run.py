@@ -196,7 +196,10 @@ def _transcribe_with_service(path: str, *, phrases: list[str] | None = None) -> 
     compressed = os.path.join(tempfile.gettempdir(), f"asr-{os.path.basename(path)}.mp3")
     try:
         compress_for_asr(path, compressed)
-        provider = str(settings.asr_provider or "").strip().lower()
+        from app.services.step_models import step_model
+
+        provider, asr_model = step_model("asr")
+        provider = str(provider or "").strip().lower()
         if provider == "azure":
             return transcribe_file_azure(
                 compressed,
@@ -211,7 +214,7 @@ def _transcribe_with_service(path: str, *, phrases: list[str] | None = None) -> 
             compressed,
             api_key=provider_key("routerai") if routerai else provider_key("openai"),
             base_url=settings.routerai_base_url if routerai else OPENAI_BASE_URL,
-            model=settings.asr_model,
+            model=asr_model,
             language=settings.asr_language,
             # подсказка одной строкой: у OpenAI-формата список фраз называется `prompt`
             prompt=settings.asr_prompt or ", ".join((phrases or [])[:80]),
@@ -283,8 +286,9 @@ def run_asr_for_take(db, audio_file_id: str, *, transcribe=None, notify: bool = 
         or AsrJob(audio_file_id=audio.id)
     )
     job.chapter_id = str(chapter.id)
-    job.provider = settings.asr_provider
-    job.model = settings.asr_model
+    from app.services.step_models import step_model
+
+    job.provider, job.model = step_model("asr")  # что на самом деле распознаёт этот дубль
     job.expected_role = str(audio.role or "")
     job.expected_chapter_index = int(chapter.chapter_index or 0)
     job.status = "running"
