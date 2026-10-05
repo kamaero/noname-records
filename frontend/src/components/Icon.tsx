@@ -6,6 +6,7 @@ import type { CSSProperties } from "react";
 
 export type IconName =
   | "prep"
+  | "settings"
   | "check"
   | "validate"
   | "books"
@@ -70,6 +71,12 @@ const PATHS: Record<IconName, JSX.Element> = {
       <circle cx="9" cy="8" r="3.2" />
       <path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
       <path d="M16 6.5a3 3 0 0 1 0 5.5M16.5 14c2.4.3 4 2.2 4 5" />
+    </>
+  ),
+  settings: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" />
     </>
   ),
   log: (

@@ -19,6 +19,7 @@ import { UploadPage } from "./pages/UploadPage";
 import { UsersPage } from "./pages/UsersPage";
 import { AuditionsPage } from "./pages/AuditionsPage";
 import { DictorsPage } from "./pages/DictorsPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { ReaderEntryPage, ScriptReaderPage } from "./v2/ScriptReader";
 
 function Layout() {
@@ -66,6 +67,7 @@ function Layout() {
         <Route path="/users" element={<UsersPage me={me} />} />
         <Route path="/dictors" element={<DictorsPage me={me} />} />
         <Route path="/auditions" element={<AuditionsPage />} />
+        <Route path="/settings" element={<SettingsPage me={me} />} />
         <Route path="/log" element={<LogPage me={me} />} />
         <Route path="/help" element={<HelpPage />} />
 
