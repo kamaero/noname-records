@@ -10,12 +10,12 @@ def read_credits(log: Callable[[str], None] | None = None) -> float | None:
     """Баланс в рублях. `None` — не ответил: это не повод останавливать работу."""
     import requests
 
-    from app.config import settings
+    from app.services.provider_keys import provider_key
 
     say = log or (lambda _message: None)
     try:
         response = requests.get(CREDITS_URL, timeout=20,
-                                headers={"Authorization": f"Bearer {settings.routerai_api_key}"})
+                                headers={"Authorization": f"Bearer {provider_key('routerai')}"})
     except Exception as exc:  # noqa: BLE001 — замер денег не обязан ронять работу
         say(f"! баланс не прочитан, сеть: {exc}")
         return None

@@ -2,7 +2,7 @@
 
 Транспорт подменяемый: `transport(url, headers, body, timeout) -> (status, headers, body)`.
 По умолчанию — `urllib`, сеть настоящая. В тестах транспорт ВСЕГДА подменён — ни один тест
-не должен ходить в ElevenLabs. Ключ (`settings.elevenlabs_api_key`) никогда не попадает
+не должен ходить в ElevenLabs. Ключ (`provider_key("elevenlabs")`) никогда не попадает
 в текст исключений, логи и репры — только заголовок запроса.
 """
 from __future__ import annotations
@@ -121,12 +121,14 @@ def compose_music(
 ) -> tuple[bytes, str]:
     """Запрашивает трек у ElevenLabs. Возвращает (mp3-байты, song_id).
 
-    `api_key=None` — берётся `settings.elevenlabs_api_key`; параметр существует ради тестов
+    `api_key=None` — берётся `provider_key("elevenlabs")`; параметр существует ради тестов
     и вызова с ключом, взятым не из общих настроек.
     """
     from app.config import settings
 
-    key = api_key if api_key is not None else settings.elevenlabs_api_key
+    from app.services.provider_keys import provider_key
+
+    key = api_key if api_key is not None else provider_key("elevenlabs")
     if not key:
         raise ElevenLabsError("ELEVENLABS_API_KEY не задан")
 

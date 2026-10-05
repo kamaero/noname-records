@@ -37,7 +37,9 @@ MAX_PROMPT_CHARS = 2000
 def _no_key() -> bool:
     from app.config import settings
 
-    return not str(settings.elevenlabs_api_key or "").strip()
+    from app.services.provider_keys import provider_key
+
+    return not provider_key("elevenlabs")
 
 
 def _ambient_blocked(db, chapter) -> str:
