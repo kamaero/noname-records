@@ -2,9 +2,9 @@
 
 Получено интроспекцией `SQLAlchemy`-метаданных: импортируются `app.models` и `app.v2.models`, дальше используется `Base.metadata` (та же `Base`, что в `app/db.py`).
 
-Всего таблиц: **49**.
+Всего таблиц: **51**.
 
-_Сгенерировано из коммита unknown._
+_Сгенерировано из коммита cf54152._
 
 ## Таблицы
 
@@ -649,6 +649,21 @@ The base class of the class hierarchy.
 - `ix_pipeline_runs_started_at`: started_at
 - `ix_pipeline_runs_status`: status
 
+### `provider_keys` — `app.models.ProviderKey`
+
+Ключ нейросети, введённый на сайте. Хранится зашифрованным: база уходит в бэкапы, и ключ, лежащий в ней открыто, утёк бы вместе с любой копией.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `check_detail` | VARCHAR(200) | нет |  |  | python:'' |
+| `check_status` | VARCHAR(20) | нет |  |  | python:'' |
+| `checked_at` | DATETIME | да |  |  |  |
+| `ciphertext` | VARCHAR | нет |  |  | python:'' |
+| `last4` | VARCHAR(4) | нет |  |  | python:'' |
+| `provider` | VARCHAR(20) | нет | да |  |  |
+| `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `updated_by` | VARCHAR(120) | нет |  |  | python:'' |
+
 ### `recasts` — `app.models.Recast`
 
 Журнал рекастов персонажа профиля автора: кто кого сменил, почему и где.
@@ -913,6 +928,18 @@ The base class of the class hierarchy.
 
 - `ix_sound_places_book`: book_id
 
+### `step_models` — `app.models.StepModel`
+
+Модель, выбранная студией для шага. Нет строки — значение по умолчанию из кода.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `model` | VARCHAR(160) | нет |  |  | python:'' |
+| `provider` | VARCHAR(20) | нет |  |  | python:'' |
+| `step` | VARCHAR(40) | нет | да |  |  |
+| `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `updated_by` | VARCHAR(120) | нет |  |  | python:'' |
+
 ### `studio_settings` — `app.models.StudioSettings`
 
 Studio-wide defaults, one row (`id == "default"`).
@@ -1123,3 +1150,4 @@ A word the author has waved off: «ударение тут не нужно, ег
 | `0041_role_deadlines` | сроки проб и ролей: таблица role_deadlines, дата срока ролей в настройках студии | `0041_role_deadlines.py` |
 | `0042_bot_broadcasts` | бот: рассылка касту книги или всем дикторам | `0042_bot_broadcasts.py` |
 | `0043_bot_contacts` | бот: учёт контактов (кто вышел на связь) и время последней сводки владельцу | `0043_bot_contacts.py` |
+| `0044_provider_keys_step_models` | Ключи нейросетей и модели шагов — на сайте. | `0044_provider_keys_step_models.py` |
