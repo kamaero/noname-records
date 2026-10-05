@@ -113,6 +113,25 @@ def require_key_for(key: str) -> None:
                               "добавьте его в «Настройки → Нейросети».")
 
 
+_CURRENCY = {"RUB": "₽", "USD": "$"}
+
+
+def _options(step: Step) -> list[dict]:
+    """Что предложить в списке: для разметки — каталог с ценой и пометкой «учится на
+    текстах» (это решение автора, а не наше), для остальных — значение по умолчанию.
+    Поле «своя модель» на странице остаётся всегда."""
+    if step.key in ("attribution", "characters"):
+        from app.v2.model_catalog import CATALOG
+
+        return [{"provider": item.provider, "model": item.model, "label": item.label,
+                 "price": (f"{item.price_in:g} / {item.price_out:g}".replace(".", ",")
+                           + f" {_CURRENCY.get(item.currency, item.currency)} за 1 млн токенов (вход / выход)"),
+                 "trains_on_text": item.trains_on_text, "note": item.note}
+                for item in CATALOG if item.provider in step.providers]
+    provider, model = _default(step)
+    return [{"provider": provider, "model": model, "label": model, "price": "", "trains_on_text": False, "note": ""}]
+
+
 def steps_view(db) -> list[dict]:
     out = []
     for step in STEPS.values():
@@ -121,5 +140,5 @@ def steps_view(db) -> list[dict]:
         out.append({"step": step.key, "title": step.title, "provider": provider, "model": model,
                     "source": "site" if row is not None and row.model else "default",
                     "default": {"provider": _default(step)[0], "model": _default(step)[1]},
-                    "providers": list(step.providers)})
+                    "providers": list(step.providers), "options": _options(step)})
     return out

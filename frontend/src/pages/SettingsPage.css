@@ -28,3 +28,12 @@
 @media (max-width: 600px) {
   .st-section { padding: 12px; }
 }
+.st-options { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.st-option {
+  width: 100%; text-align: left; display: grid; gap: 2px; padding: 8px 10px; cursor: pointer;
+  background: var(--surface-1); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
+  font: inherit; font-size: 13px;
+}
+.st-option span { color: var(--text-dim); overflow-wrap: anywhere; }
+.st-option.is-chosen { border-color: var(--accent); background: var(--accent-soft); }
+.st-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
