@@ -268,6 +268,19 @@ STOP_TEXT = {
 }
 
 
+def _no_credits_reading() -> None:
+    return None
+
+
+def model_ref(provider: str, model: str) -> str:
+    """«провайдер::модель» — одно имя модели у двух провайдеров не должно путаться."""
+    return f"{provider}::{model}"
+
+
+def plain_model(ref: str) -> str:
+    return str(ref).split("::", 1)[-1]
+
+
 def routed_ask(providers: dict[str, str]):
     """`ask(model, system, user, schema)`, который зовёт каждую модель у её провайдера.
 
@@ -276,7 +289,10 @@ def routed_ask(providers: dict[str, str]):
     def ask(model: str, system: str, user: str, schema: dict) -> dict:
         from app.pipeline.llm_client import _resolve_provider, call_chat
 
-        provider = providers.get(model, "routerai")
+        if "::" in model:
+            provider, model = model.split("::", 1)
+        else:
+            provider = providers.get(model, "routerai")
         api_key, base_url, mode = _resolve_provider(provider)
         if not api_key:
             raise RuntimeError(f"нет ключа провайдера {provider}")
@@ -545,7 +561,15 @@ def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=
                     require_key_for(step)
                 except MissingKeyError as err:
                     raise StopRun(str(err))
-            ask = routed_ask({**{m: p for _s, p, m in slots}, arbiter_model: arbiter_provider})
+            ask = routed_ask({})
+            if "routerai" not in {p for _s, p, _m in slots} | {arbiter_provider}:
+                # Рублёвый предохранитель смотрит баланс RouterAI — к прогону на других
+                # провайдерах он не относится: остаётся ограничение по числу вызовов.
+                read_credits = _no_credits_reading
+            # Ссылка «провайдер::модель», а не словарь по имени модели: у чтеца и арбитра
+            # может быть одна модель у разных провайдеров — каждый платит своему.
+            slots = tuple((s, p, model_ref(p, m)) for s, p, m in slots)
+            arbiter_model = model_ref(arbiter_provider, arbiter_model)
         # Подготовка — внутри `try`: упавшая смета или база иначе оставили бы строку `running`
         # без причины и без уведомления.
         with session_factory() as db:
@@ -575,7 +599,7 @@ def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=
                     if old is not None:
                         read = {**old, **read}
                         complete = {n for n, _ in chapter.paragraphs} <= set(read)
-                save_answers(book_id, chapter, reader, model, read, complete, root)
+                save_answers(book_id, chapter, reader, plain_model(model), read, complete, root)
                 return reader, read
             with ThreadPoolExecutor(max_workers=max(1, len(todo))) as pool:
                 for reader, read in pool.map(read_one, todo):

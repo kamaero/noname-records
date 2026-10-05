@@ -144,6 +144,9 @@ def run_sound(*, session_factory, book_id: str, run_id: str, mode: str, chapter_
     real_calls = ask is None  # подменный ask в тестах не тратит деньги — ключ ему не нужен
     if real_calls:
         ask = routed_ask({model: provider})
+        if provider != "routerai":
+            # баланс RouterAI к звуку на другом провайдере не относится — ограничение по вызовам
+            read_credits = lambda: None  # noqa: E731
 
     def counted(system, user, schema):
         budget.note_call()

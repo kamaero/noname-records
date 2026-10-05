@@ -13,7 +13,9 @@ from app.config import settings
 
 TIMEOUT = 15
 WORDS = {"ok": "Работает.", "bad_key": "Ключ не подходит — проверьте, что скопирован целиком.",
-         "no_money": "На счёте у провайдера нет денег.", "unreachable": "Сервис не отвечает — попробуйте позже."}
+         "no_money": "На счёте у провайдера нет денег.", "unreachable": "Сервис не отвечает — попробуйте позже.",
+         "error": "Ответ не похож на ответ провайдера — проверьте адрес сервиса или повторите позже."}
+_NO_MONEY_WORDS = ("insufficient", "balance", "credit", "quota", "payment")
 
 
 @dataclass(frozen=True)
@@ -48,8 +50,27 @@ def check_key(provider: str, key: str, *, http=requests) -> CheckResult:
         resp = http.get(url, headers=headers, timeout=TIMEOUT)
     except requests.RequestException:
         return CheckResult("unreachable", WORDS["unreachable"])
-    status = _status(int(getattr(resp, "status_code", 0) or 0))
+    code = int(getattr(resp, "status_code", 0) or 0)
+    status = _status(code)
+    if status == "ok" and not _looks_like(provider, resp):
+        # 200 от прокси или страницы-заглушки — не доказательство, что ключ принят
+        status = "error"
+    elif code in (400, 403, 429) and any(w in str(getattr(resp, "text", "") or "").lower() for w in _NO_MONEY_WORDS):
+        status = "no_money"
     return CheckResult(status, WORDS[status])
+
+
+def _looks_like(provider: str, resp) -> bool:
+    """Тело — настоящий ответ провайдера: список моделей или карточка подписки ElevenLabs."""
+    try:
+        data = resp.json()
+    except (ValueError, TypeError, AttributeError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    if provider == "elevenlabs":
+        return "character_limit" in data or "tier" in data
+    return isinstance(data.get("data"), list)
 
 
 _BALANCE_URLS = {"deepseek": "https://api.deepseek.com/user/balance",

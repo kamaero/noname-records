@@ -254,6 +254,32 @@ class TestChoosingTheProvider:
         assert (called["model"], called["api_key"]) == ("vendor/asr-model", "rk")
 
 
+    def test_the_request_uses_the_model_the_job_records(self, db, monkeypatch):
+        """Настройку сменили, пока сжимался файл: запрос уходит с той моделью, что записана в задаче."""
+        from app.config import settings
+        from app.services import asr_run, step_models
+
+        answers = iter([("openai", "whisper-1"), ("routerai", "vendor/changed")])
+        monkeypatch.setattr(step_models, "step_model", lambda key: next(answers))
+        monkeypatch.setattr(settings, "openai_api_key", "k")
+        called = {}
+        monkeypatch.setattr(asr_run, "compress_for_asr", lambda src, dst: dst)
+        monkeypatch.setattr(asr_run, "transcribe_file", lambda path, **kw: called.update(kw) or {"text": "ок", "segments": []})
+
+        job = asr_run.run_asr_for_take(db, "a1")
+
+        assert (job.provider, job.model, called["model"]) == ("openai", "whisper-1", "whisper-1")
+
+
+    def test_a_missing_key_says_where_to_add_it(self, db, monkeypatch):
+        from app.services import asr_run, provider_keys
+
+        monkeypatch.setattr(provider_keys, "provider_key", lambda name: "")
+        monkeypatch.setattr(asr_run, "compress_for_asr", lambda src, dst: pytest.fail("сжатие без ключа ни к чему"))
+        job = asr_run.run_asr_for_take(db, "a1")
+        assert job.status == "failed" and "Настройки → Нейросети" in job.error_message
+
+
 class TestRouterAi:
     """RouterAI — тот же формат, что у OpenAI, но свой адрес, ключ и модели."""
 

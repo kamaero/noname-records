@@ -55,6 +55,13 @@ def strict_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _safe(message: str) -> str:
+    """Текст ошибки — без ключей: провайдер мог повторить присланный ключ в ответе."""
+    from app.services.provider_keys import redact
+
+    return redact(message)
+
+
 def _resolve_provider(provider_name: str) -> tuple[str, str, str]:
     from app.services.provider_keys import provider_key
 
@@ -248,11 +255,11 @@ def _post_with_retry(url: str, headers: dict[str, str], payload: dict[str, Any])
         except requests.exceptions.RequestException as exc:
             last_exc = exc
             if not _is_retriable_transport_error(exc):
-                raise RuntimeError(f"LLM transport non-retriable error [{_transport_error_label(exc)}]: {exc}") from exc
+                raise RuntimeError(_safe(f"LLM transport non-retriable error [{_transport_error_label(exc)}]: {exc}")) from exc
             if attempt >= retries - 1:
-                raise RuntimeError(f"LLM transport error after {retries} attempts [{_transport_error_label(exc)}]: {exc}") from exc
+                raise RuntimeError(_safe(f"LLM transport error after {retries} attempts [{_transport_error_label(exc)}]: {exc}")) from exc
             time.sleep(2 + attempt * 3)
-    raise RuntimeError(f"LLM transport error [{_transport_error_label(last_exc or RuntimeError('unknown'))}]: {last_exc}")
+    raise RuntimeError(_safe(f"LLM transport error [{_transport_error_label(last_exc or RuntimeError('unknown'))}]: {last_exc}"))
 
 
 def _post_stream_with_retry(url: str, headers: dict[str, str], payload: dict[str, Any], parse) -> Any:
@@ -282,7 +289,7 @@ def _post_stream_with_retry(url: str, headers: dict[str, str], payload: dict[str
                 if resp.status_code == 429:
                     rate_attempt += 1
                     if rate_attempt > rate_retries:
-                        raise RuntimeError(f"LLM HTTP 429 after {rate_attempt} attempts: {(resp.text or '')[:160]}")
+                        raise RuntimeError(_safe(f"LLM HTTP 429 after {rate_attempt} attempts: {(resp.text or '')[:160]}"))
                     time.sleep(_parse_retry_after(resp))
                     continue
                 if _is_retriable_http_status(resp.status_code):
@@ -297,14 +304,14 @@ def _post_stream_with_retry(url: str, headers: dict[str, str], payload: dict[str
                     time.sleep(min(30, 3 * (2 ** (overload_attempt - 1))))
                     continue
                 if resp.status_code >= 400:
-                    raise RuntimeError(f"LLM HTTP {resp.status_code}: {(resp.text or '')[:180]}")
+                    raise RuntimeError(_safe(f"LLM HTTP {resp.status_code}: {(resp.text or '')[:180]}"))
                 return _consume_with_wall_deadline(resp, parse, _stream_wall_deadline())
         except requests.exceptions.RequestException as exc:
             if not _is_retriable_transport_error(exc):
-                raise RuntimeError(f"LLM transport non-retriable error [{_transport_error_label(exc)}]: {exc}") from exc
+                raise RuntimeError(_safe(f"LLM transport non-retriable error [{_transport_error_label(exc)}]: {exc}")) from exc
             transport_attempt += 1
             if transport_attempt >= retries:
-                raise RuntimeError(f"LLM transport error after {retries} attempts [{_transport_error_label(exc)}]: {exc}") from exc
+                raise RuntimeError(_safe(f"LLM transport error after {retries} attempts [{_transport_error_label(exc)}]: {exc}")) from exc
             time.sleep(2 + (transport_attempt - 1) * 3)
 
 
@@ -380,7 +387,7 @@ def _parse_anthropic_stream(resp, *, idle_deadline: int | None = None, clock=tim
                 stop_reason = sr
         elif etype == "error":
             err = obj.get("error") or {}
-            raise RuntimeError(f"LLM stream error [{err.get('type')}]: {err.get('message')}")
+            raise RuntimeError(_safe(f"LLM stream error [{err.get('type')}]: {err.get('message')}"))
     tool_inputs: list[Any] = []
     for idx in sorted(tool_json):
         raw_json = tool_json[idx]
@@ -438,7 +445,7 @@ def _call_openai_compatible_chat(
             payload=payload,
         )
     if resp.status_code >= 400:
-        raise RuntimeError(f"LLM HTTP {resp.status_code}: {resp.text[:180]}")
+        raise RuntimeError(_safe(f"LLM HTTP {resp.status_code}: {resp.text[:180]}"))
     data = resp.json()
     usage = data.get("usage") or {}
     prompt_tokens = int(usage.get("prompt_tokens") or 0)

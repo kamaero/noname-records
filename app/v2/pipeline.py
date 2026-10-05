@@ -365,15 +365,17 @@ def step_cast(db, book, run: V2Run, ctx: RunContext) -> dict:
         .order_by(ScriptJob.created_at.desc())
         .first()
     )
-    if job is None:
-        from app.services.step_models import step_model
+    from app.services.step_models import step_model
 
-        job = ScriptJob(
-            book_id=book.id, chapter_id="", chapter_index=0, stage="char_extraction", status="processing",
-            provider=step_model("characters")[0], model=step_model("characters")[1],
-        )
+    # Модель — один раз на запуск извлечения и на этот запуск: повтор после смены модели на
+    # странице идёт на новой, а не на той, что записана в прошлой задаче.
+    provider, model = step_model("characters")
+    if job is None:
+        job = ScriptJob(book_id=book.id, chapter_id="", chapter_index=0, stage="char_extraction",
+                        status="processing", provider=provider, model=model)
         db.add(job)
         db.flush()
+    job.provider, job.model = provider, model
     job.status = "processing"
     db.commit()
     try:
@@ -618,6 +620,20 @@ def run_book_pipeline(
         db.commit()
 
         try:
+            if "attribute" in ordered and context.llm is None and functions["attribute"] is STEP_FUNCTIONS.get("attribute"):
+                # Ключ разметки — до первой траты: иначе персонажи успели бы оплатиться у
+                # другого провайдера, а разметка упала бы на пустом ключе.
+                from app.pipeline.llm_client import _resolve_provider
+                from app.services.step_models import PROVIDER_LABELS
+
+                try:
+                    key = _resolve_provider(context.provider)[0]
+                except RuntimeError:
+                    key = None  # незнакомый провайдер — скажет сам вызов, как раньше
+                if key == "":
+                    _touch(db, run, context, step="attribute", chapters_done=0)
+                    label = PROVIDER_LABELS.get(context.provider, context.provider)
+                    raise RuntimeError(f"Для разметки нужен ключ {label} — добавьте его в «Настройки → Нейросети».")
             for step in ordered:
                 _touch(db, run, context, step=step, chapters_done=0)
                 context.say(f"— {STEP_LABELS.get(step, step)} —")

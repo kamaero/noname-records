@@ -181,7 +181,8 @@ def book_phrases(db, book_id: str) -> list[str]:
     return out
 
 
-def _transcribe_with_service(path: str, *, phrases: list[str] | None = None) -> dict:
+def _transcribe_with_service(path: str, *, phrases: list[str] | None = None,
+                             provider: str | None = None, model: str | None = None) -> dict:
     """Настоящий путь: сжать и отправить тому, кто выбран в настройках.
 
     Сжатие нужно обоим: у whisper это условие приёма (25 МБ), у Azure — экономия
@@ -193,13 +194,21 @@ def _transcribe_with_service(path: str, *, phrases: list[str] | None = None) -> 
     from app.config import settings
     from app.services.provider_keys import provider_key
 
+    # Модель и ключ — до сжатия: без ключа сжимать нечего, а ошибка должна сказать, куда идти.
+    if provider is None or model is None:
+        from app.services.step_models import step_model
+
+        provider, model = step_model("asr")
+    asr_model = model
+    provider = str(provider or "").strip().lower()
+    from app.services.step_models import PROVIDER_LABELS
+
+    if not provider_key(provider if provider in ("azure", "routerai") else "openai"):
+        raise AsrRunError(f"Для сверки записей нужен ключ {PROVIDER_LABELS.get(provider, provider)} — "
+                          "добавьте его в «Настройки → Нейросети».")
     compressed = os.path.join(tempfile.gettempdir(), f"asr-{os.path.basename(path)}.mp3")
     try:
         compress_for_asr(path, compressed)
-        from app.services.step_models import step_model
-
-        provider, asr_model = step_model("asr")
-        provider = str(provider or "").strip().lower()
         if provider == "azure":
             return transcribe_file_azure(
                 compressed,
@@ -309,7 +318,8 @@ def run_asr_for_take(db, audio_file_id: str, *, transcribe=None, notify: bool = 
         source = audio_storage.resolve_path(str(audio.stored_key or ""), location=location)
         heard = (
             transcribe(source) if transcribe
-            else _transcribe_with_service(source, phrases=book_phrases(db, str(chapter.book_id)))
+            else _transcribe_with_service(source, phrases=book_phrases(db, str(chapter.book_id)),
+                                          provider=job.provider, model=job.model)
         )
     except Exception as exc:  # noqa: BLE001 — причина уходит в строку задания, а не в небо
         job.status = "failed"

@@ -838,3 +838,33 @@ def test_ambient_without_the_text_key_stops_before_any_call(factory, monkeypatch
     result = run_ambient(session_factory=factory, chapter_id="c1", run_id=run_id, compose=Compose(),
                          notify=lambda _t: None)
     assert result["status"] == "stopped" and "RouterAI" in result["reason"]
+
+
+def test_every_track_of_a_run_uses_the_audio_model_from_its_start(factory, monkeypatch):
+    from app.services import ambient_engine, step_models
+    models = iter(["first", "second", "third", "fourth"])
+    monkeypatch.setattr(step_models, "step_model",
+                        lambda key: ("elevenlabs", next(models)) if key == "ambient_audio" else ("routerai", "m"))
+    used = []
+
+    def compose_music(prompt, seconds, *, model_id=None):
+        used.append(model_id)
+        return b"ID3" + b"0" * 2000, "song"
+    monkeypatch.setattr(ambient_engine, "compose_music", compose_music)
+    from app.services import provider_keys
+    monkeypatch.setattr(provider_keys, "provider_key", lambda name: "k")  # настоящий путь звука требует ключ
+    _scenes(factory)
+    run_id = _run(factory)
+    ambient_engine.run_ambient(session_factory=factory, chapter_id="c1", run_id=run_id, ask=Opus(), notify=lambda _t: None)
+    assert len(used) >= 2 and set(used) == {"first"}
+
+
+def test_ambient_without_the_audio_key_stops_before_the_paid_text(factory, monkeypatch):
+    from app.services import ambient_engine, provider_keys
+    monkeypatch.setattr(provider_keys, "provider_key", lambda name: "" if name == "elevenlabs" else "k")
+    monkeypatch.setattr("app.pipeline.llm_client.call_chat",
+                        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("оплачен текст без ключа звука")))
+    _scenes(factory)
+    result = ambient_engine.run_ambient(session_factory=factory, chapter_id="c1", run_id=_run(factory),
+                                        notify=lambda _t: None)
+    assert result["status"] == "stopped" and "ElevenLabs" in result["reason"]
