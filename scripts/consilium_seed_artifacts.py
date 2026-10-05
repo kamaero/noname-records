@@ -22,15 +22,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def seed(db, *, book_id: str, source_dir: str, root: str) -> dict:
-    from app.services.consilium_engine import READERS, artifact_path, load_book_state, save_answers
+    from app.services.consilium_engine import artifact_path, load_book_state, readers, save_answers
 
     state = load_book_state(db, book_id)
-    models = dict(READERS)
+    slots = [(slot, model) for slot, _provider, model in readers()]
+    models = dict(slots)
     out = {"seeded": 0, "incomplete": 0, "skipped_existing": 0, "unmatched": 0}
     chapter_indices = {ch.index for ch in state.chapters}
 
     for chapter in state.chapters:
-        for reader, model in READERS:
+        for reader, model in slots:
             src = os.path.join(source_dir, f"ch{chapter.index:02d}-{reader}.json")
             if not os.path.isfile(src):
                 continue

@@ -70,8 +70,8 @@ class RunModel:
         into the prompt count, so the split is not ours to make — and an estimate that
         errs upwards is the safe direction for a bill.
         """
-        if self.currency == "USD" and not usd_rate:
-            return None
+        if self.currency not in ("RUB", "USD") or (self.currency == "USD" and not usd_rate):
+            return None  # своя модель студии: цена неизвестна, а не нулевая
         prices = self.rub(usd_rate, peak=peak)
         return (
             max(0, int(prompt_tokens or 0)) / 1_000_000 * prices["in"]
@@ -81,7 +81,7 @@ class RunModel:
     def as_dict(self, usd_rate: float = 0.0) -> dict:
         prices = self.rub(usd_rate)
         peak = self.rub(usd_rate, peak=True) if self.peak_multiplier != 1.0 else None
-        known = self.currency != "USD" or bool(usd_rate)
+        known = self.currency == "RUB" or (self.currency == "USD" and bool(usd_rate))
         return {
             "key": self.key,
             "label": self.label,
@@ -149,10 +149,26 @@ def get(key: str) -> RunModel:
 
 
 def for_book(book) -> RunModel:
-    """What a book is set to run on: its stored provider/model, else the default."""
+    """What a book is set to run on: its stored provider/model, else the studio's choice
+    for the markup step (Настройки → Нейросети), else the catalogue default."""
     provider = str(getattr(book, "llm_provider", "") or "").strip()
     model = str(getattr(book, "llm_model", "") or "").strip()
     for item in CATALOG:
         if item.provider == provider and item.model == model:
             return item
+    if not model:
+        from app.services.step_models import step_model
+
+        provider, model = step_model("attribution")
+        for item in CATALOG:
+            if item.provider == provider and item.model == model:
+                return item
+        return custom(provider, model)
     return BY_KEY[DEFAULT_KEY]
+
+
+def custom(provider: str, model: str) -> RunModel:
+    """Модель, которой нет в каталоге: студия выбрала её сама — цены мы не знаем."""
+    return RunModel(key="custom", label=model, provider=provider, model=model, price_in=0.0, price_out=0.0,
+                    price_cache_read=0.0, currency="", trains_on_text=False,
+                    note="Своя модель — цена неизвестна, смета её не покажет.")

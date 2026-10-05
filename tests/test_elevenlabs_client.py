@@ -224,3 +224,12 @@ def test_missing_api_key_raises_without_calling_transport():
     with pytest.raises(ElevenLabsError):
         compose_music("p", 200, api_key="", transport=transport)
     assert called["v"] is False
+
+
+def test_the_audio_model_comes_from_its_step(monkeypatch):
+    from app.services import step_models
+    monkeypatch.setattr(step_models, "step_model", lambda key: ("elevenlabs", "music_v3"))
+    capture = {}
+    compose_music("calm", 240, api_key=SECRET_KEY,
+                  transport=_fake_transport(200, {"song-id": "x"}, b"MP3", capture=capture))
+    assert json.loads(capture["body"])["model_id"] == "music_v3"

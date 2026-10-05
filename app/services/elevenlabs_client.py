@@ -111,6 +111,13 @@ def _urllib_transport(url: str, headers: dict, body: bytes, timeout: float) -> t
         raise _network_error(exc) from exc
 
 
+def _audio_model() -> str:
+    """Модель звука — из шага «ambient_audio» (по умолчанию MODEL_ID)."""
+    from app.services.step_models import step_model
+
+    return step_model("ambient_audio")[1] or MODEL_ID
+
+
 def compose_music(
     prompt: str,
     seconds: int,
@@ -137,7 +144,7 @@ def compose_music(
         "prompt": prompt,
         "music_length_ms": int(seconds) * 1000,
         "force_instrumental": True,
-        "model_id": MODEL_ID,
+        "model_id": _audio_model(),
     }).encode("utf-8")
     url = f"{MUSIC_URL}?output_format={OUTPUT_FORMAT}"
     headers = {"xi-api-key": key, "Content-Type": "application/json"}

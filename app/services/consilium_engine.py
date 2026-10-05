@@ -23,8 +23,16 @@ from app.time_utils import iso_utc
 
 logger = logging.getLogger(__name__)
 
-READERS = (("opus", "anthropic/claude-opus-5"), ("sol", "openai/gpt-5.6-sol"))
-ARBITER_MODEL = "anthropic/claude-opus-5"
+#: Слоты чтецов: имена — ключи сохранённых ответов, модели — из «Настройки → Нейросети».
+#: Смена модели чтеца не перечитывает уже прочитанные главы: ответ хранится по слоту.
+READER_SLOTS = (("opus", "consilium_reader_1"), ("sol", "consilium_reader_2"))
+
+
+def readers() -> tuple[tuple[str, str, str], ...]:
+    """(слот, провайдер, модель) — читается один раз в начале прогона."""
+    from app.services.step_models import step_model
+
+    return tuple((slot, *step_model(step)) for slot, step in READER_SLOTS)
 ARTIFACT_ROOT = "data/book_reports"
 # Факт прогона «Крыльев полумрака» 2026-09-12: чтецы 1 400 ₽ на 13 276 абзацев, арбитр 457 ₽
 # на 157 мест. Смета — оценка по этим числам, а не обещание.
@@ -213,11 +221,11 @@ def estimate(db, book_id: str, root: str = ARTIFACT_ROOT, state: BookState | Non
 
     if state is None:
         state = load_book_state(db, book_id)
-    known: dict[str, dict[tuple[int, int], str]] = {reader: {} for reader, _ in READERS}
+    known: dict[str, dict[tuple[int, int], str]] = {reader: {} for reader, _ in READER_SLOTS}
     unread_paragraphs = 0
     unread_chapters = 0
     for chapter in state.chapters:
-        got = {reader: load_answers(book_id, chapter, reader, root) for reader, _ in READERS}
+        got = {reader: load_answers(book_id, chapter, reader, root) for reader, _ in READER_SLOTS}
         if any(value is None for value in got.values()):
             unread_chapters += 1
             unread_paragraphs += len(chapter.paragraphs)
@@ -260,17 +268,28 @@ STOP_TEXT = {
 }
 
 
-def default_ask(model: str, system: str, user: str, schema: dict) -> dict:
-    from app.pipeline.llm_client import _resolve_provider, call_chat
+def routed_ask(providers: dict[str, str]):
+    """`ask(model, system, user, schema)`, который зовёт каждую модель у её провайдера.
 
-    api_key, base_url, mode = _resolve_provider("routerai")
-    if not api_key:
-        raise RuntimeError("ROUTERAI_API_KEY не задан")
-    out = call_chat(base_url, api_key, model, system, user, mode=mode, force_json=True, json_schema=schema)
-    content = (out or {}).get("content") if isinstance(out, dict) else out
-    if isinstance(content, str):
-        content = json.loads(content.strip() or "{}")
-    return content or {}
+    Сигнатура та же, что у подменных `ask` в тестах: провайдер приходит из шага, а не из
+    вызова, — чтецы консилиума могут жить у разных провайдеров."""
+    def ask(model: str, system: str, user: str, schema: dict) -> dict:
+        from app.pipeline.llm_client import _resolve_provider, call_chat
+
+        provider = providers.get(model, "routerai")
+        api_key, base_url, mode = _resolve_provider(provider)
+        if not api_key:
+            raise RuntimeError(f"нет ключа провайдера {provider}")
+        out = call_chat(base_url, api_key, model, system, user, mode=mode, force_json=True, json_schema=schema)
+        content = (out or {}).get("content") if isinstance(out, dict) else out
+        if isinstance(content, str):
+            content = json.loads(content.strip() or "{}")
+        return content or {}
+    return ask
+
+
+def default_ask(model: str, system: str, user: str, schema: dict) -> dict:
+    return routed_ask({})(model, system, user, schema)
 
 
 def _meta(run) -> dict:
@@ -452,11 +471,14 @@ def _book_title(session_factory, book_id: str) -> str:
         return str((book.display_title or book.title) if book else book_id)
 
 
-def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=default_ask,
+def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=None,
                   read_credits=read_credits, notify: Callable[[str], None] | None = None,
                   root: str = ARTIFACT_ROOT, arbiter_workers: int = 6) -> dict:
     from app.pipeline.consilium_run import Budget, StopRun, arbitrate_place, plan_places, read_chapter
     from app.services.consilium_store import apply_run
+    from app.services.step_models import MissingKeyError, require_key_for, step_model
+
+    real_calls = ask is None  # подменный ask в тестах не тратит деньги — ключ ему не нужен
 
     key = "reread" if mode == "reread" else "recheck"
     budget: Budget | None = None
@@ -514,6 +536,16 @@ def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=
             raise StopRun("stopped_by_user")
 
     try:
+        # Модели — один раз на прогон: смена на странице действует со следующего прогона.
+        slots = readers()
+        arbiter_provider, arbiter_model = step_model("consilium_arbiter")
+        if real_calls:
+            for step in ("consilium_reader_1", "consilium_reader_2", "consilium_arbiter"):
+                try:
+                    require_key_for(step)
+                except MissingKeyError as err:
+                    raise StopRun(str(err))
+            ask = routed_ask({**{m: p for _s, p, m in slots}, arbiter_model: arbiter_provider})
         # Подготовка — внутри `try`: упавшая смета или база иначе оставили бы строку `running`
         # без причины и без уведомления.
         with session_factory() as db:
@@ -525,10 +557,10 @@ def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=
                     credits_before=credits_before)
         if credits_before is not None and credits_before < max(MIN_CREDITS_RUB, plan["estimate_rub"][key]):
             raise StopRun("no_credits")
-        answers: dict[str, dict[tuple[int, int], str]] = {reader: {} for reader, _ in READERS}
+        answers: dict[str, dict[tuple[int, int], str]] = {reader: {} for reader, _p, _m in slots}
         for chapter in state.chapters:
-            got = {} if key == "reread" else {r: load_answers(book_id, chapter, r, root) for r, _ in READERS}
-            todo = [(r, m) for r, m in READERS if got.get(r) is None]
+            got = {} if key == "reread" else {r: load_answers(book_id, chapter, r, root) for r, _p, _m in slots}
+            todo = [(r, m) for r, _p, m in slots if got.get(r) is None]
             if not todo:
                 meta["chapters_skipped"] += 1
             def read_one(reader_model):
@@ -548,10 +580,10 @@ def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=
             with ThreadPoolExecutor(max_workers=max(1, len(todo))) as pool:
                 for reader, read in pool.map(read_one, todo):
                     got[reader] = read
-            for reader, _model in READERS:
+            for reader, _p, _m in slots:
                 answers[reader].update({(chapter.index, n): who for n, who in (got.get(reader) or {}).items()})
             wanted = {n for n, _ in chapter.paragraphs}
-            if any(not wanted <= set(got.get(reader) or {}) for reader, _model in READERS):
+            if any(not wanted <= set(got.get(reader) or {}) for reader, _p, _m in slots):
                 meta["chapters_incomplete"] += 1
             meta["chapters_done"] += 1
             checkpoint(check_money=bool(todo))
@@ -582,7 +614,7 @@ def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=
             verdict = arbitrate_place(chapter_index=chapter.index, ordinal=item["ordinal"],
                                       current=item["current"], opus=item["opus"], sol=item["sol"],
                                       texts=dict(chapter.paragraphs), speakers=chapter.speakers,
-                                      races=state.races, ask=counted_ask, canon=state.canon, model=ARBITER_MODEL)
+                                      races=state.races, ask=counted_ask, canon=state.canon, model=arbiter_model)
             return place, verdict
 
         # Отмена очереди мест — явно, а не через финализацию генератора `map`: остановка не должна

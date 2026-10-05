@@ -416,3 +416,15 @@ def test_a_catalogued_model_brings_its_own_reasoning_knob(monkeypatch):
     ctx = pipeline_module.RunContext(provider="deepseek", model="deepseek-v4-pro", thinking="off")
     ctx.get_llm()
     assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_the_characters_job_runs_on_the_studios_model(monkeypatch):
+    from app.services import step_models
+    monkeypatch.setattr(step_models, "step_model", lambda key: ("openrouter", "vendor/chars"))
+    monkeypatch.setattr("app.services.char_extraction._run_char_extraction", lambda db, book, job: 0)
+    SessionLocal = _factory()
+    _seed(SessionLocal, characters=False)
+    _run_step(SessionLocal, step_cast)
+    with SessionLocal() as db:
+        job = db.query(ScriptJob).filter(ScriptJob.book_id == BOOK).one()
+        assert (job.provider, job.model) == ("openrouter", "vendor/chars")

@@ -14,13 +14,14 @@ import os
 from typing import Callable
 
 from app.services.consilium_engine import (
-    ARTIFACT_ROOT, MIN_CREDITS_RUB, STOP_TEXT, _finish, checkpoint_run, default_ask, text_fingerprint,
+    ARTIFACT_ROOT, MIN_CREDITS_RUB, STOP_TEXT, _finish, checkpoint_run, text_fingerprint,
 )
 from app.services.routerai_credits import read_credits
 
 logger = logging.getLogger(__name__)
 
 KIND = "sound"
+#: модель по умолчанию; настоящая берётся из шага «sound» в начале прогона
 MODEL = "anthropic/claude-opus-5"
 # До пилота — по консилиуму: чтецы Opus+Sol стоили 1 400 ₽ на 13 276 абзацев «Крыльев».
 # Звуковая разметка — один Opus, но с длинным ответом; пилот на одной главе уточняет число.
@@ -58,10 +59,11 @@ def load_sidecar(book_id: str, index: int, paragraphs, root: str = ARTIFACT_ROOT
     return data
 
 
-def save_sidecar(book_id: str, index: int, paragraphs, data: dict, root: str = ARTIFACT_ROOT) -> None:
+def save_sidecar(book_id: str, index: int, paragraphs, data: dict, root: str = ARTIFACT_ROOT,
+                 model: str = MODEL) -> None:
     path = sidecar_path(book_id, index, root)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    payload = dict(data, chapter=index, model=MODEL, text_sha256=text_fingerprint(paragraphs))
+    payload = dict(data, chapter=index, model=model, text_sha256=text_fingerprint(paragraphs))
     tmp = f"{path}.tmp"
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False)
@@ -107,7 +109,7 @@ def enqueue_sound(book_id: str, mode: str, chapter_id: str = "") -> str | None:
 
 
 def run_sound(*, session_factory, book_id: str, run_id: str, mode: str, chapter_id: str = "",
-              ask=default_ask, read_credits=read_credits, notify: Callable[[str], None] | None = None,
+              ask=None, read_credits=read_credits, notify: Callable[[str], None] | None = None,
               root: str = ARTIFACT_ROOT) -> dict:
     from app.pipeline.consilium_run import Budget, StopRun
     from app.pipeline.sound_markers import MERGE_SCHEMA, MERGE_SYSTEM, SCHEMA, SYSTEM, chapter_prompt, merge_prompt, validate
@@ -135,11 +137,24 @@ def run_sound(*, session_factory, book_id: str, run_id: str, mode: str, chapter_
         if checkpoint_run(session_factory, run_id, meta):
             raise StopRun("stopped_by_user")
 
+    from app.services.consilium_engine import routed_ask
+    from app.services.step_models import MissingKeyError, require_key_for, step_model
+
+    provider, model = step_model("sound")  # один раз на прогон
+    real_calls = ask is None  # подменный ask в тестах не тратит деньги — ключ ему не нужен
+    if real_calls:
+        ask = routed_ask({model: provider})
+
     def counted(system, user, schema):
         budget.note_call()
-        return ask(MODEL, system, user, schema)
+        return ask(model, system, user, schema)
 
     try:
+        if real_calls:
+            try:
+                require_key_for("sound")
+            except MissingKeyError as err:
+                raise StopRun(str(err))
         with session_factory() as db:
             chapters = book_chapters(db, book_id, chapter_id if mode == "chapter" else "")
             plan = estimate(db, book_id, root=root, chapter_id=chapter_id if mode == "chapter" else "")
@@ -166,7 +181,7 @@ def run_sound(*, session_factory, book_id: str, run_id: str, mode: str, chapter_
                 except Exception as exc:  # noqa: BLE001 — глава останется неполной, прогон идёт дальше
                     error = f"{type(exc).__name__}: {str(exc)[:200]}"
             if answer is None:
-                save_sidecar(book_id, index, paragraphs, {"complete": False, "error": error}, root)
+                save_sidecar(book_id, index, paragraphs, {"complete": False, "error": error}, root, model)
                 meta["chapters_incomplete"] += 1
             else:
                 # Модель может вернуть кривой ответ (например, "start": null) — validate()
@@ -183,12 +198,12 @@ def run_sound(*, session_factory, book_id: str, run_id: str, mode: str, chapter_
                     result["markers"] += applied["added"]
                     result["places_new"] += applied["places_new"]
                     save_sidecar(book_id, index, paragraphs, {"complete": True, "answer": answer,
-                                                              "dropped": checked.dropped}, root)
+                                                              "dropped": checked.dropped}, root, model)
                 except StopRun:
                     raise
                 except Exception as exc:  # noqa: BLE001 — кривой ответ модели не валит весь прогон
                     error = f"{type(exc).__name__}: {str(exc)[:200]}"
-                    save_sidecar(book_id, index, paragraphs, {"complete": False, "error": error}, root)
+                    save_sidecar(book_id, index, paragraphs, {"complete": False, "error": error}, root, model)
                     meta["chapters_incomplete"] += 1
             meta["chapters_done"] += 1
             checkpoint(check_money=True)

@@ -98,3 +98,12 @@ def _fresh_key_cache():
     provider_keys.clear_cache()
     yield
     provider_keys.clear_cache()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_step_cache():
+    from app.services import step_models
+
+    step_models.clear_cache()
+    yield
+    step_models.clear_cache()

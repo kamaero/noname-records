@@ -810,3 +810,31 @@ def test_a_store_failure_is_logged_with_the_traceback(factory, monkeypatch, capl
 
     records = [r for r in caplog.records if "не сохранён" in r.getMessage()]
     assert records and records[0].exc_info is not None
+
+
+def test_the_ambient_text_model_comes_from_its_step(factory, monkeypatch):
+    from app.services import step_models
+    monkeypatch.setattr(step_models, "step_model",
+                        lambda key: {"ambient_text": ("openrouter", "vendor/ambient")}.get(key, ("elevenlabs", "music_v2")))
+    seen = []
+
+    class Recorder(Opus):
+        def __call__(self, model, system, user, schema):
+            seen.append(model)
+            return super().__call__(model, system, user, schema)
+    _scenes(factory)
+    _go(factory, ask=Recorder())
+    assert seen and set(seen) == {"vendor/ambient"}
+
+
+def test_ambient_without_the_text_key_stops_before_any_call(factory, monkeypatch):
+    from app.services import provider_keys
+    monkeypatch.setattr(provider_keys, "provider_key", lambda name: "" if name == "routerai" else "xi")
+    monkeypatch.setattr("app.pipeline.llm_client.call_chat",
+                        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("платный вызов без ключа")))
+    from app.services.ambient_engine import run_ambient
+    _scenes(factory)
+    run_id = _run(factory)
+    result = run_ambient(session_factory=factory, chapter_id="c1", run_id=run_id, compose=Compose(),
+                         notify=lambda _t: None)
+    assert result["status"] == "stopped" and "RouterAI" in result["reason"]
