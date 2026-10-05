@@ -76,6 +76,8 @@ class Settings:
     studio_contact_name: str = os.getenv("STUDIO_CONTACT_NAME", "")
     app_base_url: str = os.getenv("APP_BASE_URL", "http://localhost:8080")
     secret_key: str = os.getenv("SECRET_KEY", "change-me")
+    # Ключ шифрования ключей нейросетей в базе (Fernet). Пусто — выводится из SECRET_KEY.
+    keys_encryption_key: str = os.getenv("KEYS_ENCRYPTION_KEY", "")
     admin_login: str = os.getenv("ADMIN_LOGIN", "admin")
     admin_password_hash: str = os.getenv("ADMIN_PASSWORD_HASH", "")
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./noname.db")

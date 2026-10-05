@@ -672,6 +672,34 @@ class StudioSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
 
+class ProviderKey(Base):
+    """Ключ нейросети, введённый на сайте. Хранится зашифрованным: база уходит в бэкапы,
+    и ключ, лежащий в ней открыто, утёк бы вместе с любой копией."""
+
+    __tablename__ = "provider_keys"
+
+    provider: Mapped[str] = mapped_column(String(20), primary_key=True)
+    ciphertext: Mapped[str] = mapped_column(String, nullable=False, default="")
+    last4: Mapped[str] = mapped_column(String(4), nullable=False, default="")
+    check_status: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    check_detail: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    updated_by: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+
+class StepModel(Base):
+    """Модель, выбранная студией для шага. Нет строки — значение по умолчанию из кода."""
+
+    __tablename__ = "step_models"
+
+    step: Mapped[str] = mapped_column(String(40), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    model: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    updated_by: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+
 class ConsiliumFinding(Base):
     """Спорное место, найденное консилиумом: где, какого рода, что решил человек.
 
