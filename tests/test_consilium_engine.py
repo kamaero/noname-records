@@ -706,3 +706,41 @@ def test_a_reread_does_not_replace_a_complete_artifact_with_an_incomplete_one(bo
     kept = load_answers(BOOK, state.chapters[0], "sol", root=str(tmp_path))
     assert kept == {0: "Гамук", 1: "Гамук", 2: "Рассказчик"}
     assert out["chapters_incomplete"] == 0 and out["gone"] == 0
+
+
+def test_the_same_model_at_two_providers_goes_to_each_providers_own_endpoint(book, tmp_path, monkeypatch):
+    """Чтец на RouterAI и арбитр на OpenRouter с одним именем модели — каждый платит своему."""
+    from app.services import step_models
+    from app.services.consilium_engine import run_consilium
+    steps = {"consilium_reader_1": ("routerai", "anthropic/claude-opus-5"),
+             "consilium_reader_2": ("openrouter", "anthropic/claude-opus-5"),
+             "consilium_arbiter": ("openrouter", "anthropic/claude-opus-5")}
+    monkeypatch.setattr(step_models, "step_model", lambda key: steps[key])
+    monkeypatch.setattr(step_models, "require_key_for", lambda key: None)
+    models, sent = FakeModels(), []
+    monkeypatch.setattr("app.pipeline.llm_client._resolve_provider", lambda provider: ("k", provider, "openai"))
+
+    def call_chat(base, key, model, system, user, **kw):
+        sent.append((base, "lines" in kw["json_schema"].get("required", [])))
+        return {"content": models(model, system, user, kw["json_schema"])}
+    monkeypatch.setattr("app.pipeline.llm_client.call_chat", call_chat)
+    run_consilium(session_factory=book, book_id=BOOK, run_id=_run_row(book, "reread"), mode="reread",
+                  read_credits=lambda: None, notify=lambda _t: None, root=str(tmp_path), arbiter_workers=1)
+    readers = [base for base, is_reader in sent if is_reader]
+    arbiter = [base for base, is_reader in sent if not is_reader]
+    assert readers.count("routerai") == 2 and readers.count("openrouter") == 2
+    assert arbiter == ["openrouter"]
+
+
+def test_an_empty_routerai_balance_does_not_stop_a_run_on_openrouter(book, tmp_path, monkeypatch):
+    from app.services import step_models
+    from app.services.consilium_engine import run_consilium
+    monkeypatch.setattr(step_models, "step_model", lambda key: ("openrouter", "vendor/m"))
+    monkeypatch.setattr(step_models, "require_key_for", lambda key: None)
+    models = FakeModels()
+    monkeypatch.setattr("app.pipeline.llm_client._resolve_provider", lambda provider: ("k", provider, "openai"))
+    monkeypatch.setattr("app.pipeline.llm_client.call_chat",
+                        lambda base, key, model, system, user, **kw: {"content": models(model, system, user, kw["json_schema"])})
+    out = run_consilium(session_factory=book, book_id=BOOK, run_id=_run_row(book, "reread"), mode="reread",
+                        read_credits=lambda: 0.0, notify=lambda _t: None, root=str(tmp_path), arbiter_workers=1)
+    assert out["status"] == "done" and models.reader_calls == 4

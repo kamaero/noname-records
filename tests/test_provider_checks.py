@@ -31,7 +31,8 @@ class Http:
 @pytest.mark.parametrize("status,expected", [(200, "ok"), (401, "bad_key"), (403, "bad_key"), (402, "no_money"),
                                              (500, "unreachable")])
 def test_check_maps_answers_to_words(provider, status, expected):
-    result = pc.check_key(provider, "k", http=Http(Resp(status, {})))
+    payload = {"tier": "creator", "character_limit": 100} if provider == "elevenlabs" else {"data": [{"id": "m"}]}
+    result = pc.check_key(provider, "k", http=Http(Resp(status, payload)))
     assert result.status == expected and result.detail
 
 
@@ -63,3 +64,14 @@ def test_claude_and_openai_have_no_balance_api():
 def test_routerai_balance_reads_the_same_field_as_the_run_meter():
     got = pc.balance("routerai", "k", http=Http(Resp(200, {"data": {"credits": 512.3}})))
     assert (got["available"], got["amount"], got["unit"]) == (True, 512.3, "₽")
+
+
+@pytest.mark.parametrize("resp", [Resp(200, None, "<html>proxy</html>"), Resp(200, {}), Resp(200, {"data": "x"})])
+def test_a_200_that_is_not_the_providers_answer_is_not_working(resp):
+    result = pc.check_key("openrouter", "k", http=Http(resp))
+    assert result.status == "error" and "<html>" not in result.detail
+
+
+def test_insufficient_balance_in_the_body_is_no_money():
+    resp = Resp(400, {"error": {"message": "Insufficient Balance"}}, '{"error":{"message":"Insufficient Balance"}}')
+    assert pc.check_key("deepseek", "k", http=Http(resp)).status == "no_money"

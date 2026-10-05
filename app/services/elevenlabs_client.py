@@ -125,6 +125,7 @@ def compose_music(
     api_key: str | None = None,
     transport: Transport | None = None,
     timeout: float = 600,
+    model_id: str | None = None,
 ) -> tuple[bytes, str]:
     """Запрашивает трек у ElevenLabs. Возвращает (mp3-байты, song_id).
 
@@ -144,7 +145,7 @@ def compose_music(
         "prompt": prompt,
         "music_length_ms": int(seconds) * 1000,
         "force_instrumental": True,
-        "model_id": _audio_model(),
+        "model_id": model_id or _audio_model(),
     }).encode("utf-8")
     url = f"{MUSIC_URL}?output_format={OUTPUT_FORMAT}"
     headers = {"xi-api-key": key, "Content-Type": "application/json"}
@@ -164,7 +165,9 @@ def compose_music(
             raise QuotaExhausted(f"квота исчерпана: http {status}", status=status)
         if status in (401, 403):
             raise BadKey(f"ключ отклонён: http {status}", status=status)
-        raise ElevenLabsError(f"http {status}: {text}", status=status)
+        from app.services.provider_keys import redact
+
+        raise ElevenLabsError(redact(f"http {status}: {text}"), status=status)
     if not resp_body:
         raise ElevenLabsError(f"пустой ответ: http {status}", status=status)
 

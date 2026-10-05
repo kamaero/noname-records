@@ -261,7 +261,7 @@ def _short(exc: BaseException) -> str:
 
 
 def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str = "",
-                prompt_override: str = "", ask=None, compose=compose_music,
+                prompt_override: str = "", ask=None, compose=None,
                 notify: Callable[[str], None] | None = None) -> dict:
     from app.models import AmbientTrack, ScriptBook, ScriptChapter
     from app.pipeline.ambient import PROMPT_SCHEMA, PROMPT_SYSTEM, parse_prompt, prompt_user
@@ -305,14 +305,24 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
     from app.services.step_models import MissingKeyError, require_key_for, step_model
 
     text_provider, text_model = step_model("ambient_text")  # один раз на прогон
+    audio_model = step_model("ambient_audio")[1]
+    real_audio = compose is None
+    if real_audio:
+        # Модель звука — та, что была на старте: смена на странице посреди главы не делает
+        # треки одной главы разными моделями.
+        def compose(prompt, seconds):
+            return compose_music(prompt, seconds, model_id=audio_model)
     real_calls = ask is None  # подменный ask в тестах не тратит деньги — ключ ему не нужен
     if real_calls:
         ask = routed_ask({text_model: text_provider})
 
     try:
-        if real_calls:
+        # Ключи — до первой траты: без ключа звука оплаченный текст сцены ушёл бы впустую.
+        # Текстовый ключ не нужен, когда промпт сцены уже дан (перегенерация с правкой).
+        needed = (["ambient_audio"] if real_audio else []) + (["ambient_text"] if real_calls and not prompt_override else [])
+        for step in needed:
             try:
-                require_key_for("ambient_text")
+                require_key_for(step)
             except MissingKeyError as err:
                 raise StopRun(str(err))
         with session_factory() as db:

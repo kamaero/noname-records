@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import base64
+import re
 import time
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -129,3 +130,21 @@ def key_info(db, name: str) -> dict:
         "check_status": row.check_status if row else "", "check_detail": row.check_detail if row else "",
         "checked_at": row.checked_at.isoformat() + "Z" if row and row.checked_at else "",
     }
+
+
+#: похоже на ключ, даже если его нет среди известных: чужой прокси мог отдать свой токен
+_TOKEN_LIKE = re.compile(r"\b(?:sk|xi|rk|gsk|key)[-_][A-Za-z0-9_\-]{12,}|\bBearer\s+\S{12,}|\b[A-Za-z0-9_\-]{40,}\b")
+REDACTED = "[ключ скрыт]"
+
+
+def _known_keys() -> set[str]:
+    return {value for name in ENV_NAMES if len(value := provider_key(name)) >= 8}
+
+
+def redact(text: str) -> str:
+    """Текст ошибки провайдера — без ключей. Провайдер (или прокси перед ним) может
+    повторить присланный ключ в ответе, а ответ уходит в журнал, базу и на экран."""
+    out = str(text or "")
+    for key in sorted(_known_keys(), key=len, reverse=True):
+        out = out.replace(key, REDACTED)
+    return _TOKEN_LIKE.sub(REDACTED, out)

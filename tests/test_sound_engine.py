@@ -221,3 +221,16 @@ def test_sound_without_its_key_stops_before_any_call(book, tmp_path, monkeypatch
     result = run_sound(session_factory=book, book_id=BOOK, run_id=new_run(book), mode="all",
                        read_credits=lambda: None, notify=lambda _t: None, root=str(tmp_path))
     assert result["status"] == "stopped" and "RouterAI" in result["reason"]
+
+
+def test_an_empty_routerai_balance_does_not_stop_sound_on_openrouter(book, tmp_path, monkeypatch):
+    from app.services import step_models
+    from app.services.sound_engine import run_sound
+    monkeypatch.setattr(step_models, "step_model", lambda key: ("openrouter", "vendor/sound"))
+    monkeypatch.setattr(step_models, "require_key_for", lambda key: None)
+    monkeypatch.setattr("app.pipeline.llm_client._resolve_provider", lambda provider: ("k", provider, "openai"))
+    monkeypatch.setattr("app.pipeline.llm_client.call_chat",
+                        lambda base, key, model, system, user, **kw: {"content": fake_ask([])(model, system, user, kw["json_schema"])})
+    out = run_sound(session_factory=book, book_id=BOOK, run_id=new_run(book), mode="all",
+                    read_credits=lambda: 0.0, notify=lambda _t: None, root=str(tmp_path))
+    assert out["status"] == "done"

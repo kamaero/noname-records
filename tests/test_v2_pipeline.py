@@ -428,3 +428,32 @@ def test_the_characters_job_runs_on_the_studios_model(monkeypatch):
     with SessionLocal() as db:
         job = db.query(ScriptJob).filter(ScriptJob.book_id == BOOK).one()
         assert (job.provider, job.model) == ("openrouter", "vendor/chars")
+
+
+def test_a_rerun_of_characters_takes_the_model_chosen_since(monkeypatch):
+    from app.services import step_models
+    monkeypatch.setattr("app.services.char_extraction._run_char_extraction", lambda db, book, job: 0)
+    SessionLocal = _factory()
+    _seed(SessionLocal, characters=False)
+    with SessionLocal() as db:
+        db.add(ScriptJob(book_id=BOOK, chapter_id="", chapter_index=0, stage="char_extraction", status="failed",
+                         provider="deepseek", model="deepseek-v4-pro"))
+        db.commit()
+    monkeypatch.setattr(step_models, "step_model", lambda key: ("openrouter", "vendor/chars-v2"))
+    _run_step(SessionLocal, step_cast)
+    with SessionLocal() as db:
+        job = db.query(ScriptJob).filter(ScriptJob.book_id == BOOK).one()
+        assert (job.provider, job.model) == ("openrouter", "vendor/chars-v2")
+
+
+def test_a_missing_markup_key_stops_the_run_before_characters_spend(monkeypatch):
+    from app.services import provider_keys
+    monkeypatch.setattr(provider_keys, "provider_key", lambda name: "" if name == "deepseek" else "k")
+    spent = []
+    monkeypatch.setattr("app.services.char_extraction._run_char_extraction", lambda db, book, job: spent.append(1) or 0)
+    _notify_recorder(monkeypatch)
+    SessionLocal = _factory()
+    _seed(SessionLocal, characters=False)
+    run = run_book_pipeline(BOOK, steps=("segment", "cast", "attribute"), session_factory=SessionLocal)
+    assert run.status == "failed" and spent == []
+    assert "DeepSeek" in run.error and "Настройки → Нейросети" in run.error
