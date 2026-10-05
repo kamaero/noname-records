@@ -1577,3 +1577,41 @@ export type RoleDeadlineView = {
   done: number;
   total: number;
 };
+
+/** «Настройки → Нейросети»: ключ провайдера — без значения, только откуда и последние 4 знака. */
+export type AiKeySource = "site" | "env" | "none";
+export type AiCheckStatus = "" | "ok" | "bad_key" | "no_money" | "unreachable" | "error";
+
+export interface AiProvider {
+  provider: string;
+  label: string;
+  source: AiKeySource;
+  last4: string;
+  unreadable: boolean;
+  check_status: AiCheckStatus;
+  check_detail: string;
+  checked_at: string;
+}
+
+export interface AiStep {
+  step: string;
+  title: string;
+  provider: string;
+  model: string;
+  source: "site" | "default";
+  default: { provider: string; model: string };
+  providers: string[];
+}
+
+export interface AiSettings {
+  providers: AiProvider[];
+  steps: AiStep[];
+}
+
+export interface AiBalance {
+  provider: string;
+  available: boolean;
+  amount: number | null;
+  unit: string;
+  detail: string;
+}

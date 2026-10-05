@@ -1,0 +1,30 @@
+/* «Настройки → Нейросети»: списки вместо плиток, статус — словом и цветом со смыслом. */
+.st-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; max-width: 920px; }
+/* сетка без minmax(0) не сжимает колонку уже длинного имени модели — на телефоне выезжал скролл */
+.st-section, .st-key, .st-step { min-width: 0; }
+.st-section { padding: 16px 18px; display: grid; gap: 10px; }
+.st-section h2 { margin: 0; font-size: 15px; }
+.st-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.st-lead, .st-muted { margin: 0; color: var(--text-dim); font-size: 13px; }
+.st-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.st-key, .st-step {
+  display: grid; gap: 8px; padding: 10px 12px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.st-key.is-broken { border-color: var(--danger); }
+.st-key-head, .st-step-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.st-key-source, .st-step-source, .st-step-model { color: var(--text-dim); font-size: 13px; }
+.st-key.is-broken .st-key-source { color: var(--danger); }
+.st-step-model code { font-size: 12px; overflow-wrap: anywhere; }
+.st-status { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--surface-1); color: var(--text-dim); }
+.st-status--ok { background: var(--accent-soft); color: var(--accent); }
+.st-status--bad_key, .st-status--no_money { background: var(--danger-soft); color: var(--danger); }
+.st-status--unreachable, .st-status--error { background: var(--amber-soft); color: var(--amber); }
+.st-warning { margin: 0; font-size: 13px; color: var(--amber); }
+.st-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.st-key-edit, .st-step-edit { display: grid; gap: 10px; max-width: 520px; }
+.st-balances { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.st-balances li { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+@media (max-width: 600px) {
+  .st-section { padding: 12px; }
+}
