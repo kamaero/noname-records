@@ -114,6 +114,12 @@ $bytes = New-Object byte[] 48
 $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
 try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
 $secret = [BitConverter]::ToString($bytes).Replace('-', '').ToLowerInvariant()
+# Ключ шифрования ключей нейросетей в базе — той же библиотекой, что их потом расшифрует.
+$keysEncryptionKey = & docker compose run --no-deps --rm -T web python scripts/generate_encryption_key.py | Select-Object -Last 1
+$keysEncryptionKey = "$keysEncryptionKey".Trim()
+if ($keysEncryptionKey.Length -ne 44) {
+    throw 'Не удалось создать ключ шифрования. Проверьте, что Docker Desktop запущен, и повторите установку.'
+}
 New-Item -ItemType Directory -Force -Path data/recordings | Out-Null
 $envContent = @"
 APP_NAME=Noname Records
@@ -122,6 +128,7 @@ STUDIO_CONTACT_NAME=$($env:STUDIO_CONTACT_NAME)
 APP_BASE_URL=$baseUrl
 PRODUCTION=1
 SECRET_KEY=$secret
+KEYS_ENCRYPTION_KEY=$keysEncryptionKey
 ADMIN_LOGIN=$login
 ADMIN_PASSWORD_HASH='$hash'
 DATABASE_URL=sqlite:///./data/noname.db

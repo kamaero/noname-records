@@ -2,9 +2,9 @@
 
 Список получен через интроспекцию реального приложения — импортируется `app.main:app` и обходится `app.routes` (только `fastapi.routing.APIRoute`). Колонка «Обработчик» — модуль и имя функции, «Описание» — первая строка docstring обработчика, если она есть.
 
-Всего маршрутов: **142**, групп: **35**.
+Всего маршрутов: **148**, групп: **35**.
 
-_Сгенерировано из коммита unknown._
+_Сгенерировано из коммита cf54152._
 
 ## `/` (1)
 
@@ -95,10 +95,16 @@ _Сгенерировано из коммита unknown._
 | POST | `/api/recording/replica-patch` | `app.api.recording:build_recording_handlers.<locals>.recording_replica_patch` |  |
 | GET | `/api/recording/workspace` | `app.api.recording:build_recording_handlers.<locals>.recording_workspace` |  |
 
-## `/api/settings` (2)
+## `/api/settings` (8)
 
 | Методы | Путь | Обработчик | Описание |
 |---|---|---|---|
+| GET | `/api/settings/ai` | `app.api.ai_settings:api_ai_settings` |  |
+| POST | `/api/settings/ai/balances` | `app.api.ai_settings:api_ai_balances` |  |
+| DELETE | `/api/settings/ai/keys/{provider}` | `app.api.ai_settings:api_ai_key_delete` |  |
+| PUT | `/api/settings/ai/keys/{provider}` | `app.api.ai_settings:api_ai_key_save` |  |
+| POST | `/api/settings/ai/keys/{provider}/check` | `app.api.ai_settings:api_ai_key_check` |  |
+| PUT | `/api/settings/ai/steps/{step}` | `app.api.ai_settings:api_ai_step` |  |
 | GET | `/api/settings/rate` | `app.api.budget_api:build_budget_api_handlers.<locals>.api_studio_rate` |  |
 | POST | `/api/settings/rate` | `app.api.budget_api:build_budget_api_handlers.<locals>.api_save_studio_rate` | The studio's default rate. Books do not store it; they read it. |
 

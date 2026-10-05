@@ -152,6 +152,10 @@ password_hash="$(printf '%s\n' "$password" | docker compose run --no-deps --rm -
 unset password ADMIN_PASSWORD
 [[ "$password_hash" == '$pbkdf2-sha256$'* ]] || { echo "Не удалось вычислить хеш пароля." >&2; exit 1; }
 
+# Ключ шифрования ключей нейросетей в базе — той же библиотекой, что их потом расшифрует.
+keys_encryption_key="$(docker compose run --no-deps --rm -T web python scripts/generate_encryption_key.py)"
+[[ ${#keys_encryption_key} -eq 44 ]] || { echo "Не удалось создать ключ шифрования." >&2; exit 1; }
+
 if command -v openssl >/dev/null 2>&1; then
   secret_key="$(openssl rand -hex 48)"
 else
@@ -168,6 +172,7 @@ STUDIO_CONTACT_NAME=${STUDIO_CONTACT_NAME:-}
 APP_BASE_URL=$base_url
 PRODUCTION=1
 SECRET_KEY=$secret_key
+KEYS_ENCRYPTION_KEY=$keys_encryption_key
 ADMIN_LOGIN=$login
 ADMIN_PASSWORD_HASH='$password_hash'
 DATABASE_URL=sqlite:///./data/noname.db
