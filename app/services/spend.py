@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from app.models import ModelPrice, SpendEntry
+from app.time_utils import utcnow_naive
 
 
 @dataclass(frozen=True)
@@ -176,3 +177,133 @@ def provider_from_url(base_url: str) -> str:
         if marker in url:
             return name
     return "other"
+
+
+# --- лимит ----------------------------------------------------------------------------
+import json  # noqa: E402
+
+from app.models import AuditLog  # noqa: E402
+
+
+@dataclass(frozen=True)
+class LimitDecision:
+    allowed: bool
+    estimate_rub: float
+    left_rub: float | None
+    limit_rub: int
+    unknown_price: bool
+
+    def payload(self) -> dict:
+        return {"error": "over_limit", "estimate_rub": round(self.estimate_rub), "left_rub": round(self.left_rub or 0),
+                "limit_rub": self.limit_rub}
+
+
+def check_start(db, *, estimate_rub: float, unknown_price: bool, override: bool, is_admin: bool,
+                actor_uid: str, what: str, now: datetime | None = None) -> LimitDecision:
+    """Можно ли начать платный прогон. Начатые лимитом не останавливаются (решение владельца):
+    сверяется только старт. «Сверх лимита» — только администратор и всегда в журнал."""
+    if override and not is_admin:
+        raise PermissionError("сверх лимита запускает только администратор")
+    summary = month_summary(db, month_key(now or utcnow_naive()))
+    limit = int(summary["limit_rub"] or 0)
+    estimate = float(estimate_rub or 0)
+    if not limit:
+        return LimitDecision(True, estimate, None, 0, unknown_price)
+    left = float(summary["left_rub"] or 0)
+    if estimate <= left and left > 0:
+        return LimitDecision(True, estimate, left, limit, unknown_price)
+    decision = LimitDecision(False, estimate, left, limit, unknown_price)
+    if override:
+        db.add(AuditLog(user_id=actor_uid, entity_type="spend_limit", entity_id=month_key(now or utcnow_naive()),
+                        action="override", payload_json=json.dumps({"what": what, **decision.payload()}, ensure_ascii=False)))
+        db.flush()
+        return LimitDecision(True, estimate, left, limit, unknown_price)
+    return decision
+
+
+def warn_thresholds(db, now: datetime, send) -> int:
+    """Письмо владельцу при переходе месяца через 80 % и 100 % лимита — по одному на порог.
+    Отметка «до какого порога уже написали» хранится в настройках студии, поэтому повторный
+    проход в ту же минуту и рестарт воркера второго письма не дают."""
+    from app.services.studio_settings import studio_settings
+
+    row = studio_settings(db)
+    key = month_key(now)
+    summary = month_summary(db, key)
+    limit = int(summary["limit_rub"] or 0)
+    if not limit:
+        return 0
+    share = summary["total_rub"] / limit
+    reached = 100 if share >= 1 else 80 if share >= 0.8 else 0
+    month, _, done = str(row.spend_warned_month or "").partition(":")
+    already = int(done or 0) if month == key else 0
+    if reached <= already:
+        return 0
+    text = (f"Траты на нейросети за месяц — {summary['total_rub']:,.0f} ₽ из {limit:,} ₽ ({reached} % лимита)."
+            .replace(",", " "))
+    if reached >= 100:
+        text += " Новые платные прогоны не запустятся без «сверх лимита»."
+    send(text)
+    row.spend_warned_month = f"{key}:{reached}"
+    db.flush()
+    return 1
+
+
+# --- сметы запуска --------------------------------------------------------------------
+#: токенов на слово книги (замер прод-данных 07.10: разметка 5,6–8,5 вход / 1,3–2,3 выход,
+#: персонажи ≈ 9,7 / 1,2). Смета берёт верх: заниженная смета хуже для бюджета.
+TOKENS_PER_WORD = {"attribution": (8.5, 2.4), "characters": (10.0, 1.2)}
+
+
+def unknown_for(db, steps) -> bool:
+    """Есть ли среди моделей шагов модель без цены — тогда её траты не войдут в лимит."""
+    from app.services.step_models import step_model
+
+    return any(price_for(db, *step_model(step)) is None for step in steps)
+
+
+def _book_words(db, book_id: str) -> int:
+    import re
+
+    from app.models import ScriptChapter
+    from app.v2.models import V2Segment
+
+    word = re.compile(r"\w+")
+    texts = [t for (t,) in db.query(V2Segment.text).filter(V2Segment.book_id == book_id).all()]
+    if not texts:
+        texts = [t for (t,) in db.query(ScriptChapter.source_text).filter(ScriptChapter.book_id == book_id).all()]
+    return sum(len(word.findall(t or "")) for t in texts)
+
+
+def estimate_markup(db, book, steps) -> tuple[float, bool]:
+    """(рубли, есть ли неизвестная цена) для прогона разметки книги по выбранным шагам."""
+    from app.models import Character
+    from app.services.step_models import step_model
+    from app.v2 import model_catalog
+
+    words = _book_words(db, book.id)
+    total, unknown = 0.0, False
+    parts = []
+    if "attribute" in steps:
+        chosen = model_catalog.for_book(book)
+        parts.append(("attribution", chosen.provider, chosen.model))
+    if "cast" in steps and not db.query(Character.id).filter(Character.book_id == book.id).first():
+        parts.append(("characters", *step_model("characters")))
+    for step, provider, model in parts:
+        per_in, per_out = TOKENS_PER_WORD[step]
+        rub = to_rub(db, price_for(db, provider, model), input_units=int(words * per_in),
+                     output_units=int(words * per_out))
+        if rub is None:
+            unknown = True
+        else:
+            total += rub
+    return round(total, 2), unknown
+
+
+def estimate_ambient(db, items) -> tuple[float, bool]:
+    """Музыка — секунды сцен × цена звука; текст сцены без надёжной сметы — помечается."""
+    from app.services.step_models import step_model
+
+    seconds = sum(int(item.get("seconds") or 0) for item in items)
+    rub = to_rub(db, price_for(db, *step_model("ambient_audio")), input_units=seconds, output_units=0)
+    return (round(rub, 2) if rub is not None else 0.0), rub is None or unknown_for(db, ["ambient_text"])

@@ -241,6 +241,14 @@ class TestSceneRoute:
         assert response.status_code == 200 and response.json() == {"ok": True, "run_id": "run-1"}
         assert api.calls == [("c1", ids[1], "soft harp")]
 
+    def test_an_exhausted_month_refuses_a_scene_too(self, editor, api, factory):  # noqa: F811
+        """Иначе лимит обходился бы перегенерацией по одной сцене."""
+        from tests.spend_helpers import exhaust_month
+        ids = _scenes(factory)
+        exhaust_month(factory)
+        response = editor.post(f"/api/v2/sound/markers/{ids[1]}/ambient", json={"prompt": "harp"})
+        assert response.status_code == 409 and api.calls == []
+
     def test_no_prompt_means_a_fresh_one(self, editor, api, factory):  # noqa: F811
         ids = _scenes(factory)
 
@@ -615,3 +623,11 @@ class TestSceneCarriesItsAmbient:
             db.commit()
             marker_id = row.id
         assert "ambient" not in self._markers(factory)[marker_id]
+
+
+def test_an_exhausted_month_refuses_ambient(factory, api, editor):
+    from tests.spend_helpers import exhaust_month
+    _scenes(factory) if "_scenes" in globals() else None
+    exhaust_month(factory)
+    response = editor.post("/api/v2/chapters/c1/ambient")
+    assert response.status_code == 409 and response.json()["error"] == "over_limit" and api.calls == []

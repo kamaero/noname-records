@@ -205,3 +205,21 @@ def test_stop_on_a_queued_run_stops_it_at_once(api_db):
     assert client.post(f"/api/v2/books/{BOOK}/consilium/stop").json() == {"ok": True, "stopped": True}
     run = client.get(f"/api/v2/books/{BOOK}/consilium").json()["run"]
     assert run["status"] == "stopped" and run["error"] == "остановлен вручную"
+
+
+def test_an_exhausted_month_refuses_the_run_with_the_numbers(api_db):
+    from tests.spend_helpers import exhaust_month
+    factory, queued = api_db
+    exhaust_month(factory)
+    response = _client(["author"]).post(f"/api/v2/books/{BOOK}/consilium/run", json={"mode": "reread"})
+    assert response.status_code == 409 and response.json()["error"] == "over_limit"
+    assert response.json()["left_rub"] == 0 and response.json()["limit_rub"] == 1 and queued == []
+
+
+def test_only_an_admin_runs_over_the_limit(api_db):
+    from tests.spend_helpers import exhaust_month
+    factory, queued = api_db
+    exhaust_month(factory)
+    path = f"/api/v2/books/{BOOK}/consilium/run?override_limit=1"
+    assert _client(["author"]).post(path, json={"mode": "reread"}).status_code == 403
+    assert _client(["admin"]).post(path, json={"mode": "reread"}).status_code == 200 and queued

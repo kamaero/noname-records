@@ -620,3 +620,10 @@ def test_deciding_a_pair_apart_does_not_touch_sessions(editor_client, api_db):
 
     assert response.status_code == 200 and response.json()["status"] == "apart"
     assert not _outdated(api_db, "c1")
+
+
+def test_an_exhausted_month_refuses_sound_runs(api_db, editor_client):
+    from tests.spend_helpers import exhaust_month
+    exhaust_month(api_db)
+    assert editor_client.post(f"/api/v2/books/{BOOK}/sound/run", json={"mode": "all"}).status_code == 409
+    assert editor_client.post("/api/v2/chapters/c1/sound/run").status_code == 409
