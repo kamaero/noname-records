@@ -307,3 +307,34 @@ def estimate_ambient(db, items) -> tuple[float, bool]:
     seconds = sum(int(item.get("seconds") or 0) for item in items)
     rub = to_rub(db, price_for(db, *step_model("ambient_audio")), input_units=seconds, output_units=0)
     return (round(rub, 2) if rub is not None else 0.0), rub is None or unknown_for(db, ["ambient_text"])
+
+
+def price_view(db, provider: str, model: str) -> dict:
+    """Цена модели для страницы: откуда она — вписана студией, встроенная или неизвестна."""
+    row = db.get(ModelPrice, (provider, model))
+    price = price_for(db, provider, model)
+    source = "studio" if row is not None else ("builtin" if price is not None else "none")
+    if price is None:
+        return {"source": "none", "unit": "", "price_in": None, "price_out": None, "price_unit": None, "currency": ""}
+    return {"source": source, "unit": price.unit, "price_in": price.price_in, "price_out": price.price_out,
+            "price_unit": price.price_unit, "currency": price.currency}
+
+
+def months(db) -> list[str]:
+    """Месяцы, за которые есть траты, свежие первыми; текущий — всегда."""
+    from sqlalchemy import func
+
+    first = db.query(func.min(SpendEntry.created_at)).scalar()
+    current = month_key(utcnow_naive())
+    if first is None:
+        return [current]
+    out, key = [], current
+    stop = month_key(first)
+    while True:
+        out.append(key)
+        if key <= stop or len(out) >= 120:
+            break
+        year, month = (int(p) for p in key.split("-"))
+        year, month = (year - 1, 12) if month == 1 else (year, month - 1)
+        key = f"{year:04d}-{month:02d}"
+    return out

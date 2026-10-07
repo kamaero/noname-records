@@ -150,7 +150,109 @@ async def api_ai_step(request: Request, step: str):
         return next(item for item in step_models.steps_view(db) if item["step"] == step)
 
 
+async def api_spend(request: Request):
+    if (error := _gate(request)) is not None:
+        return error
+    from app.services import spend
+
+    def read():
+        with SessionLocal() as db:
+            listed = spend.months(db)
+            month = str(request.query_params.get("month") or listed[0])
+            if month not in listed:
+                return None
+            return {**spend.month_summary(db, month), "months": listed}
+
+    body = await run_in_threadpool(read)
+    return body if body is not None else _bad("Нет такого месяца.", 404)
+
+
+async def api_spend_limit(request: Request):
+    if (error := _gate(request)) is not None:
+        return error
+    from app.services.studio_settings import studio_settings
+
+    value = (await request.json() or {}).get("limit_rub")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or value != int(value):
+        return _bad("Лимит — целое число рублей, 0 — без лимита.")
+    _uid, name = _actor(request)
+    with SessionLocal() as db:
+        row = studio_settings(db)
+        before = int(row.monthly_limit_rub or 0)
+        row.monthly_limit_rub, row.updated_by = int(value), name
+        _log(db, request, "spend_limit", "monthly", "limit_set", {"from": before, "to": int(value)})
+        db.commit()
+    return {"ok": True, "limit_rub": int(value)}
+
+
+def _price_fields(body: dict):
+    """Проверенные поля цены или текст ошибки."""
+    provider, model = str(body.get("provider") or "").strip(), str(body.get("model") or "").strip()
+    unit, currency = str(body.get("unit") or ""), str(body.get("currency") or "")
+    if not provider or not model:
+        return "Укажите провайдера и модель."
+    if currency not in ("RUB", "USD"):
+        return "Валюта — RUB или USD."
+
+    def number(name):
+        value = body.get(name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            raise ValueError(name)
+        return float(value)
+    try:
+        if unit == "tokens":
+            return {"provider": provider, "model": model, "unit": unit, "currency": currency,
+                    "price_in": number("price_in"), "price_out": number("price_out"), "price_unit": None}
+        if unit == "seconds":
+            return {"provider": provider, "model": model, "unit": unit, "currency": currency,
+                    "price_in": None, "price_out": None, "price_unit": number("price_unit")}
+    except ValueError:
+        return "Цена — неотрицательное число."
+    return "Единица — tokens или seconds."
+
+
+async def api_price_save(request: Request):
+    if (error := _gate(request)) is not None:
+        return error
+    from app.models import ModelPrice
+
+    fields = _price_fields(await request.json() or {})
+    if isinstance(fields, str):
+        return _bad(fields)
+    _uid, name = _actor(request)
+    with SessionLocal() as db:
+        row = db.get(ModelPrice, (fields["provider"], fields["model"])) or ModelPrice(
+            provider=fields["provider"], model=fields["model"])
+        for key in ("unit", "price_in", "price_out", "price_unit", "currency"):
+            setattr(row, key, fields[key])
+        row.updated_by = name
+        db.add(row)
+        _log(db, request, "model_price", f"{fields['provider']}:{fields['model']}"[:36], "price_set", fields)
+        db.commit()
+    return {"ok": True}
+
+
+async def api_price_delete(request: Request):
+    if (error := _gate(request)) is not None:
+        return error
+    from app.models import ModelPrice
+
+    provider = str(request.query_params.get("provider") or "")
+    model = str(request.query_params.get("model") or "")
+    with SessionLocal() as db:
+        row = db.get(ModelPrice, (provider, model))
+        if row is not None:
+            db.delete(row)
+            _log(db, request, "model_price", f"{provider}:{model}"[:36], "price_reset", {})
+            db.commit()
+    return {"ok": True}
+
+
 def register_ai_settings_routes(app) -> None:
+    app.add_api_route("/api/settings/spend", api_spend, methods=["GET"])
+    app.add_api_route("/api/settings/spend/limit", api_spend_limit, methods=["PUT"])
+    app.add_api_route("/api/settings/ai/prices", api_price_save, methods=["PUT"])
+    app.add_api_route("/api/settings/ai/prices", api_price_delete, methods=["DELETE"])
     app.add_api_route("/api/settings/ai", api_ai_settings, methods=["GET"])
     app.add_api_route("/api/settings/ai/balances", api_ai_balances, methods=["POST"])
     app.add_api_route("/api/settings/ai/keys/{provider}", api_ai_key_save, methods=["PUT"])
