@@ -80,3 +80,11 @@ def test_a_step_takes_only_its_providers(factory):
 
 def test_an_empty_key_is_refused(factory):
     assert _client(["admin"]).put("/api/settings/ai/keys/openai", json={"key": "   "}).status_code == 400
+
+
+def test_providers_with_a_key_include_env_only_ones(factory, monkeypatch):
+    """ASR на Azure: ключ только в .env — страница не должна кричать «нет ключа»."""
+    monkeypatch.setattr(provider_keys, "env_value", lambda name, default="": "az-key" if name == "AZURE_SPEECH_KEY" else default)
+    body = _client(["admin"]).get("/api/settings/ai").json()
+    assert "azure" in body["keyed"] and "deepseek" not in body["keyed"]
+    assert "az-key" not in str(body)

@@ -1616,6 +1616,8 @@ export interface AiStepOption {
 export interface AiSettings {
   providers: AiProvider[];
   steps: AiStep[];
+  /** у каких провайдеров есть ключ — с сайта или из .env (значения не приходят) */
+  keyed: string[];
 }
 
 export interface AiBalance {

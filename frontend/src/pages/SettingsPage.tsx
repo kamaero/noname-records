@@ -26,6 +26,13 @@ const STATUS_WORDS: Record<string, string> = {
   error: "ошибка проверки",
 };
 
+function checkedAt(iso: string): string {
+  const moment = new Date(iso);
+  return Number.isNaN(moment.getTime())
+    ? ""
+    : moment.toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+}
+
 function sourceText(item: AiProvider): string {
   if (item.unreadable) return "Ключ сохранён, но не читается — введите его заново.";
   if (item.source === "site") return `на сайте · …${item.last4}`;
@@ -59,6 +66,7 @@ function KeyRow({ item, onSaved }: { item: AiProvider; onSaved: () => void }) {
         <strong>{item.label}</strong>
         <span className="st-key-source">{sourceText(item)}</span>
         {status ? <span className={`st-status st-status--${item.check_status}`}>{status}</span> : null}
+        {item.checked_at ? <span className="st-key-source">проверен {checkedAt(item.checked_at)}</span> : null}
       </div>
       {editing ? (
         <form
@@ -169,6 +177,7 @@ function StepRow({ step, keyed, onSaved }: { step: AiStep; keyed: Set<string>; o
 export function SettingsPage({ me }: { me: MeResponse }) {
   const { isAdmin } = roleAccess(me);
   const client = useQueryClient();
+  const { pushToast } = useToast();
   const query = useQuery({
     queryKey: ["settings-ai"],
     queryFn: () => apiGet<AiSettings>("/api/settings/ai"),
@@ -178,13 +187,15 @@ export function SettingsPage({ me }: { me: MeResponse }) {
   const refreshBalances = useMutation({
     mutationFn: () => apiPostJson<{ balances: AiBalance[] }>("/api/settings/ai/balances", {}),
     onSuccess: (data) => setBalances(data.balances),
+    onError: (error) =>
+      pushToast({ tone: "error", title: "Балансы не обновились", detail: describeApiError(error, "Попробуйте ещё раз.") }),
   });
   const reload = () => client.invalidateQueries({ queryKey: ["settings-ai"] });
 
   if (!isAdmin) return <div className="panel panel-pad">Настройки доступны администратору.</div>;
   if (query.isError) return <div className="panel panel-pad">{describeApiError(query.error, "Не удалось загрузить настройки.")}</div>;
   const data = query.data;
-  const keyed = new Set((data?.providers || []).filter((p) => p.source !== "none").map((p) => p.provider));
+  const keyed = new Set(data?.keyed || []);
 
   return (
     <div className="st-page">
@@ -193,7 +204,9 @@ export function SettingsPage({ me }: { me: MeResponse }) {
         <>
           <section className="panel st-section">
             <h2>Ключи</h2>
-            <p className="st-lead">Ключ, введённый здесь, главнее ключа из .env. Работает сразу, без перезапуска.</p>
+            <p className="st-lead">
+              Ключ, введённый здесь, главнее ключа из .env. Перезапуск не нужен: сайт видит его сразу, фоновые прогоны — в течение 30 секунд.
+            </p>
             <ul className="st-list">
               {data.providers.map((item) => <KeyRow key={item.provider} item={item} onSaved={reload} />)}
             </ul>
@@ -223,7 +236,7 @@ export function SettingsPage({ me }: { me: MeResponse }) {
           <section className="panel st-section">
             <h2>Модели</h2>
             <p className="st-lead">
-              Новая модель работает со следующего прогона. Смена модели чтеца консилиума не перечитывает уже прочитанные главы.
+              Новая модель работает со следующего прогона, запущенного через 30 секунд и позже. Смена модели чтеца консилиума не перечитывает уже прочитанные главы.
             </p>
             <ul className="st-list">
               {data.steps.map((step) => <StepRow key={step.step} step={step} keyed={keyed} onSaved={reload} />)}
