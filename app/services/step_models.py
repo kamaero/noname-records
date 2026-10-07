@@ -132,6 +132,12 @@ def _options(step: Step) -> list[dict]:
     return [{"provider": provider, "model": model, "label": model, "price": "", "trains_on_text": False, "note": ""}]
 
 
+def _price(db, provider: str, model: str) -> dict:
+    from app.services.spend import price_view
+
+    return price_view(db, provider, model)
+
+
 def steps_view(db) -> list[dict]:
     out = []
     for step in STEPS.values():
@@ -140,5 +146,6 @@ def steps_view(db) -> list[dict]:
         out.append({"step": step.key, "title": step.title, "provider": provider, "model": model,
                     "source": "site" if row is not None and row.model else "default",
                     "default": {"provider": _default(step)[0], "model": _default(step)[1]},
-                    "providers": list(step.providers), "options": _options(step)})
+                    "providers": list(step.providers), "options": _options(step),
+                    "price": _price(db, provider, model)})
     return out
