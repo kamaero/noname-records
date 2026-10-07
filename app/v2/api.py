@@ -21,7 +21,9 @@ from starlette.background import BackgroundTask
 from app.api._helpers import bad_request_response, error_response, forbidden_response, not_found_response, unauthorized_response
 from app.auth import can_react_to_auditions, has_any_role, is_authenticated as _is_authenticated, session_payload, session_roles
 from app.constants import DICTOR_ROLES
+from app.api._spend_gate import limit_gate
 from app.db import SessionLocal
+from app.services import spend
 from app.constants import ChapterStatus
 from sqlalchemy import func
 
@@ -289,10 +291,15 @@ async def api_v2_consilium_run(request: Request, book_id: str):
             credits = consilium_engine.read_credits()
             blocked = _consilium_blocked(db, book, credits=credits,
                                          estimate_rub=plan["estimate_rub"][mode])
+            gate = None if blocked else limit_gate(
+                db, request, estimate_rub=plan["estimate_rub"][mode], what="консилиум",
+                unknown_price=spend.unknown_for(db, ("consilium_reader_1", "consilium_reader_2", "consilium_arbiter")))
             db.commit()
-            return book.id, plan, blocked
+            return book.id, plan, blocked or gate
 
     found_id, plan, blocked = await asyncio.to_thread(plan_and_check)
+    if isinstance(blocked, JSONResponse):
+        return blocked
     if found_id is None:
         return not_found_response("book_not_found")
     if plan["chapters_total"] == 0:
@@ -1518,6 +1525,11 @@ async def api_v2_run(request: Request, book_id: str):
         if running is not None:
             db.commit()
             return error_response("run_in_progress", status_code=409, extra={"run_id": running.id, "status": running.status})
+        estimate, unknown = spend.estimate_markup(db, book, steps)
+        gate = limit_gate(db, request, estimate_rub=estimate, unknown_price=unknown, what="разметка книги")
+        if gate is not None:
+            db.commit()
+            return gate
         run = create_queued_run(db, book.id)
         book.pipeline_mode = V2_MODE
         book.status = "processing"

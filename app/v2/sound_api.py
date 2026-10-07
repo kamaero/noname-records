@@ -13,7 +13,9 @@ import asyncio
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from app.api._spend_gate import limit_gate
 from app.db import SessionLocal
+from app.services import spend
 from app.models import ScriptBook, ScriptChapter
 from app.v2.api import (
     _can_edit,
@@ -291,10 +293,14 @@ async def api_v2_sound_run(request: Request, book_id: str):
                 return book.id, plan, ""
             credits = sound_engine.read_credits()
             blocked = _sound_blocked(db, book, credits=credits, estimate_rub=plan["estimate_rub"][mode])
+            gate = None if blocked else limit_gate(db, request, estimate_rub=plan["estimate_rub"][mode],
+                                                   unknown_price=spend.unknown_for(db, ("sound",)), what="звуковая разметка")
             db.commit()
-            return book.id, plan, blocked
+            return book.id, plan, blocked or gate
 
     found_id, plan, blocked = await asyncio.to_thread(plan_and_check)
+    if isinstance(blocked, JSONResponse):
+        return blocked
     if found_id is None:
         return not_found_response("book_not_found")
     if plan["chapters_total"] == 0:
@@ -328,10 +334,14 @@ async def api_v2_sound_chapter_run(request: Request, chapter_id: str):
             plan = sound_engine.estimate(db, book.id, root=sound_engine.ARTIFACT_ROOT, chapter_id=chapter.id)
             credits = sound_engine.read_credits()
             blocked = _sound_blocked(db, book, credits=credits, estimate_rub=plan["estimate_rub"]["all"])
+            gate = None if blocked else limit_gate(db, request, estimate_rub=plan["estimate_rub"]["all"],
+                                                   unknown_price=spend.unknown_for(db, ("sound",)), what="звуковая разметка главы")
             db.commit()
-            return book.id, chapter.id, plan, blocked
+            return book.id, chapter.id, plan, blocked or gate
 
     found_book_id, found_chapter_id, plan, blocked = await asyncio.to_thread(plan_and_check)
+    if isinstance(blocked, JSONResponse):
+        return blocked
     if found_book_id is None:
         return not_found_response("chapter_not_found")
     if plan["chapters_total"] == 0:

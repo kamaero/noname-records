@@ -138,3 +138,11 @@ def test_stop_raises_the_flag(monkeypatch):
         assert db.get(ScriptBook, BOOK).stop_requested == "true"
     assert client.get(f"/api/v2/books/{BOOK}/progress").json()["stop_requested"] is True
     assert client.post("/api/v2/books/nope/stop").status_code == 404
+
+
+def test_an_exhausted_month_refuses_a_book_run(monkeypatch):
+    from tests.spend_helpers import exhaust_month
+    SessionLocal, calls = _patched(monkeypatch)
+    exhaust_month(SessionLocal)
+    response = _client(["author"]).post(f"/api/v2/books/{BOOK}/run", json={"steps": ["attribute"]})
+    assert response.status_code == 409 and response.json()["error"] == "over_limit" and calls == []

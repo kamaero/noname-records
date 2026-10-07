@@ -16,7 +16,9 @@ import asyncio
 from fastapi import Request, status
 from fastapi.responses import FileResponse, JSONResponse, Response
 
+from app.api._spend_gate import limit_gate
 from app.db import SessionLocal
+from app.services import spend
 from app.models import ScriptChapter
 from app.v2.api import (
     _can_edit,
@@ -95,10 +97,17 @@ def api_v2_ambient_chapter(request: Request, chapter_id: str):
         if _no_key():
             return bad_request_response("no_key")
         blocked = _ambient_blocked(db, chapter)
-        if not blocked and not ambient_plan(db, chapter.id):
+        items = [] if blocked else ambient_plan(db, chapter.id)
+        if not blocked and not items:
             blocked = "nothing_to_do"
+        gate = None
+        if not blocked:
+            estimate, unknown = spend.estimate_ambient(db, items)
+            gate = limit_gate(db, request, estimate_rub=estimate, unknown_price=unknown, what="эмбиент главы")
         found_id = chapter.id
         db.commit()  # мёртвый прогон, отмеченный проверкой, отмечается и в базе
+    if gate is not None:
+        return gate
     if blocked:
         return _refusal(blocked)
     run_id = enqueue_ambient(found_id)
@@ -196,10 +205,17 @@ async def api_v2_ambient_scene(request: Request, marker_id: str):
                 # молча, а кнопка сказала бы «запущено».
                 if scene is None or scene["span"] is None:
                     blocked = "not_placed"
+                else:
+                    # одна сцена — тоже новая платная работа: без проверки лимит обходился бы по сцене
+                    estimate, unknown = spend.estimate_ambient(db, [scene])
+                    blocked = limit_gate(db, request, estimate_rub=estimate, unknown_price=unknown,
+                                         what="эмбиент сцены") or ""
             db.commit()
             return (chapter.id, marker.id), blocked
 
     found, blocked = await asyncio.to_thread(check)
+    if isinstance(blocked, JSONResponse):
+        return blocked
     if blocked == "not_found":
         return not_found_response()
     if blocked:
