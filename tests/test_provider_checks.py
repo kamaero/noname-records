@@ -75,3 +75,16 @@ def test_a_200_that_is_not_the_providers_answer_is_not_working(resp):
 def test_insufficient_balance_in_the_body_is_no_money():
     resp = Resp(400, {"error": {"message": "Insufficient Balance"}}, '{"error":{"message":"Insufficient Balance"}}')
     assert pc.check_key("deepseek", "k", http=Http(resp)).status == "no_money"
+
+
+@pytest.mark.parametrize("provider,payload", [
+    ("deepseek", {}),
+    ("deepseek", {"balance_infos": [{"currency": "CNY", "total_balance": "10"}]}),
+    ("openrouter", {"data": {}}),
+    ("elevenlabs", {"tier": "free"}),
+    ("deepseek", {"balance_infos": [{"currency": "USD", "total_balance": "NaN"}]}),
+    ("routerai", {"data": {"credits": "Infinity"}}),
+])
+def test_junk_or_unknown_balance_is_no_data_not_zero(provider, payload):
+    got = pc.balance(provider, "k", http=Http(Resp(200, payload)))
+    assert got["available"] is False and got["amount"] is None and got["detail"] == "нет данных"

@@ -51,8 +51,10 @@ async def api_ai_settings(request: Request):
     if (error := _gate(request)) is not None:
         return error
     with SessionLocal() as db:
+        # у кого ключ есть (без значения) — в том числе у тех, кто задаётся только в .env (Azure)
+        keyed = sorted(name for name in provider_keys.ENV_NAMES if provider_keys.provider_key(name))
         return {"providers": [_provider_view(db, name) for name in provider_keys.PROVIDERS],
-                "steps": step_models.steps_view(db)}
+                "steps": step_models.steps_view(db), "keyed": keyed}
 
 
 def _check_and_record(name: str) -> dict:

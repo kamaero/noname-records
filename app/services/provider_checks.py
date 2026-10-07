@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import requests
@@ -79,17 +80,28 @@ _BALANCE_URLS = {"deepseek": "https://api.deepseek.com/user/balance",
                  "elevenlabs": "https://api.elevenlabs.io/v1/user/subscription"}
 
 
+def _number(value) -> float:
+    """Только конечное число: отсутствующее поле или NaN — «нет данных», а не ноль."""
+    number = float(value)  # None/мусор → TypeError/ValueError
+    if not math.isfinite(number):
+        raise ValueError("не число")
+    return number
+
+
 def _amount(provider: str, data: dict) -> tuple[float, str]:
     if provider == "deepseek":
         info = (data.get("balance_infos") or [{}])[0]
-        return float(info.get("total_balance") or 0), "$" if info.get("currency") == "USD" else "₽"
+        unit = {"USD": "$", "CNY": None}.get(info.get("currency"), None)
+        if unit is None:
+            raise ValueError("валюта не та")  # юани в долларах не показать без курса
+        return _number(info["total_balance"]), unit
     if provider == "openrouter":
-        d = data.get("data") or {}
-        return float(d.get("total_credits") or 0) - float(d.get("total_usage") or 0), "$"
+        d = data["data"]
+        return _number(d["total_credits"]) - _number(d["total_usage"]), "$"
     if provider == "routerai":
         # то же поле, что читает счётчик прогонов (`routerai_credits`)
-        return float((data.get("data") or {})["credits"]), "₽"
-    return float(data.get("character_limit") or 0) - float(data.get("character_count") or 0), "символов"
+        return _number(data["data"]["credits"]), "₽"
+    return _number(data["character_limit"]) - _number(data["character_count"]), "символов"
 
 
 def balance(provider: str, key: str, *, http=requests) -> dict:
