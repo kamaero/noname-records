@@ -46,6 +46,15 @@ def upgrade() -> None:
             sa.Column("updated_by", sa.String(120), nullable=False, server_default=""),
             sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.current_timestamp()),
         )
+    if "spend_holds" not in tables:
+        op.create_table(
+            "spend_holds",
+            sa.Column("id", sa.String(36), primary_key=True),
+            sa.Column("created_at", sa.DateTime(), nullable=False),
+            sa.Column("estimate_rub", sa.Float(), nullable=False, server_default="0"),
+            sa.Column("what", sa.String(80), nullable=False, server_default=""),
+        )
+        op.create_index("ix_spend_holds_created_at", "spend_holds", ["created_at"])
     if "studio_settings" in tables:
         columns = {c["name"] for c in inspector.get_columns("studio_settings")}
         if "monthly_limit_rub" not in columns:
@@ -55,6 +64,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_index("ix_spend_holds_created_at", table_name="spend_holds")
+    op.drop_table("spend_holds")
     op.drop_table("model_prices")
     op.drop_index("ix_spend_entries_created_at", table_name="spend_entries")
     op.drop_table("spend_entries")

@@ -21,4 +21,13 @@ def limit_gate(db, request: Request, *, estimate_rub: float, unknown_price: bool
         return error_response("override_admin_only", status_code=403)
     if not decision.allowed:
         return JSONResponse(decision.payload(), status_code=409)
+    if decision.unknown_price:
+        request.state.spend_warning = ("У модели этого шага нет цены: траты прогона не войдут в лимит. "
+                                       "Впишите цену в «Настройки → Нейросети».")
     return None
+
+
+def with_warning(request: Request, body: dict) -> dict:
+    """Успешный ответ запуска с предупреждением гейта, если оно было."""
+    warning = getattr(request.state, "spend_warning", "")
+    return {**body, "spend_warning": warning} if warning else body

@@ -49,6 +49,12 @@ def main() -> int:
     if created:
         print(f"создаю недостающие таблицы v2: {', '.join(created)}")
     SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    # Журнал трат — в ту же базу, что и прогон: иначе вызовы ушли бы в базу из DATABASE_URL.
+    # Месячный лимит здесь не проверяется: скрипт запускает тот, у кого есть доступ к серверу.
+    from app.services import spend
+
+    spend.SessionLocal = SessionLocal
+    print("месячный лимит трат скриптом не проверяется; траты пишутся в журнал этой базы")
 
     with SessionLocal() as db:
         book = db.get(ScriptBook, args.book_id)

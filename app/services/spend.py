@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -20,12 +21,16 @@ class Price:
     price_out: float | None    # за 1 млн выходных токенов
     price_unit: float | None   # за минуту (unit == seconds)
     currency: str              # RUB | USD
+    #: во сколько раз дороже в пиковые часы провайдера (DeepSeek — вдвое, по каталогу);
+    #: вписанная студией цена — одна на все часы
+    peak_multiplier: float = 1.0
 
 
 def _builtin() -> dict[tuple[str, str], Price]:
     from app.v2.model_catalog import CATALOG
 
-    prices = {(item.provider, item.model): Price("tokens", item.price_in, item.price_out, None, item.currency)
+    prices = {(item.provider, item.model): Price("tokens", item.price_in, item.price_out, None, item.currency,
+                                                 float(item.peak_multiplier or 1.0))
               for item in CATALOG}
     # https://openai.com/api/pricing — Whisper: $0.006 за минуту
     prices[("openai", "whisper-1")] = Price("seconds", None, None, 0.006, "USD")
@@ -50,7 +55,7 @@ def _usd_rate(db) -> float:
     return float(studio_settings(db).usd_rub_rate or 0.0)
 
 
-def to_rub(db, price: Price | None, *, input_units: int, output_units: int) -> float | None:
+def to_rub(db, price: Price | None, *, input_units: int, output_units: int, peak: bool = False) -> float | None:
     if price is None:
         return None
     if price.unit == "seconds":
@@ -61,6 +66,8 @@ def to_rub(db, price: Price | None, *, input_units: int, output_units: int) -> f
         if price.price_in is None or price.price_out is None:
             return None
         amount = input_units / 1_000_000 * price.price_in + output_units / 1_000_000 * price.price_out
+    if peak:
+        amount *= price.peak_multiplier
     if price.currency == "USD":
         rate = _usd_rate(db)
         if rate <= 0:
@@ -72,12 +79,16 @@ def to_rub(db, price: Price | None, *, input_units: int, output_units: int) -> f
 
 
 def record(db, *, step: str, provider: str, model: str, unit: str, input_units: int, output_units: int,
-           book_id: str = "", chapter_id: str = "", run_id: str = "") -> SpendEntry:
+           book_id: str = "", chapter_id: str = "", run_id: str = "", now: datetime | None = None) -> SpendEntry:
+    from app.v2.model_catalog import is_peak
+
+    now = now or utcnow_naive()
     price = price_for(db, provider, model)
     if price is not None and price.unit != unit:
         price = None  # цена за минуты к токенам не прикладывается
-    rub = to_rub(db, price, input_units=int(input_units or 0), output_units=int(output_units or 0))
-    row = SpendEntry(step=step or "other", provider=provider, model=model, unit=unit,
+    rub = to_rub(db, price, input_units=int(input_units or 0), output_units=int(output_units or 0),
+                 peak=price is not None and price.peak_multiplier != 1.0 and is_peak(now))
+    row = SpendEntry(created_at=now, step=step or "other", provider=provider, model=model, unit=unit,
                      input_units=int(input_units or 0), output_units=int(output_units or 0),
                      book_id=book_id or "", chapter_id=chapter_id or "", run_id=run_id or "",
                      rub=rub, price_known=rub is not None)
@@ -99,30 +110,43 @@ def month_bounds(key: str) -> tuple[datetime, datetime]:
 
 
 def month_summary(db, key: str) -> dict:
+    """Месяц одним проходом базы: суммы и разбивки считает SQL, в память — только 50 последних.
+    Месяц разметки — десятки тысяч строк, а сводку зовёт каждый запуск и каждая страница."""
+    from sqlalchemy import case, func
+
     from app.services.studio_settings import studio_settings
 
+    drain_spool()
     start, end = month_bounds(key)
-    rows = (db.query(SpendEntry).filter(SpendEntry.created_at >= start, SpendEntry.created_at < end)
-            .order_by(SpendEntry.created_at.desc()).all())
-    total = sum(r.rub for r in rows if r.rub is not None)
-    by_step: dict[str, dict] = {}
-    by_provider: dict[str, dict] = {}
-    for r in rows:
-        for bucket, name in ((by_step, r.step), (by_provider, r.provider)):
-            item = bucket.setdefault(name, {"rub": 0.0, "calls": 0, "unknown_calls": 0})
-            item["calls"] += 1
-            if r.rub is None:
-                item["unknown_calls"] += 1
-            else:
-                item["rub"] += r.rub
+    in_month = (SpendEntry.created_at >= start, SpendEntry.created_at < end)
+    unknown = func.sum(case((SpendEntry.rub.is_(None), 1), else_=0))
+
+    def buckets(column) -> dict[str, dict]:
+        rows = db.query(column, func.coalesce(func.sum(SpendEntry.rub), 0.0), func.count(SpendEntry.id), unknown) \
+            .filter(*in_month).group_by(column).all()
+        return {name: {"rub": float(rub or 0), "calls": int(calls), "unknown_calls": int(unk or 0)}
+                for name, rub, calls, unk in rows}
+
+    by_step, by_provider = buckets(SpendEntry.step), buckets(SpendEntry.provider)
+    total = sum(item["rub"] for item in by_step.values())
+    rows = db.query(SpendEntry).filter(*in_month).order_by(SpendEntry.created_at.desc()).limit(50).all()
+    # Название книги — на момент показа; удалённая книга остаётся пустым названием, а строка
+    # журнала живёт (траты сохраняются и после удаления книги).
+    from app.models import ScriptBook
+
+    ids = {r.book_id for r in rows if r.book_id}
+    titles = {bid: (display or title or "") for bid, display, title in
+              db.query(ScriptBook.id, ScriptBook.display_title, ScriptBook.title).filter(ScriptBook.id.in_(ids)).all()} \
+        if ids else {}
     limit = int(studio_settings(db).monthly_limit_rub or 0)
     return {
-        "month": key, "total_rub": round(total, 2), "unknown_calls": sum(1 for r in rows if r.rub is None),
+        "month": key, "total_rub": round(total, 2),
+        "unknown_calls": sum(item["unknown_calls"] for item in by_step.values()),
         "limit_rub": limit, "left_rub": max(0.0, round(limit - total, 2)) if limit else None,
         "by_step": by_step, "by_provider": by_provider,
         "recent": [{"created_at": r.created_at.isoformat() + "Z", "step": r.step, "provider": r.provider,
-                    "model": r.model, "book_id": r.book_id, "unit": r.unit, "input_units": r.input_units,
-                    "output_units": r.output_units, "rub": r.rub} for r in rows[:50]],
+                    "model": r.model, "book_id": r.book_id, "book_title": titles.get(r.book_id, ""), "unit": r.unit, "input_units": r.input_units,
+                    "output_units": r.output_units, "rub": r.rub} for r in rows],
     }
 
 
@@ -150,24 +174,115 @@ def context(step: str, *, book_id: str = "", chapter_id: str = "", run_id: str =
         _CONTEXT.reset(token)
 
 
+#: сколько ждать чужую блокировку записи SQLite. Вызывающий часто сам держит транзакцию
+#: (разметка, распознавание): ждать его — значит ждать себя, 30 секунд и потерянную строку.
+LOCK_WAIT_MS = 2000
+
+
+@contextmanager
+def _short_wait(db):
+    if db.get_bind().dialect.name != "sqlite":
+        yield
+        return
+    from sqlalchemy import text
+
+    before = int(db.execute(text("PRAGMA busy_timeout")).scalar() or 0)
+    db.execute(text(f"PRAGMA busy_timeout = {int(LOCK_WAIT_MS)}"))
+    try:
+        yield
+    finally:
+        try:
+            db.rollback()
+            db.execute(text(f"PRAGMA busy_timeout = {before}"))
+        except Exception:  # noqa: BLE001 — соединение всё равно вернётся в пул и будет закрыто
+            logger.debug("spend: не вернул busy_timeout", exc_info=True)
+
+
+def _spool_path():
+    """Файл отложенных строк рядом с базой. Он переживает `os._exit` рабочего процесса RQ,
+    а фоновый поток с очередью — нет: строки умерли бы вместе с процессом задачи."""
+    from pathlib import Path
+
+    try:
+        bind = SessionLocal.kw.get("bind")
+        database = bind.url.database if bind.dialect.name == "sqlite" else None
+    except Exception:  # noqa: BLE001
+        return None
+    if not database or database == ":memory:":
+        return None
+    return Path(f"{database}-spend-spool.jsonl")
+
+
+def _write(db, fields: dict) -> None:
+    created = datetime.fromisoformat(fields["created_at"])
+    row = record(db, step=fields["step"], provider=fields["provider"], model=fields["model"], unit=fields["unit"],
+                 input_units=fields["input_units"], output_units=fields["output_units"], book_id=fields["book_id"],
+                 chapter_id=fields["chapter_id"], run_id=fields["run_id"], now=created)
+    if fields.get("estimated"):
+        # провайдер не сказал, сколько потратил: оценка токенов — не повод писать рубли
+        row.rub, row.price_known = None, False
+
+
+def drain_spool() -> int:
+    """Перенести отложенные строки в базу. Файл чистится только после удачного commit."""
+    import fcntl
+
+    path = _spool_path()
+    if path is None or not path.exists() or path.stat().st_size == 0:
+        return 0
+    try:
+        with open(path, "r+", encoding="utf-8") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            lines = [line for line in fh.read().splitlines() if line.strip()]
+            with SessionLocal() as db, _short_wait(db):
+                for line in lines:
+                    _write(db, json.loads(line))
+                db.commit()
+            fh.seek(0)
+            fh.truncate()
+            return len(lines)
+    except Exception:  # noqa: BLE001 — не вышло сейчас, выйдет при следующем обращении
+        logger.warning("spend: отложенные строки пока не перенесены", exc_info=True)
+        return 0
+
+
+def _spool(fields: dict) -> bool:
+    import fcntl
+
+    path = _spool_path()
+    if path is None:
+        return False
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            fh.write(json.dumps(fields, ensure_ascii=False) + "\n")
+        return True
+    except OSError:
+        return False
+
+
 def record_call(provider: str, model: str, *, unit: str, input_units: int, output_units: int = 0,
                 step: str | None = None, book_id: str = "", chapter_id: str = "", run_id: str = "",
                 estimated: bool = False) -> None:
-    """Записать вызов в журнал своей сессией. Сбой записи не роняет работу — только лог:
-    распознанный дубль или размеченная глава дороже строчки учёта."""
+    """Записать вызов в журнал своей сессией. Сбой записи не роняет работу: база занята —
+    строка ложится в файл рядом с базой и переносится при следующем обращении к журналу."""
     ctx = _CONTEXT.get()
+    fields = {"created_at": utcnow_naive().strftime("%Y-%m-%dT%H:%M:%S.%f"),  # время вызова, не ответа базы
+               "step": step or ctx.get("step") or "other",
+              "provider": provider, "model": model, "unit": unit, "input_units": int(input_units or 0),
+              "output_units": int(output_units or 0), "book_id": book_id or ctx.get("book_id", ""),
+              "chapter_id": chapter_id or ctx.get("chapter_id", ""), "run_id": run_id or ctx.get("run_id", ""),
+              "estimated": bool(estimated)}
+    drain_spool()
     try:
-        with SessionLocal() as db:
-            row = record(db, step=step or ctx.get("step") or "other", provider=provider, model=model, unit=unit,
-                         input_units=input_units, output_units=output_units,
-                         book_id=book_id or ctx.get("book_id", ""), chapter_id=chapter_id or ctx.get("chapter_id", ""),
-                         run_id=run_id or ctx.get("run_id", ""))
-            if estimated:
-                # провайдер не сказал, сколько потратил: оценка токенов — не повод писать рубли
-                row.rub, row.price_known = None, False
+        with SessionLocal() as db, _short_wait(db):
+            _write(db, fields)
             db.commit()
     except Exception:  # noqa: BLE001 — учёт не должен ронять платный вызов
-        logger.exception("spend: не записал вызов %s/%s", provider, model)
+        if _spool(fields):
+            logger.warning("spend: база занята, вызов %s/%s отложен в файл", provider, model)
+        else:
+            logger.exception("spend: не записал вызов %s/%s", provider, model)
 
 
 def provider_from_url(base_url: str) -> str:
@@ -180,9 +295,30 @@ def provider_from_url(base_url: str) -> str:
 
 
 # --- лимит ----------------------------------------------------------------------------
-import json  # noqa: E402
+import threading  # noqa: E402
 
-from app.models import AuditLog  # noqa: E402
+from app.models import AuditLog, SpendHold  # noqa: E402
+
+#: сколько держится смета запущенного прогона: книга размечается часами, а мёртвый
+#: прогон не должен занимать остаток месяца вечно
+HOLD_HOURS = 12
+#: проверка и резерв — одним шагом: два запроса в одну секунду иначе видят один остаток
+_START_LOCK = threading.Lock()
+
+
+def _held(db, now: datetime) -> float:
+    """Ещё не потраченное из смет недавних запусков. Траты после запуска гасят резерв, а не
+    считаются второй раз: что прогон уже потратил, сидит в сумме месяца."""
+    from sqlalchemy import func
+
+    since = max(now - timedelta(hours=HOLD_HOURS), month_bounds(month_key(now))[0])
+    holds = (db.query(SpendHold.created_at, SpendHold.estimate_rub).filter(SpendHold.created_at >= since)
+             .order_by(SpendHold.created_at).all())
+    if not holds:
+        return 0.0
+    spent = db.query(func.coalesce(func.sum(SpendEntry.rub), 0.0)).filter(
+        SpendEntry.created_at >= holds[0][0], SpendEntry.rub.is_not(None)).scalar()
+    return max(0.0, sum(float(e or 0) for _, e in holds) - float(spent or 0))
 
 
 @dataclass(frozen=True)
@@ -204,21 +340,27 @@ def check_start(db, *, estimate_rub: float, unknown_price: bool, override: bool,
     сверяется только старт. «Сверх лимита» — только администратор и всегда в журнал."""
     if override and not is_admin:
         raise PermissionError("сверх лимита запускает только администратор")
-    summary = month_summary(db, month_key(now or utcnow_naive()))
-    limit = int(summary["limit_rub"] or 0)
-    estimate = float(estimate_rub or 0)
-    if not limit:
-        return LimitDecision(True, estimate, None, 0, unknown_price)
-    left = float(summary["left_rub"] or 0)
-    if estimate <= left and left > 0:
+    now = now or utcnow_naive()
+    with _START_LOCK:
+        summary = month_summary(db, month_key(now))
+        limit = int(summary["limit_rub"] or 0)
+        estimate = float(estimate_rub or 0)
+        if not limit:
+            return LimitDecision(True, estimate, None, 0, unknown_price)
+        if estimate <= 0 and not unknown_price:
+            # бесплатный прогон (разбивка, ударения) лимит не трогает и при исчерпанном месяце
+            return LimitDecision(True, 0.0, None, limit, False)
+        left = max(0.0, round(float(summary["left_rub"] or 0) - _held(db, now), 2))
+        decision = LimitDecision(estimate <= left and left > 0, estimate, left, limit, unknown_price)
+        if not decision.allowed and not override:
+            return decision
+        if not decision.allowed:
+            db.add(AuditLog(user_id=actor_uid, entity_type="spend_limit", entity_id=month_key(now),
+                            action="override",
+                            payload_json=json.dumps({"what": what, **decision.payload()}, ensure_ascii=False)))
+        db.add(SpendHold(created_at=now, estimate_rub=estimate, what=str(what or "")[:80]))
+        db.commit()  # резерв должен быть виден следующему запросу до того, как он проверит остаток
         return LimitDecision(True, estimate, left, limit, unknown_price)
-    decision = LimitDecision(False, estimate, left, limit, unknown_price)
-    if override:
-        db.add(AuditLog(user_id=actor_uid, entity_type="spend_limit", entity_id=month_key(now or utcnow_naive()),
-                        action="override", payload_json=json.dumps({"what": what, **decision.payload()}, ensure_ascii=False)))
-        db.flush()
-        return LimitDecision(True, estimate, left, limit, unknown_price)
-    return decision
 
 
 def warn_thresholds(db, now: datetime, send) -> int:
@@ -243,7 +385,8 @@ def warn_thresholds(db, now: datetime, send) -> int:
             .replace(",", " "))
     if reached >= 100:
         text += " Новые платные прогоны не запустятся без «сверх лимита»."
-    send(text)
+    if not send(text):
+        return 0  # бот не ответил — попробуем следующим проходом, а не забудем порог
     row.spend_warned_month = f"{key}:{reached}"
     db.flush()
     return 1
@@ -255,11 +398,23 @@ def warn_thresholds(db, now: datetime, send) -> int:
 TOKENS_PER_WORD = {"attribution": (8.5, 2.4), "characters": (10.0, 1.2)}
 
 
+#: шаги, которые платят за минуты, а не за токены
+SECOND_STEPS = {"asr", "ambient_audio"}
+
+
+def _priced(db, provider: str, model: str, unit: str) -> bool:
+    """Посчитается ли вызов в рублях: цена есть, в нужной единице, и курс для долларов задан."""
+    price = price_for(db, provider, model)
+    return price is not None and price.unit == unit and \
+        to_rub(db, price, input_units=60, output_units=1) is not None
+
+
 def unknown_for(db, steps) -> bool:
-    """Есть ли среди моделей шагов модель без цены — тогда её траты не войдут в лимит."""
+    """Есть ли среди моделей шагов модель, чьи траты не посчитаются в рублях — и не войдут в лимит."""
     from app.services.step_models import step_model
 
-    return any(price_for(db, *step_model(step)) is None for step in steps)
+    return any(not _priced(db, *step_model(step), "seconds" if step in SECOND_STEPS else "tokens")
+               for step in steps)
 
 
 def _book_words(db, book_id: str) -> int:
@@ -275,8 +430,9 @@ def _book_words(db, book_id: str) -> int:
     return sum(len(word.findall(t or "")) for t in texts)
 
 
-def estimate_markup(db, book, steps) -> tuple[float, bool]:
-    """(рубли, есть ли неизвестная цена) для прогона разметки книги по выбранным шагам."""
+def estimate_markup(db, book, steps, *, force: bool = False) -> tuple[float, bool]:
+    """(рубли, есть ли неизвестная цена) для прогона разметки книги по выбранным шагам.
+    Сметы считают по пиковому тарифу: прогон идёт часами и заходит в дорогие окна."""
     from app.models import Character
     from app.services.step_models import step_model
     from app.v2 import model_catalog
@@ -287,12 +443,13 @@ def estimate_markup(db, book, steps) -> tuple[float, bool]:
     if "attribute" in steps:
         chosen = model_catalog.for_book(book)
         parts.append(("attribution", chosen.provider, chosen.model))
-    if "cast" in steps and not db.query(Character.id).filter(Character.book_id == book.id).first():
+    # с force движок ищет персонажей заново, даже если они уже есть
+    if "cast" in steps and (force or not db.query(Character.id).filter(Character.book_id == book.id).first()):
         parts.append(("characters", *step_model("characters")))
     for step, provider, model in parts:
         per_in, per_out = TOKENS_PER_WORD[step]
         rub = to_rub(db, price_for(db, provider, model), input_units=int(words * per_in),
-                     output_units=int(words * per_out))
+                     output_units=int(words * per_out), peak=True)
         if rub is None:
             unknown = True
         else:
@@ -300,13 +457,28 @@ def estimate_markup(db, book, steps) -> tuple[float, bool]:
     return round(total, 2), unknown
 
 
+#: токенов на описание одной сцены: отрывок 1500 знаков, правила и ответ — с запасом вверх
+AMBIENT_TEXT_TOKENS = (4000, 1000)
+
+
 def estimate_ambient(db, items) -> tuple[float, bool]:
-    """Музыка — секунды сцен × цена звука; текст сцены без надёжной сметы — помечается."""
+    """Музыка — секунды сцен × цена звука; плюс описание каждой сцены, у которой нет готового
+    промпта (его пишет текстовая модель перед треком)."""
     from app.services.step_models import step_model
 
     seconds = sum(int(item.get("seconds") or 0) for item in items)
-    rub = to_rub(db, price_for(db, *step_model("ambient_audio")), input_units=seconds, output_units=0)
-    return (round(rub, 2) if rub is not None else 0.0), rub is None or unknown_for(db, ["ambient_text"])
+    price = price_for(db, *step_model("ambient_audio"))
+    music = to_rub(db, price if price is not None and price.unit == "seconds" else None,
+                   input_units=seconds, output_units=0)
+    total, unknown = (music or 0.0), music is None
+    texts = sum(1 for item in items if not str(item.get("prompt") or "").strip())
+    if texts:
+        text_price = price_for(db, *step_model("ambient_text"))
+        words = to_rub(db, text_price if text_price is not None and text_price.unit == "tokens" else None,
+                       input_units=texts * AMBIENT_TEXT_TOKENS[0], output_units=texts * AMBIENT_TEXT_TOKENS[1],
+                       peak=True)
+        total, unknown = total + (words or 0.0), unknown or words is None
+    return round(total, 2), unknown
 
 
 def price_view(db, provider: str, model: str) -> dict:

@@ -23,4 +23,10 @@ await assert.rejects(m.postWithLimit("/x", {}), /только администр
 // 4) другая ошибка не трогается
 globalThis.fetch = async () => reply(409, { error: "already_running" });
 await assert.rejects(m.postWithLimit("/x", {}), (e) => e.status === 409 && e.payload.error === "already_running");
-console.log("postWithLimit: 4 scenarios ok");
+// 5) запущено, но модель без цены — предупреждение показано
+const alerts = [];
+globalThis.window.alert = (t) => alerts.push(t);
+globalThis.fetch = async () => reply(200, { ok: true, spend_warning: "траты не войдут в лимит" });
+await m.postWithLimit("/x", {});
+assert.deepEqual(alerts, ["траты не войдут в лимит"]);
+console.log("postWithLimit: 5 scenarios ok");

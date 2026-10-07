@@ -202,7 +202,8 @@ function StepRow({ step, keyed, onSaved }: { step: AiStep; keyed: Set<string>; o
         <span className="st-step-model">{PROVIDER_LABELS[step.provider] || step.provider} · <code>{step.model}</code></span>
         <span className="st-step-source">{step.source === "site" ? "выбрано на сайте" : "по умолчанию"}</span>
       </div>
-      <PriceEditor step={step} onSaved={onSaved} />
+      {/* ключ по модели и цене: черновик полей не переносит цену прежней модели на новую */}
+      <PriceEditor key={`${step.provider}:${step.model}:${JSON.stringify(step.price)}`} step={step} onSaved={onSaved} />
       {missing ? <p className="st-warning">Нет ключа {PROVIDER_LABELS[step.provider] || step.provider} — этот шаг не запустится.</p> : null}
       {editing ? (
         <form className="st-step-edit" onSubmit={(event) => { event.preventDefault(); if (model.trim()) save.mutate(); }}>
