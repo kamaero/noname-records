@@ -13,6 +13,7 @@ import math
 import os
 from typing import Callable
 
+from app.services import spend
 from app.services.consilium_engine import (
     ARTIFACT_ROOT, MIN_CREDITS_RUB, STOP_TEXT, _finish, checkpoint_run, text_fingerprint,
 )
@@ -150,7 +151,8 @@ def run_sound(*, session_factory, book_id: str, run_id: str, mode: str, chapter_
 
     def counted(system, user, schema):
         budget.note_call()
-        return ask(model, system, user, schema)
+        with spend.context("sound", book_id=book_id, run_id=run_id):
+            return ask(model, system, user, schema)
 
     try:
         if real_calls:

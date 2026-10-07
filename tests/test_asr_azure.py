@@ -280,6 +280,23 @@ class TestChoosingTheProvider:
         assert job.status == "failed" and "Настройки → Нейросети" in job.error_message
 
 
+    def test_a_recognised_take_is_booked_in_seconds(self, db, monkeypatch):
+        from app.config import settings
+        from app.models import AudioFile, SpendEntry
+        from app.services import asr_run, spend
+
+        monkeypatch.setattr(spend, "SessionLocal", lambda: db.__class__(bind=db.get_bind()))
+        monkeypatch.setattr(settings, "asr_provider", "openai")
+        monkeypatch.setattr(settings, "openai_api_key", "k")
+        monkeypatch.setattr(asr_run, "compress_for_asr", lambda src, dst: dst)
+        monkeypatch.setattr(asr_run, "transcribe_file", lambda path, **kw: {"text": "ок", "segments": []})
+        db.get(AudioFile, "a1").duration_seconds = 95.4
+        db.flush()
+        asr_run.run_asr_for_take(db, "a1")
+        rows = db.get_bind().connect().exec_driver_sql("select step, unit, input_units from spend_entries").fetchall()
+        assert [tuple(r) for r in rows] == [("asr", "seconds", 95)]
+
+
 class TestRouterAi:
     """RouterAI — тот же формат, что у OpenAI, но свой адрес, ключ и модели."""
 

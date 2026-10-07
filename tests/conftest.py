@@ -107,3 +107,28 @@ def _fresh_step_cache():
     step_models.clear_cache()
     yield
     step_models.clear_cache()
+
+
+@pytest.fixture(scope="session")
+def _throwaway_spend_engine():
+    """Одна база в памяти на весь прогон: таблицы на каждый тест заново стоили минуты."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+
+    from app.db import Base
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    return engine
+
+
+@pytest.fixture(autouse=True)
+def _throwaway_spend_ledger(monkeypatch, _throwaway_spend_engine):
+    """Журнал трат пишется своей сессией. В тестах — в одноразовую базу в памяти: иначе
+    прогоны с подменёнными моделями писали бы строки в настоящий файл базы рядом с кодом.
+    Кому журнал нужен для проверки — подменяет `spend.SessionLocal` своей базой."""
+    from sqlalchemy.orm import sessionmaker
+
+    from app.services import spend
+
+    monkeypatch.setattr(spend, "SessionLocal", sessionmaker(bind=_throwaway_spend_engine, autoflush=False))

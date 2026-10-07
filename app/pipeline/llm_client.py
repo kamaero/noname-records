@@ -107,14 +107,24 @@ def call_chat(
     never silently dropped on one path.
     """
     if mode == "anthropic":
-        return _call_anthropic_messages(
+        out = _call_anthropic_messages(
             base_url, api_key, model, system_prompt, user_prompt,
             force_json=force_json, json_schema=json_schema, extra_body=extra_body,
         )
-    return _call_openai_compatible_chat(
-        base_url, api_key, model, system_prompt, user_prompt,
-        force_json=force_json, json_schema=json_schema, extra_body=extra_body,
-    )
+    else:
+        out = _call_openai_compatible_chat(
+            base_url, api_key, model, system_prompt, user_prompt,
+            force_json=force_json, json_schema=json_schema, extra_body=extra_body,
+        )
+    # Каждый вызов — строка журнала трат, из одной точки: иначе какой-то шаг утёк бы мимо лимита.
+    from app.services import spend
+
+    usage = ((out or {}).get("usage") or {}) if isinstance(out, dict) else {}
+    spend.record_call(spend.provider_from_url(base_url), model, unit="tokens",
+                      input_units=int(usage.get("prompt_tokens") or 0),
+                      output_units=int(usage.get("completion_tokens") or 0),
+                      estimated=bool(usage.get("estimated")) or not usage)
+    return out
 
 
 def _transport_error_label(exc: Exception) -> str:

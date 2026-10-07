@@ -23,6 +23,7 @@ from datetime import timedelta
 from typing import Callable
 
 from app.config import settings
+from app.services import spend
 from app.models import Character, LlmUsageLog, ScriptBook, ScriptChapter, ScriptJob, ScriptLog
 from app.time_utils import utcnow_naive
 from app.v2.attribute import NARRATOR
@@ -562,6 +563,10 @@ def create_queued_run(db, book_id: str) -> V2Run:
     return run
 
 
+
+#: шаг прогона книги → шаг журнала трат (как на странице «Нейросети»)
+SPEND_STEPS = {"attribute": "attribution", "cast": "characters"}
+
 def run_book_pipeline(
     book_id: str,
     *,
@@ -637,7 +642,8 @@ def run_book_pipeline(
             for step in ordered:
                 _touch(db, run, context, step=step, chapters_done=0)
                 context.say(f"— {STEP_LABELS.get(step, step)} —")
-                functions[step](db, book, run, context)
+                with spend.context(SPEND_STEPS.get(step, step), book_id=book.id, run_id=run.id):
+                    functions[step](db, book, run, context)
             _settle_book(db, book, context)
             # A stop asked for and honoured — or asked for and overtaken by the end of
             # the run — must not outlive the run: a raised flag makes every screen say

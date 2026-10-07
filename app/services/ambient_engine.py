@@ -12,6 +12,7 @@ import logging
 import re
 from typing import Callable
 
+from app.services import spend
 from app.services.consilium_engine import STOP_TEXT, _finish, checkpoint_run
 from app.services.audio_mirror import LocalDiskFull
 from app.services.elevenlabs_client import (
@@ -379,11 +380,15 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
             for _attempt in range(ATTEMPTS):
                 try:
                     if not prompt:
-                        answer = ask(text_model, PROMPT_SYSTEM,
-                                     prompt_user(item["scene"], excerpt, item["seconds"], previous), PROMPT_SCHEMA)
+                        with spend.context("ambient_text", book_id=book_id, chapter_id=chapter_id, run_id=run_id):
+                            answer = ask(text_model, PROMPT_SYSTEM,
+                                         prompt_user(item["scene"], excerpt, item["seconds"], previous), PROMPT_SCHEMA)
                         prompt, summary = parse_prompt(answer)
                         scene["prompt"] = prompt
                     data, song_id = compose(prompt, item["seconds"])
+                    # музыка оплачивается по длине трека — строка журнала сразу после ответа
+                    spend.record_call("elevenlabs", audio_model, unit="seconds", input_units=int(item["seconds"]),
+                                      step="ambient_audio", book_id=book_id, chapter_id=chapter_id, run_id=run_id)
                     break
                 except (QuotaExhausted, BadKey):
                     raise
