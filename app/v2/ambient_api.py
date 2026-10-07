@@ -16,7 +16,7 @@ import asyncio
 from fastapi import Request, status
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from app.api._spend_gate import limit_gate
+from app.api._spend_gate import limit_gate, with_warning
 from app.db import SessionLocal
 from app.services import spend
 from app.models import ScriptChapter
@@ -113,7 +113,7 @@ def api_v2_ambient_chapter(request: Request, chapter_id: str):
     run_id = enqueue_ambient(found_id)
     if not run_id:
         return _not_enqueued(found_id)
-    return JSONResponse({"ok": True, "run_id": run_id})
+    return JSONResponse(with_warning(request, {"ok": True, "run_id": run_id}))
 
 
 def api_v2_ambient_stop(request: Request, chapter_id: str):
@@ -207,7 +207,9 @@ async def api_v2_ambient_scene(request: Request, marker_id: str):
                     blocked = "not_placed"
                 else:
                     # одна сцена — тоже новая платная работа: без проверки лимит обходился бы по сцене
-                    estimate, unknown = spend.estimate_ambient(db, [scene])
+                    # свой промпт — текстовая модель не нужна; иначе сцену опишут заново
+                    estimate, unknown = spend.estimate_ambient(db, [{"seconds": scene["seconds"],
+                                                                     "prompt": prompt.strip()}])
                     blocked = limit_gate(db, request, estimate_rub=estimate, unknown_price=unknown,
                                          what="эмбиент сцены") or ""
             db.commit()
@@ -224,7 +226,7 @@ async def api_v2_ambient_scene(request: Request, marker_id: str):
     run_id = enqueue_ambient(chapter_id, marker_id=found_marker, prompt_override=prompt.strip())
     if not run_id:
         return await asyncio.to_thread(_not_enqueued, chapter_id)
-    return JSONResponse({"ok": True, "run_id": run_id})
+    return JSONResponse(with_warning(request, {"ok": True, "run_id": run_id}))
 
 
 def api_v2_ambient_audio(request: Request, audio_file_id: str):

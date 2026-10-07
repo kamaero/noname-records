@@ -116,15 +116,18 @@ def call_chat(
             base_url, api_key, model, system_prompt, user_prompt,
             force_json=force_json, json_schema=json_schema, extra_body=extra_body,
         )
-    # Каждый вызов — строка журнала трат, из одной точки: иначе какой-то шаг утёк бы мимо лимита.
+    return out
+
+
+def _record_spend(url: str, model: str, prompt_tokens, completion_tokens) -> None:
+    """Строка журнала трат — сразу, как провайдер ответил, до разбора ответа: обрезанный или
+    кривой ответ уже оплачен. Нет хотя бы одного из счётчиков — цена неизвестна, а не ноль."""
     from app.services import spend
 
-    usage = ((out or {}).get("usage") or {}) if isinstance(out, dict) else {}
-    spend.record_call(spend.provider_from_url(base_url), model, unit="tokens",
-                      input_units=int(usage.get("prompt_tokens") or 0),
-                      output_units=int(usage.get("completion_tokens") or 0),
-                      estimated=bool(usage.get("estimated")) or not usage)
-    return out
+    known = isinstance(prompt_tokens, int) and isinstance(completion_tokens, int)
+    spend.record_call(spend.provider_from_url(url), str(model or ""), unit="tokens",
+                      input_units=int(prompt_tokens or 0) if known else 0,
+                      output_units=int(completion_tokens or 0) if known else 0, estimated=not known)
 
 
 def _transport_error_label(exc: Exception) -> str:
@@ -288,6 +291,7 @@ def _post_stream_with_retry(url: str, headers: dict[str, str], payload: dict[str
     rate_attempt = 0
     overload_attempt = 0
     while True:
+        started = False
         try:
             with requests.post(
                 url,
@@ -315,8 +319,13 @@ def _post_stream_with_retry(url: str, headers: dict[str, str], payload: dict[str
                     continue
                 if resp.status_code >= 400:
                     raise RuntimeError(_safe(f"LLM HTTP {resp.status_code}: {(resp.text or '')[:180]}"))
+                started = True
                 return _consume_with_wall_deadline(resp, parse, _stream_wall_deadline())
         except requests.exceptions.RequestException as exc:
+            if started:
+                # Генерация шла и оборвалась: провайдер мог её посчитать. Строка «цена
+                # неизвестна» честнее пропуска — повтор ниже оплатится отдельно.
+                _record_spend(url, payload.get("model"), None, None)
             if not _is_retriable_transport_error(exc):
                 raise RuntimeError(_safe(f"LLM transport non-retriable error [{_transport_error_label(exc)}]: {exc}")) from exc
             transport_attempt += 1
@@ -458,6 +467,7 @@ def _call_openai_compatible_chat(
         raise RuntimeError(_safe(f"LLM HTTP {resp.status_code}: {resp.text[:180]}"))
     data = resp.json()
     usage = data.get("usage") or {}
+    _record_spend(base_url, model, usage.get("prompt_tokens"), usage.get("completion_tokens"))
     prompt_tokens = int(usage.get("prompt_tokens") or 0)
     completion_tokens = int(usage.get("completion_tokens") or 0)
     total_tokens = int(usage.get("total_tokens") or (prompt_tokens + completion_tokens))
@@ -548,6 +558,8 @@ def _call_anthropic_messages(
         payload=payload,
         parse=_parse_anthropic_stream,
     )
+    _record_spend(base_url, model, (result.get("usage") or {}).get("input_tokens"),
+                  (result.get("usage") or {}).get("output_tokens"))
     tool_inputs = result["tool_inputs"]
     # Truncation guard: a max_tokens cut-off leaves the tool JSON incomplete
     # (json.loads fails -> tool_inputs empty). Surface it clearly instead of
@@ -568,7 +580,8 @@ def _call_anthropic_messages(
     completion_tokens = int(usage.get("output_tokens") or 0)
     total_tokens = int(usage.get("total_tokens") or (prompt_tokens + completion_tokens))
     if not total_tokens:
-        total_tokens = max(1, int((len(system_prompt) + len(user_prompt) + len(json.dumps(data, ensure_ascii=False))) / 4))
+        answer = (result.get("text") or "") + json.dumps(tool_inputs, ensure_ascii=False)
+        total_tokens = max(1, int((len(system_prompt) + len(user_prompt) + len(answer)) / 4))
         prompt_tokens = max(1, int((len(system_prompt) + len(user_prompt)) / 4))
         completion_tokens = max(0, total_tokens - prompt_tokens)
         estimated = True

@@ -121,7 +121,10 @@ export function SpendTab() {
             {data.recent.map((row, index) => (
               <li key={`${row.created_at}-${index}`}>
                 <span className="sp-muted">{new Date(row.created_at).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-                <span>{STEP_TITLES[row.step] || row.step}</span>
+                <span>
+                  {STEP_TITLES[row.step] || row.step}
+                  {row.book_id ? <span className="sp-muted sp-book"> · {row.book_title || "книга удалена"}</span> : null}
+                </span>
                 <span className="sp-muted sp-model">{PROVIDERS[row.provider] || row.provider} · {row.model}</span>
                 <span className="sp-muted">{row.unit === "seconds" ? `${Math.round(row.input_units / 60 * 10) / 10} мин` : `${row.input_units.toLocaleString("ru-RU")} / ${row.output_units.toLocaleString("ru-RU")} ток.`}</span>
                 <strong>{row.rub === null ? "цена неизвестна" : rub(row.rub)}</strong>

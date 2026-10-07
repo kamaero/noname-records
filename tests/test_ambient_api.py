@@ -18,6 +18,9 @@ from app.time_utils import utcnow_naive
 from tests.consilium_book import BOOK
 from tests.test_ambient_engine import MP3, Compose, _go, _record, _scenes, factory  # noqa: F401 — фикстура
 
+UNPRICED = ("У модели этого шага нет цены: траты прогона не войдут в лимит. "
+            "Впишите цену в «Настройки → Нейросети».")
+
 
 def _client(roles):
     client = TestClient(app)
@@ -109,7 +112,8 @@ class TestChapterRoute:
         response = editor.post("/api/v2/chapters/c1/ambient")
 
         assert response.status_code == 200
-        assert response.json() == {"ok": True, "run_id": "run-1"}
+        # у музыки ElevenLabs нет встроенной цены: запуск честно предупреждает, что лимит её не видит
+        assert response.json() == {"ok": True, "run_id": "run-1", "spend_warning": UNPRICED}
         assert api.calls == [("c1", "", "")]
 
     def test_an_unknown_chapter_is_404(self, editor):
@@ -238,7 +242,7 @@ class TestSceneRoute:
 
         response = editor.post(f"/api/v2/sound/markers/{ids[1]}/ambient", json={"prompt": "  soft harp  "})
 
-        assert response.status_code == 200 and response.json() == {"ok": True, "run_id": "run-1"}
+        assert response.status_code == 200 and response.json() == {"ok": True, "run_id": "run-1", "spend_warning": UNPRICED}
         assert api.calls == [("c1", ids[1], "soft harp")]
 
     def test_an_exhausted_month_refuses_a_scene_too(self, editor, api, factory):  # noqa: F811

@@ -729,6 +729,21 @@ class SpendEntry(Base):
     price_known: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
+class SpendHold(Base):
+    """Смета запущенного прогона, ещё не потраченная.
+
+    Без неё два запуска подряд видят один и тот же остаток месяца — каждый «помещается», а
+    вместе они тратят вдвое больше лимита: деньги идут не в момент запуска, а по ходу прогона."""
+
+    __tablename__ = "spend_holds"
+    __table_args__ = (Index("ix_spend_holds_created_at", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+    estimate_rub: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    what: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+
+
 class ModelPrice(Base):
     """Цена модели, вписанная студией. Главнее встроенной цены из кода."""
 

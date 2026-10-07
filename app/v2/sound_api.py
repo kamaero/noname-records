@@ -13,7 +13,7 @@ import asyncio
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from app.api._spend_gate import limit_gate
+from app.api._spend_gate import limit_gate, with_warning
 from app.db import SessionLocal
 from app.services import spend
 from app.models import ScriptBook, ScriptChapter
@@ -312,7 +312,7 @@ async def api_v2_sound_run(request: Request, book_id: str):
     run_id = sound_engine.enqueue_sound(found_id, mode)
     if not run_id:
         return error_response("already_running", status_code=409)
-    return JSONResponse({"ok": True, "run_id": run_id})
+    return JSONResponse(with_warning(request, {"ok": True, "run_id": run_id}))
 
 
 async def api_v2_sound_chapter_run(request: Request, chapter_id: str):
@@ -353,7 +353,7 @@ async def api_v2_sound_chapter_run(request: Request, chapter_id: str):
     run_id = sound_engine.enqueue_sound(found_book_id, "chapter", chapter_id=found_chapter_id)
     if not run_id:
         return error_response("already_running", status_code=409)
-    return JSONResponse({"ok": True, "run_id": run_id})
+    return JSONResponse(with_warning(request, {"ok": True, "run_id": run_id}))
 
 
 def api_v2_sound_stop(request: Request, book_id: str):

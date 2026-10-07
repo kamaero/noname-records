@@ -21,7 +21,7 @@ from starlette.background import BackgroundTask
 from app.api._helpers import bad_request_response, error_response, forbidden_response, not_found_response, unauthorized_response
 from app.auth import can_react_to_auditions, has_any_role, is_authenticated as _is_authenticated, session_payload, session_roles
 from app.constants import DICTOR_ROLES
-from app.api._spend_gate import limit_gate
+from app.api._spend_gate import limit_gate, with_warning
 from app.db import SessionLocal
 from app.services import spend
 from app.constants import ChapterStatus
@@ -311,7 +311,7 @@ async def api_v2_consilium_run(request: Request, book_id: str):
     run_id = consilium_engine.enqueue_consilium(found_id, mode)
     if not run_id:
         return error_response("already_running", status_code=409)
-    return JSONResponse({"ok": True, "run_id": run_id})
+    return JSONResponse(with_warning(request, {"ok": True, "run_id": run_id}))
 
 
 def api_v2_consilium_stop(request: Request, book_id: str):
@@ -1516,30 +1516,36 @@ async def api_v2_run(request: Request, book_id: str):
     force = bool(body.get("force"))
     actor_uid, actor_name = _actor(request)
 
-    with SessionLocal() as db:
-        book = db.get(ScriptBook, str(book_id or "").strip())
-        if book is None:
-            return not_found_response("book_not_found")
-        expire_stale_runs(db, book.id)
-        running = active_run(db, book.id)
-        if running is not None:
+    # Смета большой книги читает весь её текст: на цикле событий это морозило бы сайт.
+    def prepare():
+        with SessionLocal() as db:
+            book = db.get(ScriptBook, str(book_id or "").strip())
+            if book is None:
+                return not_found_response("book_not_found"), None
+            expire_stale_runs(db, book.id)
+            running = active_run(db, book.id)
+            if running is not None:
+                db.commit()
+                return error_response("run_in_progress", status_code=409, extra={"run_id": running.id, "status": running.status}), None
+            estimate, unknown = spend.estimate_markup(db, book, steps, force=force)
+            gate = limit_gate(db, request, estimate_rub=estimate, unknown_price=unknown, what="разметка книги")
+            if gate is not None:
+                db.commit()
+                return gate, None
+            run = create_queued_run(db, book.id)
+            book.pipeline_mode = V2_MODE
+            book.status = "processing"
+            book.stop_requested = "false"
+            db.add(ScriptLog(
+                book_id=book.id, level="info",
+                message=f"V2: прогон {run.id} поставлен в очередь ({actor_name}): шаги {', '.join(steps)}{' (force)' if force else ''}",
+            ))
             db.commit()
-            return error_response("run_in_progress", status_code=409, extra={"run_id": running.id, "status": running.status})
-        estimate, unknown = spend.estimate_markup(db, book, steps)
-        gate = limit_gate(db, request, estimate_rub=estimate, unknown_price=unknown, what="разметка книги")
-        if gate is not None:
-            db.commit()
-            return gate
-        run = create_queued_run(db, book.id)
-        book.pipeline_mode = V2_MODE
-        book.status = "processing"
-        book.stop_requested = "false"
-        db.add(ScriptLog(
-            book_id=book.id, level="info",
-            message=f"V2: прогон {run.id} поставлен в очередь ({actor_name}): шаги {', '.join(steps)}{' (force)' if force else ''}",
-        ))
-        db.commit()
-        run_id = run.id
+            return None, run.id
+
+    early, run_id = await asyncio.to_thread(prepare)
+    if early is not None:
+        return early
 
     job_id = enqueue_tracked_task(
         queue_name=V2_QUEUE,
@@ -1566,7 +1572,8 @@ async def api_v2_run(request: Request, book_id: str):
                 run.error = "enqueue failed: the queue refused the job or one is already running"
                 db.commit()
         return error_response("enqueue_failed", status_code=409, extra={"run_id": run_id})
-    return JSONResponse({"ok": True, "run_id": run_id, "job_id": job_id, "steps": list(steps), "force": force})
+    return JSONResponse(with_warning(request, {"ok": True, "run_id": run_id, "job_id": job_id, "steps": list(steps),
+                                               "force": force}))
 
 
 async def api_v2_stop(request: Request, book_id: str):

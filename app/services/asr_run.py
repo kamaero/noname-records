@@ -304,7 +304,9 @@ def run_asr_for_take(db, audio_file_id: str, *, transcribe=None, notify: bool = 
     job.error_message = ""
     job.updated_at = utcnow_naive()
     db.add(job)
-    db.flush()
+    # commit, а не flush: распознавание — минуты сети, и всё это время открытая транзакция
+    # держала бы запись SQLite — и сайту, и журналу трат, который пишет своей сессией.
+    db.commit()
 
     try:
         location = str(audio.location or "local")

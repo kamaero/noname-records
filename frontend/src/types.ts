@@ -1650,6 +1650,7 @@ export interface SpendRow {
   provider: string;
   model: string;
   book_id: string;
+  book_title: string;
   unit: "tokens" | "seconds";
   input_units: number;
   output_units: number;
