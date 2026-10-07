@@ -2,9 +2,9 @@
 
 Получено интроспекцией `SQLAlchemy`-метаданных: импортируются `app.models` и `app.v2.models`, дальше используется `Base.metadata` (та же `Base`, что в `app/db.py`).
 
-Всего таблиц: **51**.
+Всего таблиц: **53**.
 
-_Сгенерировано из коммита cf54152._
+_Сгенерировано из коммита 34793b0._
 
 ## Таблицы
 
@@ -563,6 +563,22 @@ The base class of the class hierarchy.
 
 - `ix_lore_images_author_key` (unique): author_id, image_key
 
+### `model_prices` — `app.models.ModelPrice`
+
+Цена модели, вписанная студией. Главнее встроенной цены из кода.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `currency` | VARCHAR(3) | нет |  |  | python:'RUB' |
+| `model` | VARCHAR(160) | нет | да |  |  |
+| `price_in` | FLOAT | да |  |  |  |
+| `price_out` | FLOAT | да |  |  |  |
+| `price_unit` | FLOAT | да |  |  |  |
+| `provider` | VARCHAR(20) | нет | да |  |  |
+| `unit` | VARCHAR(10) | нет |  |  | python:'tokens' |
+| `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `updated_by` | VARCHAR(120) | нет |  |  | python:'' |
+
 ### `operator_interventions` — `app.models.OperatorIntervention`
 
 The base class of the class hierarchy.
@@ -928,6 +944,30 @@ The base class of the class hierarchy.
 
 - `ix_sound_places_book`: book_id
 
+### `spend_entries` — `app.models.SpendEntry`
+
+Один платный вызов нейросети и сколько он стоил.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `book_id` | VARCHAR(36) | нет |  |  | python:'' |
+| `chapter_id` | VARCHAR(36) | нет |  |  | python:'' |
+| `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `input_units` | INTEGER | нет |  |  | python:0 |
+| `model` | VARCHAR(160) | нет |  |  | python:'' |
+| `output_units` | INTEGER | нет |  |  | python:0 |
+| `price_known` | BOOLEAN | нет |  |  | python:False |
+| `provider` | VARCHAR(20) | нет |  |  | python:'' |
+| `rub` | FLOAT | да |  |  |  |
+| `run_id` | VARCHAR(36) | нет |  |  | python:'' |
+| `step` | VARCHAR(40) | нет |  |  | python:'other' |
+| `unit` | VARCHAR(10) | нет |  |  | python:'tokens' |
+
+Индексы:
+
+- `ix_spend_entries_created_at`: created_at
+
 ### `step_models` — `app.models.StepModel`
 
 Модель, выбранная студией для шага. Нет строки — значение по умолчанию из кода.
@@ -950,7 +990,9 @@ Studio-wide defaults, one row (`id == "default"`).
 | `deadline_digest_day` | VARCHAR(10) | нет |  |  | python:''; server: |
 | `default_rate_rub_per_min` | INTEGER | нет |  |  | python:1000 |
 | `id` | VARCHAR(36) | нет | да |  | python:'default' |
+| `monthly_limit_rub` | INTEGER | нет |  |  | python:0; server:0 |
 | `role_deadline_date` | VARCHAR(10) | нет |  |  | python:'2026-12-31'; server:2026-12-31 |
+| `spend_warned_month` | VARCHAR(16) | нет |  |  | python:''; server: |
 | `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
 | `updated_by` | VARCHAR(120) | нет |  |  | python:'' |
 | `usd_rub_rate` | FLOAT | нет |  |  | python:0.0 |
@@ -1151,3 +1193,4 @@ A word the author has waved off: «ударение тут не нужно, ег
 | `0042_bot_broadcasts` | бот: рассылка касту книги или всем дикторам | `0042_bot_broadcasts.py` |
 | `0043_bot_contacts` | бот: учёт контактов (кто вышел на связь) и время последней сводки владельцу | `0043_bot_contacts.py` |
 | `0044_provider_keys_step_models` | Ключи нейросетей и модели шагов — на сайте. | `0044_provider_keys_step_models.py` |
+| `0045_spend` | Журнал трат, цены моделей и месячный лимит. | `0045_spend.py` |
