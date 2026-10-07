@@ -5,6 +5,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, describeApiError } from "../api/client";
 import { Icon } from "../components/Icon";
+import { SpendBanner } from "../components/SpendBanner";
+import { roleAccess } from "../layout/AppShell";
 import { BookSettingsCard } from "../components/book/v2/BookSettingsCard";
 import { CastCard } from "../components/book/v2/CastCard";
 import { HubMenu, type HubMenuItem } from "../components/book/v2/HubMenu";
@@ -52,6 +54,7 @@ export function BookCommandCenterPage() {
     queryKey: ["me"],
     queryFn: () => apiGet<MeResponse>("/api/me"),
   });
+  const spendBanner = meQuery.data ? <SpendBanner enabled={roleAccess(meQuery.data).isAdmin} /> : null;
   const chaptersQuery = useQuery({
     queryKey: hubKeys.chapters(bookId),
     queryFn: () => apiGet<ReaderBookChapters>(`/api/v2/books/${encodeURIComponent(bookId)}/chapters`),
@@ -155,6 +158,7 @@ export function BookCommandCenterPage() {
 
   return (
     <div className="hub">
+      {spendBanner}
       <PageHeader
         back={{ to: "/", label: "Библиотека" }}
         title={

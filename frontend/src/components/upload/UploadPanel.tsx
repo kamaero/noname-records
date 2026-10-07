@@ -1,9 +1,10 @@
 import "./upload.css";
+import { postWithLimit } from "../../utils/limitConfirm";
 
 import { useId, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ApiError, apiPostJson, apiUploadForm } from "../../api/client";
+import { ApiError, apiUploadForm } from "../../api/client";
 import { useToast } from "../ToastProvider";
 import { Icon } from "../Icon";
 import { Button, Field } from "../../ui";
@@ -146,7 +147,7 @@ export function UploadPanel({ onDone, onCancel, autoFocus }: UploadPanelProps) {
     if (runV2) {
       setPhase("starting");
       try {
-        await apiPostJson(`/api/v2/books/${encodeURIComponent(bookId)}/run`, {});
+        await postWithLimit(`/api/v2/books/${encodeURIComponent(bookId)}/run`, {});
         runStarted = true;
       } catch (error) {
         if (error instanceof ApiError && error.status === 409) {

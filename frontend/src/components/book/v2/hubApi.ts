@@ -4,6 +4,7 @@
  * Every action toasts and refetches what it could have changed.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { postWithLimit } from "../../../utils/limitConfirm";
 import { ApiError, apiGet, apiPostJson, describeApiError } from "../../../api/client";
 import { useToast } from "../../ToastProvider";
 import { invalidateReader } from "../../../v2/editorApi";
@@ -67,7 +68,7 @@ export function useHubActions(bookId: string, options: { onDeleted?: () => void 
   };
 
   const run = useMutation({
-    mutationFn: (body: RunBody) => apiPostJson<OkResponse>(`${v2(bookId)}/run`, body),
+    mutationFn: (body: RunBody) => postWithLimit<OkResponse>(`${v2(bookId)}/run`, body),
     onSuccess: async (result, body) => {
       if (!result.ok) {
         pushToast({ tone: "error", title: "Разметка не запущена", detail: result.error || "Сервер ответил без подробностей." });
