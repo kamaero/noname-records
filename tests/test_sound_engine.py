@@ -234,3 +234,16 @@ def test_an_empty_routerai_balance_does_not_stop_sound_on_openrouter(book, tmp_p
     out = run_sound(session_factory=book, book_id=BOOK, run_id=new_run(book), mode="all",
                     read_credits=lambda: 0.0, notify=lambda _t: None, root=str(tmp_path))
     assert out["status"] == "done"
+
+
+def test_sound_calls_are_booked_to_the_sound_step(book, tmp_path, monkeypatch):
+    from app.services import spend
+    from app.services.sound_engine import run_sound
+    seen = []
+
+    def ask(model, system, user, schema):
+        seen.append(spend._CONTEXT.get().get("step"))
+        return fake_ask([])(model, system, user, schema)
+    run_sound(session_factory=book, book_id=BOOK, run_id=new_run(book), mode="chapter", chapter_id="c2",
+              ask=ask, read_credits=lambda: None, notify=lambda _t: None, root=str(tmp_path))
+    assert seen and set(seen) == {"sound"}

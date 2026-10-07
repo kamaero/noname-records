@@ -321,6 +321,12 @@ def run_asr_for_take(db, audio_file_id: str, *, transcribe=None, notify: bool = 
             else _transcribe_with_service(source, phrases=book_phrases(db, str(chapter.book_id)),
                                           provider=job.provider, model=job.model)
         )
+        if not transcribe:
+            from app.services import spend
+
+            # распознавание оплачивается по длине записи
+            spend.record_call(job.provider, job.model, unit="seconds", input_units=int(audio.duration_seconds or 0),
+                              step="asr", book_id=str(chapter.book_id), chapter_id=str(chapter.id))
     except Exception as exc:  # noqa: BLE001 — причина уходит в строку задания, а не в небо
         job.status = "failed"
         job.error_message = str(exc)[:255]

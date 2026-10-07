@@ -12,6 +12,8 @@ import math
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
+
+from app.services import spend
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -589,9 +591,11 @@ def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=
                 meta["chapters_skipped"] += 1
             def read_one(reader_model):
                 reader, model = reader_model
-                read, complete = read_chapter(model=model, cast_lines=chapter.cast_lines,
-                                              paragraphs=chapter.paragraphs, ask=counted_ask,
-                                              checkpoint=checkpoint)
+                # Поток пула не наследует контекст — шаг журнала трат ставим здесь, по слоту чтеца.
+                with spend.context(dict(READER_SLOTS)[reader], book_id=book_id, run_id=run_id):
+                    read, complete = read_chapter(model=model, cast_lines=chapter.cast_lines,
+                                                  paragraphs=chapter.paragraphs, ask=counted_ask,
+                                                  checkpoint=checkpoint)
                 if not complete:
                     # Перечитка с отказом куска не затирает полный ответ по тому же тексту:
                     # недочитанные абзацы берутся из него, и глава остаётся прочитанной.
@@ -635,10 +639,11 @@ def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=
                 return place, None
             item = found[place]
             chapter = chapters[item["chapter_index"]]
-            verdict = arbitrate_place(chapter_index=chapter.index, ordinal=item["ordinal"],
-                                      current=item["current"], opus=item["opus"], sol=item["sol"],
-                                      texts=dict(chapter.paragraphs), speakers=chapter.speakers,
-                                      races=state.races, ask=counted_ask, canon=state.canon, model=arbiter_model)
+            with spend.context("consilium_arbiter", book_id=book_id, run_id=run_id):
+                verdict = arbitrate_place(chapter_index=chapter.index, ordinal=item["ordinal"],
+                                          current=item["current"], opus=item["opus"], sol=item["sol"],
+                                          texts=dict(chapter.paragraphs), speakers=chapter.speakers,
+                                          races=state.races, ask=counted_ask, canon=state.canon, model=arbiter_model)
             return place, verdict
 
         # Отмена очереди мест — явно, а не через финализацию генератора `map`: остановка не должна

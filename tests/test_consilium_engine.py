@@ -744,3 +744,24 @@ def test_an_empty_routerai_balance_does_not_stop_a_run_on_openrouter(book, tmp_p
     out = run_consilium(session_factory=book, book_id=BOOK, run_id=_run_row(book, "reread"), mode="reread",
                         read_credits=lambda: 0.0, notify=lambda _t: None, root=str(tmp_path), arbiter_workers=1)
     assert out["status"] == "done" and models.reader_calls == 4
+
+
+def test_each_paid_call_knows_its_consilium_step(book, tmp_path, monkeypatch):
+    from app.services import spend, step_models
+    from app.services.consilium_engine import run_consilium
+    monkeypatch.setattr(step_models, "step_model", lambda key: ("routerai", "vendor/m"))
+    monkeypatch.setattr(step_models, "require_key_for", lambda key: None)
+    models, seen = FakeModels(), []
+    monkeypatch.setattr("app.pipeline.llm_client._resolve_provider", lambda provider: ("k", provider, "openai"))
+
+    def call_chat(base, key, model, system, user, **kw):
+        ctx = spend._CONTEXT.get()
+        seen.append((ctx.get("step"), ctx.get("book_id"), "lines" in kw["json_schema"].get("required", [])))
+        return {"content": models(model, system, user, kw["json_schema"])}
+    monkeypatch.setattr("app.pipeline.llm_client.call_chat", call_chat)
+    run_consilium(session_factory=book, book_id=BOOK, run_id=_run_row(book, "reread"), mode="reread",
+                  read_credits=lambda: None, notify=lambda _t: None, root=str(tmp_path), arbiter_workers=1)
+    readers = {step for step, _b, is_reader in seen if is_reader}
+    arbiter = {step for step, _b, is_reader in seen if not is_reader}
+    assert readers == {"consilium_reader_1", "consilium_reader_2"} and arbiter == {"consilium_arbiter"}
+    assert {b for _s, b, _r in seen} == {BOOK}

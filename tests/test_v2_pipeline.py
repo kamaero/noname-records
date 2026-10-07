@@ -457,3 +457,19 @@ def test_a_missing_markup_key_stops_the_run_before_characters_spend(monkeypatch)
     run = run_book_pipeline(BOOK, steps=("segment", "cast", "attribute"), session_factory=SessionLocal)
     assert run.status == "failed" and spent == []
     assert "DeepSeek" in run.error and "Настройки → Нейросети" in run.error
+
+
+def test_each_pipeline_step_runs_inside_its_spend_step(monkeypatch):
+    from app.services import spend
+    seen = []
+    SessionLocal = _factory()
+    _seed(SessionLocal)
+
+    def probe(name):
+        def step(db, book, run, ctx):
+            c = spend._CONTEXT.get()
+            seen.append((name, c.get("step"), c.get("book_id"), bool(c.get("run_id"))))
+        return step
+    run_book_pipeline(BOOK, steps=("cast", "attribute"), session_factory=SessionLocal,
+                      step_functions={"cast": probe("cast"), "attribute": probe("attribute")})
+    assert seen == [("cast", "characters", BOOK, True), ("attribute", "attribution", BOOK, True)]

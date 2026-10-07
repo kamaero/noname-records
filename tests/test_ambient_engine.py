@@ -868,3 +868,21 @@ def test_ambient_without_the_audio_key_stops_before_the_paid_text(factory, monke
     result = ambient_engine.run_ambient(session_factory=factory, chapter_id="c1", run_id=_run(factory),
                                         notify=lambda _t: None)
     assert result["status"] == "stopped" and "ElevenLabs" in result["reason"]
+
+
+def test_ambient_text_and_music_are_booked(factory, monkeypatch):
+    from app.models import SpendEntry
+    from app.services import ambient_engine, spend
+    monkeypatch.setattr(spend, "SessionLocal", factory)
+    seen = []
+
+    class Recorder(Opus):
+        def __call__(self, model, system, user, schema):
+            seen.append(spend._CONTEXT.get().get("step"))
+            return super().__call__(model, system, user, schema)
+    _scenes(factory)
+    result, _ = _go(factory, ask=Recorder())
+    assert seen and set(seen) == {"ambient_text"}
+    with factory() as db:
+        rows = db.query(SpendEntry).filter(SpendEntry.step == "ambient_audio").all()
+    assert len(rows) == result["tracks_done"] and all(r.unit == "seconds" and r.input_units > 0 for r in rows)

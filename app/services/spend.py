@@ -123,3 +123,56 @@ def month_summary(db, key: str) -> dict:
                     "model": r.model, "book_id": r.book_id, "unit": r.unit, "input_units": r.input_units,
                     "output_units": r.output_units, "rub": r.rub} for r in rows[:50]],
     }
+
+
+# --- запись из прогонов ---------------------------------------------------------------
+import contextvars  # noqa: E402
+import logging  # noqa: E402
+from contextlib import contextmanager  # noqa: E402
+
+from app.db import SessionLocal  # noqa: E402
+
+logger = logging.getLogger(__name__)
+
+#: какой шаг, книга, глава и прогон сейчас тратят деньги; ставит движок на время прогона.
+#: Пул потоков контекст не наследует — рабочая функция в потоке ставит его сама.
+_CONTEXT: contextvars.ContextVar[dict] = contextvars.ContextVar("spend_context", default={})
+
+
+@contextmanager
+def context(step: str, *, book_id: str = "", chapter_id: str = "", run_id: str = ""):
+    token = _CONTEXT.set({"step": step, "book_id": book_id or "", "chapter_id": chapter_id or "",
+                          "run_id": run_id or ""})
+    try:
+        yield
+    finally:
+        _CONTEXT.reset(token)
+
+
+def record_call(provider: str, model: str, *, unit: str, input_units: int, output_units: int = 0,
+                step: str | None = None, book_id: str = "", chapter_id: str = "", run_id: str = "",
+                estimated: bool = False) -> None:
+    """Записать вызов в журнал своей сессией. Сбой записи не роняет работу — только лог:
+    распознанный дубль или размеченная глава дороже строчки учёта."""
+    ctx = _CONTEXT.get()
+    try:
+        with SessionLocal() as db:
+            row = record(db, step=step or ctx.get("step") or "other", provider=provider, model=model, unit=unit,
+                         input_units=input_units, output_units=output_units,
+                         book_id=book_id or ctx.get("book_id", ""), chapter_id=chapter_id or ctx.get("chapter_id", ""),
+                         run_id=run_id or ctx.get("run_id", ""))
+            if estimated:
+                # провайдер не сказал, сколько потратил: оценка токенов — не повод писать рубли
+                row.rub, row.price_known = None, False
+            db.commit()
+    except Exception:  # noqa: BLE001 — учёт не должен ронять платный вызов
+        logger.exception("spend: не записал вызов %s/%s", provider, model)
+
+
+def provider_from_url(base_url: str) -> str:
+    url = str(base_url or "").lower()
+    for marker, name in (("routerai", "routerai"), ("openrouter", "openrouter"), ("deepseek", "deepseek"),
+                         ("anthropic", "claude"), ("openai", "openai"), ("z.ai", "zai")):
+        if marker in url:
+            return name
+    return "other"
