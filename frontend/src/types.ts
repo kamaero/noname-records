@@ -1602,6 +1602,7 @@ export interface AiStep {
   default: { provider: string; model: string };
   providers: string[];
   options: AiStepOption[];
+  price: AiPrice;
 }
 
 export interface AiStepOption {
@@ -1626,4 +1627,43 @@ export interface AiBalance {
   amount: number | null;
   unit: string;
   detail: string;
+}
+
+export interface AiPrice {
+  source: "studio" | "builtin" | "none";
+  unit: "" | "tokens" | "seconds";
+  price_in: number | null;
+  price_out: number | null;
+  price_unit: number | null;
+  currency: "" | "RUB" | "USD";
+}
+
+export interface SpendBucket {
+  rub: number;
+  calls: number;
+  unknown_calls: number;
+}
+
+export interface SpendRow {
+  created_at: string;
+  step: string;
+  provider: string;
+  model: string;
+  book_id: string;
+  unit: "tokens" | "seconds";
+  input_units: number;
+  output_units: number;
+  rub: number | null;
+}
+
+export interface SpendMonth {
+  month: string;
+  months: string[];
+  total_rub: number;
+  unknown_calls: number;
+  limit_rub: number;
+  left_rub: number | null;
+  by_step: Record<string, SpendBucket>;
+  by_provider: Record<string, SpendBucket>;
+  recent: SpendRow[];
 }

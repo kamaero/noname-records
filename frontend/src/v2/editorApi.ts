@@ -4,6 +4,7 @@
  * used when the chapter payload says `can_edit`.
  */
 import { useQuery, type QueryClient } from "@tanstack/react-query";
+import { postWithLimit } from "../utils/limitConfirm";
 import { ApiError, apiGet, apiPostJson, describeApiError } from "../api/client";
 import type { BudgetCharacterRow } from "../types";
 import type {
@@ -105,7 +106,7 @@ export function useConsiliumEstimate(bookId: string, enabled: boolean) {
 }
 
 export function startConsilium(bookId: string, mode: ConsiliumMode): Promise<{ ok: boolean; run_id: string }> {
-  return apiPostJson<{ ok: boolean; run_id: string }>(`${book(bookId)}/consilium/run`, { mode });
+  return postWithLimit<{ ok: boolean; run_id: string }>(`${book(bookId)}/consilium/run`, { mode });
 }
 
 export function stopConsilium(bookId: string): Promise<{ ok: boolean; stopped: boolean }> {

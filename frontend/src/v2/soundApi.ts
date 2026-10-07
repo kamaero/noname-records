@@ -3,6 +3,7 @@
  * поэтому все хуки включаются лишь при `can_edit` — диктор их не дёргает вовсе.
  */
 import { useQuery } from "@tanstack/react-query";
+import { postWithLimit } from "../utils/limitConfirm";
 import { ApiError, apiDelete, apiGet, apiPatchJson, apiPostJson, describeApiError } from "../api/client";
 import type { AmbientPlan } from "../types";
 import type {
@@ -95,7 +96,7 @@ export function decideSoundPair(pairId: string, merge: boolean): Promise<{ ok: b
 }
 
 export function startSound(bookId: string, mode: SoundMode): Promise<{ ok: boolean; run_id: string }> {
-  return apiPostJson<{ ok: boolean; run_id: string }>(`${bookPath(bookId)}/run`, { mode });
+  return postWithLimit<{ ok: boolean; run_id: string }>(`${bookPath(bookId)}/run`, { mode });
 }
 
 export function stopSound(bookId: string): Promise<{ ok: boolean; stopped: boolean }> {
@@ -104,7 +105,7 @@ export function stopSound(bookId: string): Promise<{ ok: boolean; stopped: boole
 
 /** Перечитать одну главу. */
 export function rerunSoundChapter(chapterId: string): Promise<{ ok: boolean; run_id: string }> {
-  return apiPostJson<{ ok: boolean; run_id: string }>(`${chapterPath(chapterId)}/run`, {});
+  return postWithLimit<{ ok: boolean; run_id: string }>(`${chapterPath(chapterId)}/run`, {});
 }
 
 /** Смета эмбиента главы — для подтверждения: сколько треков, минут и пропусков. */
@@ -114,7 +115,7 @@ export function ambientPlan(chapterId: string): Promise<AmbientPlan> {
 
 /** Сгенерировать эмбиент сценам главы, у которых ещё нет готового трека. */
 export function startChapterAmbient(chapterId: string): Promise<{ ok: boolean; run_id: string }> {
-  return apiPostJson<{ ok: boolean; run_id: string }>(`/api/v2/chapters/${encodeURIComponent(chapterId)}/ambient`, {});
+  return postWithLimit<{ ok: boolean; run_id: string }>(`/api/v2/chapters/${encodeURIComponent(chapterId)}/ambient`, {});
 }
 
 /** Остановить генерацию эмбиента главы: текущий трек доделается, следующий не начнётся. */
@@ -124,7 +125,7 @@ export function stopChapterAmbient(chapterId: string): Promise<{ ok: boolean; st
 
 /** Перегенерировать трек одной сцены; `prompt` — только если его правили (иначе новый пишет Opus). */
 export function regenerateSceneAmbient(markerId: string, prompt?: string): Promise<{ ok: boolean; run_id: string }> {
-  return apiPostJson<{ ok: boolean; run_id: string }>(`${markerPath(markerId)}/ambient`, prompt ? { prompt } : {});
+  return postWithLimit<{ ok: boolean; run_id: string }>(`${markerPath(markerId)}/ambient`, prompt ? { prompt } : {});
 }
 
 export const ambientAudioUrl = (audioFileId: string) => `/api/v2/ambient/${encodeURIComponent(audioFileId)}/audio`;
