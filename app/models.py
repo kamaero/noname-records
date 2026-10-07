@@ -668,6 +668,10 @@ class StudioSettings(Base):
     deadline_digest_day: Mapped[str] = mapped_column(String(10), nullable=False, default="", server_default="")
     #: когда бот последний раз составлял владельцу сводку «кто вышел на связь»
     contacts_reported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    #: потолок трат на нейросети за календарный месяц (МСК), рубли; 0 — без лимита
+    monthly_limit_rub: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    #: последний порог, о котором уже написали владельцу: «2026-10:80» / «2026-10:100»
+    spend_warned_month: Mapped[str] = mapped_column(String(16), nullable=False, default="", server_default="")
     updated_by: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
@@ -696,6 +700,47 @@ class StepModel(Base):
     step: Mapped[str] = mapped_column(String(40), primary_key=True)
     provider: Mapped[str] = mapped_column(String(20), nullable=False, default="")
     model: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    updated_by: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+
+class SpendEntry(Base):
+    """Один платный вызов нейросети и сколько он стоил.
+
+    Рубли считаются в момент вызова по цене, действовавшей тогда, и больше не меняются:
+    поправленная потом цена не переписывает прошлое. Неизвестная цена — `rub is None`,
+    а не ноль: ноль выглядел бы как бесплатный вызов и молча обходил бы лимит."""
+
+    __tablename__ = "spend_entries"
+    __table_args__ = (Index("ix_spend_entries_created_at", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+    step: Mapped[str] = mapped_column(String(40), nullable=False, default="other")
+    provider: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    model: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    book_id: Mapped[str] = mapped_column(String(36), nullable=False, default="")
+    chapter_id: Mapped[str] = mapped_column(String(36), nullable=False, default="")
+    run_id: Mapped[str] = mapped_column(String(36), nullable=False, default="")
+    unit: Mapped[str] = mapped_column(String(10), nullable=False, default="tokens")
+    input_units: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_units: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rub: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    price_known: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class ModelPrice(Base):
+    """Цена модели, вписанная студией. Главнее встроенной цены из кода."""
+
+    __tablename__ = "model_prices"
+
+    provider: Mapped[str] = mapped_column(String(20), primary_key=True)
+    model: Mapped[str] = mapped_column(String(160), primary_key=True)
+    unit: Mapped[str] = mapped_column(String(10), nullable=False, default="tokens")
+    price_in: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    price_out: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    price_unit: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="RUB")
     updated_by: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 

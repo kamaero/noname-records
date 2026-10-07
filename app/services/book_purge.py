@@ -52,7 +52,7 @@ BY_CHARACTER = ("role_votes",)
 CARRIERS = ("v2_segments", "characters", "script_chapters")
 
 #: переживают книгу — причины в описании модуля
-KEPT = ("asr_jobs", "audio_files", "bot_broadcasts", "llm_usage_logs")
+KEPT = ("asr_jobs", "audio_files", "bot_broadcasts", "llm_usage_logs", "spend_entries")
 
 #: прогон в работе — его строку не трогаем: воркер сам увидит, что книги нет
 ACTIVE_RUN_STATUSES = ("queued", "running")
