@@ -40,7 +40,7 @@ def api_db(monkeypatch, tmp_path):
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
     monkeypatch.setattr("app.v2.sound_api.SessionLocal", factory)
-    monkeypatch.setattr("app.services.sound_engine.ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setattr("app.services.sound_engine.artifact_root", lambda: tmp_path)
     monkeypatch.setattr("app.services.sound_engine.read_credits", lambda: 5000.0)
     with factory() as db:
         build_book(db)

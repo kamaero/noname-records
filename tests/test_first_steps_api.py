@@ -22,7 +22,7 @@ def factory(monkeypatch, tmp_path):
     monkeypatch.setattr(provider_keys, "env_value", lambda name, default="": default)
     for attr in provider_keys.SETTINGS_ATTRS.values():
         monkeypatch.setattr(provider_keys.settings, attr, "", raising=False)
-    monkeypatch.setattr(book_import, "BOOK_SOURCE_DIR", tmp_path / "sources")
+    monkeypatch.setattr(book_import, "book_source_dir", lambda: tmp_path / "sources")
     provider_keys.clear_cache()
     step_models.clear_cache()
     return f

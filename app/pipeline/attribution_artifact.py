@@ -4,12 +4,15 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from app.pipeline.attribution_triage import SuspectLine
 from app.pipeline.attribution_metrics import per_class_counts
 
-BASE_DIR = "data/book_reports"
+def base_dir() -> Path:
+    from app.paths import data_path
+    return data_path("book_reports")
 
 
 def build_artifact(*, book_id: str, char_map_version: int,
@@ -48,11 +51,11 @@ def build_artifact(*, book_id: str, char_map_version: int,
     }
 
 
-def _artifact_path(book_id: str, base_dir: str) -> str:
-    return os.path.join(base_dir, book_id, "attribution_audit.json")
+def _artifact_path(book_id: str, root: str | None) -> str:
+    return os.path.join(root or str(base_dir()), book_id, "attribution_audit.json")
 
 
-def write_artifact(artifact: dict[str, Any], *, base_dir: str = BASE_DIR) -> str:
+def write_artifact(artifact: dict[str, Any], *, base_dir: str | None = None) -> str:
     path = _artifact_path(artifact["book_id"], base_dir)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -60,6 +63,6 @@ def write_artifact(artifact: dict[str, Any], *, base_dir: str = BASE_DIR) -> str
     return path
 
 
-def load_artifact(book_id: str, *, base_dir: str = BASE_DIR) -> dict[str, Any]:
+def load_artifact(book_id: str, *, base_dir: str | None = None) -> dict[str, Any]:
     with open(_artifact_path(book_id, base_dir), encoding="utf-8") as f:
         return json.load(f)

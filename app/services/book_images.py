@@ -128,12 +128,13 @@ def parse_book_images(raw: bytes) -> list[BookImage]:
     return out
 
 
-def image_dir(book_id: str, root: str = "data/lore") -> str:
-    return os.path.join(root, "books", re.sub(r"[^a-zA-Z0-9_-]+", "-", str(book_id or "book")))
+def image_dir(book_id: str, root: str | None = None) -> str:
+    from app.paths import data_path
+    return os.path.join(root or str(data_path("lore")), "books", re.sub(r"[^a-zA-Z0-9_-]+", "-", str(book_id or "book")))
 
 
 def import_book_images(db, *, book_id: str, author_id: str, images: list[BookImage],
-                       root: str = "data/lore") -> dict:
+                       root: str | None = None) -> dict:
     """Записать иллюстрации книги. Ключ обновления — (книга, имя картинки).
 
     Привязку, сделанную человеком, перезаливка не трогает: заново разбирают файл, а не

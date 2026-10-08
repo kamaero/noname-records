@@ -11,6 +11,7 @@ import json
 import math
 import os
 import threading
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 from app.services import spend
@@ -35,7 +36,12 @@ def readers() -> tuple[tuple[str, str, str], ...]:
     from app.services.step_models import step_model
 
     return tuple((slot, *step_model(step)) for slot, step in READER_SLOTS)
-ARTIFACT_ROOT = "data/book_reports"
+def artifact_root() -> Path:
+    # функция, а не константа: папку данных задают после импорта (точка входа, тесты)
+    from app.paths import data_path
+    return data_path("book_reports")
+
+
 # Факт прогона «Крыльев полумрака» 2026-09-12: чтецы 1 400 ₽ на 13 276 абзацев, арбитр 457 ₽
 # на 157 мест. Смета — оценка по этим числам, а не обещание.
 READER_RUB_PER_PARAGRAPH = 1400 / 13276
@@ -151,12 +157,12 @@ def text_fingerprint(paragraphs: list[tuple[int, str]]) -> str:
     return digest.hexdigest()
 
 
-def artifact_path(book_id: str, chapter_index: int, reader: str, root: str = ARTIFACT_ROOT) -> str:
-    return os.path.join(root, book_id, "consilium", f"ch{int(chapter_index):02d}-{reader}.json")
+def artifact_path(book_id: str, chapter_index: int, reader: str, root: str | None = None) -> str:
+    return os.path.join(root or str(artifact_root()), book_id, "consilium", f"ch{int(chapter_index):02d}-{reader}.json")
 
 
 def load_answers(book_id: str, chapter: ChapterState, reader: str,
-                 root: str = ARTIFACT_ROOT) -> dict[int, str] | None:
+                 root: str | None = None) -> dict[int, str] | None:
     """Ответы чтеца, если они ещё верны: полные и прочитаны по нынешнему тексту главы."""
     path = artifact_path(book_id, chapter.index, reader, root)
     try:
@@ -170,7 +176,7 @@ def load_answers(book_id: str, chapter: ChapterState, reader: str,
 
 
 def save_answers(book_id: str, chapter: ChapterState, reader: str, model: str,
-                 answers: dict[int, str], complete: bool, root: str = ARTIFACT_ROOT) -> None:
+                 answers: dict[int, str], complete: bool, root: str | None = None) -> None:
     path = artifact_path(book_id, chapter.index, reader, root)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     payload = {"chapter": chapter.index, "reader": reader, "model": model,
@@ -217,7 +223,7 @@ def _round_rub(value: float) -> int:
     return int(math.ceil(max(value, 0.0) / 10.0) * 10)
 
 
-def estimate(db, book_id: str, root: str = ARTIFACT_ROOT, state: BookState | None = None) -> dict:
+def estimate(db, book_id: str, root: str | None = None, state: BookState | None = None) -> dict:
     """Смета прогона. `state` — уже загруженное состояние книги, чтобы не читать её дважды."""
     from app.pipeline.consilium_run import plan_places
 
@@ -491,7 +497,7 @@ def _book_title(session_factory, book_id: str) -> str:
 
 def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=None,
                   read_credits=read_credits, notify: Callable[[str], None] | None = None,
-                  root: str = ARTIFACT_ROOT, arbiter_workers: int = 6) -> dict:
+                  root: str | None = None, arbiter_workers: int = 6) -> dict:
     from app.pipeline.consilium_run import Budget, StopRun, arbitrate_place, plan_places, read_chapter
     from app.services.consilium_store import apply_run
     from app.services.step_models import MissingKeyError, require_key_for, step_model

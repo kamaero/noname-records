@@ -65,10 +65,10 @@ def main() -> int:
     args = parser.parse_args()
 
     from app.db import SessionLocal
-    from app.services.consilium_engine import ARTIFACT_ROOT
+    from app.services.consilium_engine import artifact_root
 
     if args.apply:
-        root = ARTIFACT_ROOT
+        root = str(artifact_root())
         with SessionLocal() as db:
             out = seed(db, book_id=args.book, source_dir=args.source, root=root)
         print(json.dumps(out, ensure_ascii=False))

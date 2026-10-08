@@ -258,7 +258,7 @@ async def api_v2_sound_estimate(request: Request, book_id: str):
             book = db.get(ScriptBook, str(book_id or "").strip())
             if book is None:
                 return None, None, None, None
-            plan = sound_engine.estimate(db, book.id, root=sound_engine.ARTIFACT_ROOT)
+            plan = sound_engine.estimate(db, book.id)
             credits = sound_engine.read_credits()
             blocked = {mode: _sound_blocked(db, book, credits=credits, estimate_rub=plan["estimate_rub"][mode])
                        for mode in ("rest", "all")}
@@ -288,7 +288,7 @@ async def api_v2_sound_run(request: Request, book_id: str):
             book = db.get(ScriptBook, str(book_id or "").strip())
             if book is None:
                 return None, None, ""
-            plan = sound_engine.estimate(db, book.id, root=sound_engine.ARTIFACT_ROOT)
+            plan = sound_engine.estimate(db, book.id)
             if plan["chapters_total"] == 0:
                 return book.id, plan, ""
             credits = sound_engine.read_credits()
@@ -331,7 +331,7 @@ async def api_v2_sound_chapter_run(request: Request, chapter_id: str):
             book = db.get(ScriptBook, chapter.book_id)
             if book is None:
                 return None, None, None, ""
-            plan = sound_engine.estimate(db, book.id, root=sound_engine.ARTIFACT_ROOT, chapter_id=chapter.id)
+            plan = sound_engine.estimate(db, book.id, chapter_id=chapter.id)
             credits = sound_engine.read_credits()
             blocked = _sound_blocked(db, book, credits=credits, estimate_rub=plan["estimate_rub"]["all"])
             gate = None if blocked else limit_gate(db, request, estimate_rub=plan["estimate_rub"]["all"],

@@ -30,7 +30,7 @@ def api_db(monkeypatch, tmp_path):
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
     monkeypatch.setattr("app.v2.api.SessionLocal", factory)
-    monkeypatch.setattr("app.services.consilium_engine.ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setattr("app.services.consilium_engine.artifact_root", lambda: tmp_path)
     monkeypatch.setattr("app.services.consilium_engine.read_credits", lambda log=None: 5000.0)
     queued = []
     monkeypatch.setattr("app.services.consilium_engine.enqueue_consilium",

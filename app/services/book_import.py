@@ -38,7 +38,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_CHAPTER_CHARS = 180000
 
 
-BOOK_SOURCE_DIR = Path("data/book_sources")
+def book_source_dir() -> Path:
+    # функция, а не константа: папку данных задают после импорта (точка входа, тесты)
+    from app.paths import data_path
+    return data_path("book_sources")
 
 
 # Pre-compiled heading patterns for _score_heading_line (called per line of book text)
@@ -427,7 +430,7 @@ def _create_book_chapters(db: Session, *, book: ScriptBook, chapters: list[tuple
 
 
 def _book_source_root(book_id: str) -> Path:
-    path = BOOK_SOURCE_DIR / str(book_id)
+    path = book_source_dir() / str(book_id)
     path.mkdir(parents=True, exist_ok=True)
     return path
 

@@ -15,7 +15,7 @@ from typing import Callable
 
 from app.services import spend
 from app.services.consilium_engine import (
-    ARTIFACT_ROOT, MIN_CREDITS_RUB, STOP_TEXT, _finish, checkpoint_run, text_fingerprint,
+    MIN_CREDITS_RUB, artifact_root, STOP_TEXT, _finish, checkpoint_run, text_fingerprint,
 )
 from app.services.routerai_credits import read_credits
 
@@ -45,11 +45,11 @@ def book_chapters(db, book_id: str, chapter_id: str = "") -> list[tuple[str, int
     return out
 
 
-def sidecar_path(book_id: str, index: int, root: str = ARTIFACT_ROOT) -> str:
-    return os.path.join(root, book_id, "sound", f"ch{int(index):02d}.json")
+def sidecar_path(book_id: str, index: int, root: str | None = None) -> str:
+    return os.path.join(root or str(artifact_root()), book_id, "sound", f"ch{int(index):02d}.json")
 
 
-def load_sidecar(book_id: str, index: int, paragraphs, root: str = ARTIFACT_ROOT) -> dict | None:
+def load_sidecar(book_id: str, index: int, paragraphs, root: str | None = None) -> dict | None:
     try:
         with open(sidecar_path(book_id, index, root), encoding="utf-8") as handle:
             data = json.load(handle)
@@ -60,7 +60,7 @@ def load_sidecar(book_id: str, index: int, paragraphs, root: str = ARTIFACT_ROOT
     return data
 
 
-def save_sidecar(book_id: str, index: int, paragraphs, data: dict, root: str = ARTIFACT_ROOT,
+def save_sidecar(book_id: str, index: int, paragraphs, data: dict, root: str | None = None,
                  model: str = MODEL) -> None:
     path = sidecar_path(book_id, index, root)
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -75,7 +75,7 @@ def _rub(value: float) -> int:
     return int(math.ceil(max(value, 0.0) / 10.0) * 10)
 
 
-def estimate(db, book_id: str, root: str = ARTIFACT_ROOT, chapter_id: str = "") -> dict:
+def estimate(db, book_id: str, root: str | None = None, chapter_id: str = "") -> dict:
     chapters = book_chapters(db, book_id, chapter_id)
     unread = [c for c in chapters if load_sidecar(book_id, c[1], c[2], root) is None]
     count = lambda items: sum(len(c[2]) for c in items)
@@ -111,7 +111,7 @@ def enqueue_sound(book_id: str, mode: str, chapter_id: str = "") -> str | None:
 
 def run_sound(*, session_factory, book_id: str, run_id: str, mode: str, chapter_id: str = "",
               ask=None, read_credits=read_credits, notify: Callable[[str], None] | None = None,
-              root: str = ARTIFACT_ROOT) -> dict:
+              root: str | None = None) -> dict:
     from app.pipeline.consilium_run import Budget, StopRun
     from app.pipeline.sound_markers import MERGE_SCHEMA, MERGE_SYSTEM, SCHEMA, SYSTEM, chapter_prompt, merge_prompt, validate
     from app.services.sound_store import apply_chapter, place_rows, record_pairs, touch_sessions
