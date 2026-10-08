@@ -5,6 +5,7 @@
 месте» модель — в папке данных, а признак готовности ставится только после полной загрузки:
 оборванная загрузка не выдаёт себя за готовую.
 """
+import shutil
 import threading
 
 from app.paths import data_path
@@ -19,11 +20,19 @@ def model_dir():
     return data_path("models", "ruaccent")
 
 
+def staging_dir():
+    """Сюда идёт загрузка; в model_dir переезжает только целиком. RUAccent решает «качать или
+    нет» по наличию папки, а не по полноте файлов: оборванная загрузка прямо в model_dir
+    оставила бы полупустую папку, и повтор по кнопке падал бы на недостающем файле."""
+    return data_path("models", "ruaccent.partial")
+
+
 def _downloaded_mb() -> int:
-    root = model_dir()
-    if not root.exists():
-        return 0
-    return int(sum(p.stat().st_size for p in root.rglob("*") if p.is_file()) / 1_000_000)
+    total = 0
+    for root in (model_dir(), staging_dir()):
+        if root.exists():
+            total += sum(p.stat().st_size for p in root.rglob("*") if p.is_file())
+    return int(total / 1_000_000)
 
 
 def is_ready() -> bool:
@@ -57,9 +66,14 @@ def _claim() -> bool:
 
 def _run(loader) -> None:
     try:
-        model_dir().mkdir(parents=True, exist_ok=True)
-        (loader or _default_loader)(str(model_dir()))
-        (model_dir() / READY_MARK).write_text("ok", encoding="utf-8")
+        staging = staging_dir()
+        # остатки прошлой попытки (обрыв, закрытая программа) — не начало, а мусор
+        shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir(parents=True)
+        (loader or _default_loader)(str(staging))
+        (staging / READY_MARK).write_text("ok", encoding="utf-8")
+        shutil.rmtree(model_dir(), ignore_errors=True)
+        staging.rename(model_dir())
         _STATE.update(state="ready", error="")
     except Exception as exc:  # сеть, диск, Hugging Face — человеку нужна причина, не трассировка
         _STATE.update(state="failed", error=str(exc)[:300])
