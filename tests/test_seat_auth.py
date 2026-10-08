@@ -39,6 +39,7 @@ def test_right_token_opens_a_session(one_seat):
     assert "httponly" in cookie and "samesite=strict" in cookie
     me = client.get("/api/me").json()
     assert me["authenticated"] and "admin" in me["roles"] and "author" in me["roles"]
+    assert me["seat_mode"] == "one"
 
 
 @pytest.mark.parametrize("token", ["", "wrong", TOKEN[:-1]])

@@ -4,6 +4,7 @@
 же сьютом. Режим читается в момент вызова — тесты и точка входа переключают его после импорта.
 """
 import hashlib
+import re
 
 from app.config import settings
 from app.time_utils import utcnow_naive
@@ -17,12 +18,19 @@ def one_seat() -> bool:
     return str(settings.seat_mode or "").strip().lower() == "one"
 
 
-#: многопользовательские части, которых в «одном месте» нет (наполняется в задаче 4)
-HIDDEN_PREFIXES: tuple[str, ...] = ()
+#: многопользовательские части, которых в «одном месте» нет: учётки, Telegram, вход и выход,
+#: пробы и голоса автора, сроки ролей, старая загрузка дубля дикторами. «Дикторы» остаются —
+#: на них стоит выбор актёра в касте. Список — выгрузка маршрутов 08.10.
+HIDDEN_PREFIXES: tuple[str, ...] = (
+    "/api/users", "/api/telegram", "/auth/telegram", "/api/me/bot-reach", "/login", "/logout",
+    "/api/auditions", "/api/v2/auditions", "/api/deadlines", "/dictor-pro",
+)
+HIDDEN_PATTERNS = (re.compile(r"^/api/v2/books/[^/]+/auditions$"),)
 
 
 def is_hidden(path: str) -> bool:
-    return any(path == p or path.startswith(p + "/") for p in HIDDEN_PREFIXES)
+    return (any(path == p or path.startswith(p + "/") for p in HIDDEN_PREFIXES)
+            or any(p.match(path) for p in HIDDEN_PATTERNS))
 
 
 def seat_fingerprint() -> str:
