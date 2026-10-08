@@ -130,3 +130,26 @@ def test_leftovers_of_a_closed_app_do_not_count_as_ready(monkeypatch):
     stress_model.model_dir().mkdir(parents=True)
     (stress_model.model_dir() / "dictionary").mkdir()
     assert stress_model.state()["state"] == "absent"
+
+
+def test_the_real_loader_never_writes_into_the_program_package(monkeypatch, tmp_path):
+    # RUAccent докачивает модули koziev в папку своего пакета (а не в workdir) и импортирует
+    # их оттуда. В установленной программе пакет только для чтения — значит, koziev обязан
+    # прийти со сборкой, а загрузка по кнопке должна сказать об ошибке сборки, ничего не пиша.
+    package = tmp_path / "site-packages" / "ruaccent"
+    package.mkdir(parents=True)
+    monkeypatch.setattr(stress_model, "ruaccent_package_dir", lambda: package)
+    stress_model.download()
+    body = stress_model.state()
+    assert body["state"] == "failed" and "сборк" in body["error"]
+    assert list(package.iterdir()) == []
+
+
+def test_desktop_environment_keeps_hugging_face_inside_the_data_folder(tmp_path):
+    from app.desktop import seat_environment
+    secrets = {"secret_key": "s" * 96, "keys_encryption_key": "k"}
+    env = seat_environment(tmp_path, "t" * 48, secrets, base={})
+    assert env["HF_HOME"] == str(tmp_path / "models" / "huggingface")
+    assert env["SEAT_MODE"] == "one" and env["DATA_DIR"] == str(tmp_path)
+    own = seat_environment(tmp_path, "t" * 48, secrets, base={"HF_HOME": "/куда/сказал"})
+    assert own["HF_HOME"] == "/куда/сказал"

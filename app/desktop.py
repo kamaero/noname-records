@@ -70,6 +70,22 @@ def backup_before_migration(db_file: Path, current: str | None, head: str) -> Pa
     return copy
 
 
+def seat_environment(data_dir: Path, token: str, found: dict, *, base) -> dict:
+    """Окружение настольной версии; ставится до импорта приложения."""
+    return {
+        "SEAT_MODE": "one", "DATA_DIR": str(data_dir), "NONAME_SEAT_TOKEN": token,
+        "DATABASE_URL": f"sqlite:///{data_dir / 'noname.db'}", "AUDIO_STORAGE_PATH": str(data_dir / "recordings"),
+        "SECRET_KEY": found["secret_key"], "KEYS_ENCRYPTION_KEY": found["keys_encryption_key"],
+        # http на 127.0.0.1: Secure-cookie браузер бы не вернул
+        "COOKIE_SECURE": "false", "TELEGRAM_NOTIFY_ENABLED": "false",
+        # учётки администратора с паролем в настольной версии нет — вход по ключу запуска
+        "ADMIN_PASSWORD_HASH": "", "AUDIO_NAS_PATH": "",
+        # кэш Hugging Face — в папке данных, а не в профиле: переносится и удаляется вместе с ней;
+        # заданный человеком явно — его выбор
+        "HF_HOME": base.get("HF_HOME") or str(data_dir / "models" / "huggingface"),
+    }
+
+
 def _migrate(db_file: Path) -> None:
     from alembic import command
     from alembic.config import Config
@@ -105,15 +121,7 @@ def main(argv=None) -> int:
         return EXIT_ALREADY_RUNNING
     found = load_or_create_secrets(data_dir)
     db_file = data_dir / "noname.db"
-    os.environ.update({
-        "SEAT_MODE": "one", "DATA_DIR": str(data_dir), "NONAME_SEAT_TOKEN": args.token,
-        "DATABASE_URL": f"sqlite:///{db_file}", "AUDIO_STORAGE_PATH": str(data_dir / "recordings"),
-        "SECRET_KEY": found["secret_key"], "KEYS_ENCRYPTION_KEY": found["keys_encryption_key"],
-        # http на 127.0.0.1: Secure-cookie браузер бы не вернул
-        "COOKIE_SECURE": "false", "TELEGRAM_NOTIFY_ENABLED": "false",
-        # учётки администратора с паролем в настольной версии нет — вход по ключу запуска
-        "ADMIN_PASSWORD_HASH": "", "AUDIO_NAS_PATH": "",
-    })
+    os.environ.update(seat_environment(data_dir, args.token, found, base=os.environ))
     os.chdir(ROOT)  # app.main монтирует app/static относительно рабочего каталога
     _migrate(db_file)
 
