@@ -19,6 +19,7 @@ from __future__ import annotations
 import base64
 import binascii
 import os
+from pathlib import Path
 import re
 from dataclasses import dataclass, field
 
@@ -127,16 +128,18 @@ def parse_lore_fb2(raw: bytes, *, wanted=topic_wanted) -> list[LoreSection]:
 
 
 #: корень для картинок энциклопедии — рядом с прочими данными книги, вне репозитория
-LORE_IMAGE_ROOT = "data/lore"
+def lore_image_root() -> Path:
+    from app.paths import data_path
+    return data_path("lore")
 
 
-def image_dir(author_slug: str, root: str = LORE_IMAGE_ROOT) -> str:
-    return os.path.join(root, re.sub(r"[^a-zA-Z0-9_-]+", "-", str(author_slug or "author")))
+def image_dir(author_slug: str, root: str | None = None) -> str:
+    return os.path.join(root or str(lore_image_root()), re.sub(r"[^a-zA-Z0-9_-]+", "-", str(author_slug or "author")))
 
 
 def import_lore(db, author_id: str, sections: list[LoreSection],
                 images: dict[str, tuple[str, bytes]], *, author_slug: str,
-                root: str = LORE_IMAGE_ROOT) -> dict:
+                root: str | None = None) -> dict:
     """Записать статьи и их картинки. Ключ обновления — (автор, тема).
 
     Повторный запуск обновляет тексты и порядок, а не плодит копии: энциклопедия

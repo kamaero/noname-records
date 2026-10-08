@@ -106,6 +106,7 @@ def purge_book_rows(db, book_id: str) -> dict[str, int]:
 
 def book_file_dirs(book_id: str) -> list[str]:
     """Каталоги книги на диске: исходник, память персонажей, отчёты, иллюстрации."""
+    from app.paths import data_path
     from app.services.book_images import image_dir
 
     book_id = str(book_id or "").strip()
@@ -113,8 +114,8 @@ def book_file_dirs(book_id: str) -> list[str]:
         # Пустой id дал бы каталоги-родители: `data/book_sources/` целиком.
         return []
     return [
-        f"data/book_sources/{book_id}",
-        f"data/char_memory/{book_id}",
-        f"data/book_reports/{book_id}",
+        str(data_path("book_sources", book_id)),
+        str(data_path("char_memory", book_id)),
+        str(data_path("book_reports", book_id)),
         image_dir(book_id),
     ]

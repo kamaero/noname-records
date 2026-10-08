@@ -259,7 +259,7 @@ def api_v2_consilium_estimate(request: Request, book_id: str):
         book = db.get(ScriptBook, str(book_id or "").strip())
         if book is None:
             return not_found_response("book_not_found")
-        plan = consilium_engine.estimate(db, book.id, root=consilium_engine.ARTIFACT_ROOT)
+        plan = consilium_engine.estimate(db, book.id)
         credits = consilium_engine.read_credits()
         blocked = {mode: _consilium_blocked(db, book, credits=credits, estimate_rub=plan["estimate_rub"][mode])
                    for mode in ("recheck", "reread")}
@@ -285,7 +285,7 @@ async def api_v2_consilium_run(request: Request, book_id: str):
             book = db.get(ScriptBook, str(book_id or "").strip())
             if book is None:
                 return None, None, ""
-            plan = consilium_engine.estimate(db, book.id, root=consilium_engine.ARTIFACT_ROOT)
+            plan = consilium_engine.estimate(db, book.id)
             if plan["chapters_total"] == 0:
                 return book.id, plan, ""
             credits = consilium_engine.read_credits()

@@ -80,9 +80,16 @@ class Settings:
     keys_encryption_key: str = os.getenv("KEYS_ENCRYPTION_KEY", "")
     admin_login: str = os.getenv("ADMIN_LOGIN", "admin")
     admin_password_hash: str = os.getenv("ADMIN_PASSWORD_HASH", "")
-    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./noname.db")
+    #: папка пользовательских данных; на VPS — `data` рядом с кодом, как всегда
+    data_dir: str = os.getenv("DATA_DIR", "data")
+    # База и записи выводятся из DATA_DIR, только если не заданы явно: установщик VPS задаёт
+    # их в .env, и для него ничего не меняется.
+    database_url: str = os.getenv("DATABASE_URL") or (
+        f"sqlite:///{Path(os.getenv('DATA_DIR', '')).expanduser().resolve() / 'noname.db'}"
+        if os.getenv("DATA_DIR") else "sqlite:///./noname.db")
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    audio_storage_path: str = os.getenv("AUDIO_STORAGE_PATH", "")
+    audio_storage_path: str = os.getenv("AUDIO_STORAGE_PATH") or (
+        str(Path(os.getenv("DATA_DIR", "")).expanduser().resolve() / "recordings") if os.getenv("DATA_DIR") else "")
     # Сторож NAS. С 28.09 монтирование `soft`: при пропаже сервера ошибка через ~30 с,
     # а не вечное ожидание. Файлы с NAS читаются только на подтверждённом «жив».
     nas_probe_interval_seconds: int = int(os.getenv("NAS_PROBE_INTERVAL_SECONDS", "15"))
