@@ -57,8 +57,11 @@ SKIP_TAGS = frozenset({
     "dialectal", "misspelling", "rare", "poetic", "colloquial", "vernacular",
 })
 
-# Where the built table lives unless STRESS_FORMS_DB_PATH says otherwise.
-DEFAULT_PATH = Path(__file__).resolve().parents[2] / "data" / "stress_forms.sqlite"
+def default_path() -> Path:
+    """Where the built table lives unless STRESS_FORMS_DB_PATH says otherwise — in the data
+    folder, resolved at call time (the desktop entry sets DATA_DIR after import)."""
+    from app.paths import data_path
+    return data_path("stress_forms.sqlite")
 
 FormsLookup = Callable[[str], "int | list[int] | None"]
 
@@ -185,5 +188,5 @@ def default_forms_lookup(word: str):
         with _DEFAULT_LOCK:
             if _DEFAULT is None:
                 configured = (settings.stress_forms_db_path or "").strip()
-                _DEFAULT = open_lookup(Path(configured) if configured else DEFAULT_PATH)
+                _DEFAULT = open_lookup(Path(configured) if configured else default_path())
     return _DEFAULT(word)

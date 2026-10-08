@@ -17,13 +17,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from app.v2.stress_forms import DEFAULT_PATH, build_forms_db
+from app.v2.stress_forms import build_forms_db, default_path
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("source", help="Wiktextract JSONL of the Russian entries")
-    parser.add_argument("--out", default=str(DEFAULT_PATH), help=f"target SQLite (default {DEFAULT_PATH})")
+    parser.add_argument("--out", default=str(default_path()), help=f"target SQLite (default {default_path()})")
     args = parser.parse_args()
     stats = build_forms_db(args.source, args.out)
     print(f"{args.out}: {stats['forms']} forms, {stats['homographs']} with more than one stress")

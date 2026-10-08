@@ -254,7 +254,9 @@ INFLECTION_ENDINGS = frozenset({
 })
 
 # Where `scripts/v2/import_author_stress.py` drops the author's imported lists.
-AUTHOR_STRESS_DIR = Path(__file__).resolve().parents[2] / "data" / "author_stress"
+def author_stress_dir() -> Path:
+    from app.paths import data_path
+    return data_path("author_stress")
 
 
 def author_stem(word: str) -> str:
@@ -368,7 +370,7 @@ def load_author_layer(db, book, *, json_dir=None) -> dict[str, int]:
     from app.models import AuthorPronunciation
 
     author_id = str(getattr(book, "author_id", "") or "")
-    layer = author_map_from_json_dir(AUTHOR_STRESS_DIR if json_dir is None else json_dir, author_id=author_id)
+    layer = author_map_from_json_dir(author_stress_dir() if json_dir is None else json_dir, author_id=author_id)
     if author_id:
         rows = db.query(AuthorPronunciation).filter(AuthorPronunciation.author_id == author_id).all()
         layer.update(author_map_from_rows(rows))
