@@ -13,11 +13,24 @@ import { apiDelete, apiGet, apiPostJson, apiPutJson, describeApiError } from "..
 import { useToast } from "../components/ToastProvider";
 import { roleAccess } from "../layout/AppShell";
 import { Button, Field, PageHeader } from "../ui";
-import type { AiBalance, AiProvider, AiSettings, AiStep, MeResponse } from "../types";
+import type { AiBalance, AiProvider, AiSettings, AiStep, FirstSteps, MeResponse } from "../types";
 import { useSearchParams } from "react-router-dom";
 import { SpendBanner } from "../components/SpendBanner";
 import { SpendTab } from "./SpendTab";
 import "./SettingsPage.css";
+import "../components/FirstStepsCard.css";
+
+/** Скрытую карточку «Первые шаги» можно вернуть отсюда — скрыли рано, а шаги не сделаны. */
+function ShowFirstSteps() {
+  const client = useQueryClient();
+  const query = useQuery({ queryKey: ["first-steps"], queryFn: () => apiGet<FirstSteps>("/api/first-steps"), retry: false });
+  const show = useMutation({
+    mutationFn: () => apiPutJson<FirstSteps>("/api/first-steps", { hidden: false }),
+    onSuccess: (data) => client.setQueryData(["first-steps"], data),
+  });
+  if (!query.data?.hidden || query.data.done_count >= query.data.total) return null;
+  return <p className="st-lead"><button type="button" className="fs-link-button" onClick={() => show.mutate()}>Показать первые шаги</button> на главной.</p>;
+}
 
 const PROVIDER_LABELS: Record<string, string> = {
   deepseek: "DeepSeek", claude: "Claude", openai: "OpenAI", routerai: "RouterAI",
@@ -301,6 +314,7 @@ export function SettingsPage({ me }: { me: MeResponse }) {
       <PageHeader title="Настройки" subtitle="Нейросети: ключи, балансы и модели шагов" />
       <SpendBanner enabled />
       {tabs}
+      <ShowFirstSteps />
       {!data ? <div className="panel panel-pad">Загружаю…</div> : (
         <>
           <section className="panel st-section">

@@ -1668,3 +1668,22 @@ export interface SpendMonth {
   by_provider: Record<string, SpendBucket>;
   recent: SpendRow[];
 }
+
+export type FirstStepKey = "key" | "models" | "limit" | "sample" | "run" | "result";
+export type FirstStep = {
+  key: FirstStepKey;
+  title: string;
+  done: boolean;
+  state: "done" | "todo" | "running" | "failed" | "locked";
+  detail: string;
+};
+export type FirstSteps = {
+  steps: FirstStep[];
+  done_count: number;
+  total: number;
+  visible: boolean;
+  hidden: boolean;
+  sample_book_id: string;
+  sample_estimate_rub: number | null;
+  sample_estimate_unknown: boolean;
+};

@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiGet, describeApiError } from "../api/client";
 import { Icon } from "../components/Icon";
 import { UploadPanel } from "../components/upload/UploadPanel";
+import { FirstStepsCard } from "../components/FirstStepsCard";
 import { Button, DataTable, EmptyState, PageHeader, StatusChip, StepDots, describeStatus, type Column, type StepDot } from "../ui";
 import { normalizeBookStatus } from "../viewModels/bookWorkflow";
 import { formatServerDateTime } from "../utils/serverTime";
@@ -275,6 +276,8 @@ export function CommandCenterPage() {
           ) : null
         }
       />
+
+      <FirstStepsCard />
 
       {uploadOpen ? (
         <section id="lib-upload" className="ui-card ui-card--accent ui-card-pad lib-upload" aria-label="Загрузка книги">
