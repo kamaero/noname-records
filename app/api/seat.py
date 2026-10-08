@@ -40,7 +40,8 @@ class SeatGuardMiddleware(BaseHTTPMiddleware):
             if host not in ALLOWED_HOSTS:
                 return JSONResponse({"error": "bad_host"}, status_code=400)
             if is_hidden(request.url.path):
-                return JSONResponse({"error": "not_found"}, status_code=404)
+                # свой код ошибки: отличим от 404 самих ручек («книги нет», «бот не настроен»)
+                return JSONResponse({"error": "not_in_one_seat"}, status_code=404)
         return await call_next(request)
 
 

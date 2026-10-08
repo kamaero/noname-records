@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 # A leaf service: models and the password context, no settings, no app imports. Taking
 # it directly keeps the account operations out of the handler-factory dependency chain,
 # where every new name has to be declared at four levels before it arrives here.
+from app.seat import one_seat
 from app.services import onboarding, user_admin
 from app.time_utils import utcnow_naive
 
@@ -110,6 +111,8 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
             "full_access": has_workspace_full_access(request),
             "bot_reachable": reachable,
             "show_onboarding": show_onboarding,
+            # studio — VPS; one — настольная программа: фронт прячет учётки и пробы
+            "seat_mode": "one" if one_seat() else "studio",
         }
 
     def api_me_bot_reach(request: Request):
@@ -140,6 +143,8 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
             "studio_name": settings.studio_name,
             "telegram_bot_username": settings.telegram_bot_username or "",
             "setup_missing": needs_password_setup(),
+            # странице входа: в «одном месте» формы нет — сессию даёт только запуск программы
+            "seat_mode": "one" if one_seat() else "studio",
         }
 
     async def api_attach_telegram(request: Request, user_id: str):
