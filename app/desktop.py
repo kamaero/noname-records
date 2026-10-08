@@ -56,7 +56,9 @@ def acquire_lock(data_dir: Path):
 def backup_before_migration(db_file: Path, current: str | None, head: str) -> Path | None:
     """Копия базы рядом перед миграцией, которая её изменит: у человека на компьютере нет
     ночного бэкапа, а неудачная миграция без копии стоила бы ему всей разметки."""
-    if not db_file.exists() or current is None or current == head:
+    # Копия не нужна только новой (пустой) базе и уже свежей. «Нет ревизии» у непустой
+    # базы — перенесённая старая: миграция изменит и её.
+    if not db_file.exists() or db_file.stat().st_size == 0 or current == head:
         return None
     copy = db_file.with_name(f"{db_file.name}.before-{head}")
     shutil.copy2(db_file, copy)

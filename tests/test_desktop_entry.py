@@ -90,3 +90,22 @@ def test_backup_only_when_migration_will_change_the_db(tmp_path):
     copy = backup_before_migration(db, current="0045_spend", head="0046_onboarding")
     assert copy.name == "noname.db.before-0046_onboarding" and copy.read_bytes() == b"sqlite"
     assert backup_before_migration(tmp_path / "absent.db", current=None, head="0046_onboarding") is None
+
+
+def test_an_existing_db_without_a_revision_is_copied_too(tmp_path):
+    # «нет ревизии» — не только новая база: перенесённая старая без alembic_version тоже
+    # изменится миграцией, и копия ей нужна не меньше
+    import sqlite3
+
+    from app.desktop import backup_before_migration
+    db = tmp_path / "noname.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute("create table notes (t text)")
+        conn.execute("insert into notes values ('дорогая строка')")
+    copy = backup_before_migration(db, current=None, head="0046_onboarding")
+    assert copy is not None
+    with sqlite3.connect(copy) as conn:
+        assert conn.execute("select t from notes").fetchone() == ("дорогая строка",)
+    empty = tmp_path / "fresh.db"
+    empty.write_bytes(b"")  # файл, который создал сам SQLite при первом подключении
+    assert backup_before_migration(empty, current=None, head="0046_onboarding") is None
