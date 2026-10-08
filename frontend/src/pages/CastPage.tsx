@@ -7,6 +7,7 @@ import { ApiError, apiGet, apiPostJson, describeApiError } from "../api/client";
 import { saveCharacterAbout, type CharacterAbout } from "../v2/editorApi";
 import { Icon } from "../components/Icon";
 import { useToast } from "../components/ToastProvider";
+import { markFirstStepsSeen } from "../utils/firstStepsSeen";
 import { hubKeys, useCharacterMapActions } from "../components/book/v2/hubApi";
 import { CastBudgetLine } from "../components/cast/CastBudgetLine";
 import { CastConflictsNote } from "../components/cast/CastConflictsNote";
@@ -121,6 +122,7 @@ const DEFAULT_RATE_FALLBACK = 1000;
 
 export function CastPage() {
   const { bookId = "" } = useParams();
+  useEffect(() => { markFirstStepsSeen(bookId); }, [bookId]);
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
 

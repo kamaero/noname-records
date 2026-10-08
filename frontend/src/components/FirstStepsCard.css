@@ -1,0 +1,23 @@
+.fs-card { padding: 16px; margin-bottom: 16px; }
+.fs-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.fs-head h2 { margin: 0; }
+.fs-count { color: var(--text-dim); white-space: nowrap; }
+.fs-steps { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 10px; }
+.fs-step { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.fs-mark { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border-strong); display: grid; place-items: center; font-size: 13px; }
+.fs-step.is-done .fs-mark { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.fs-step.is-running .fs-mark { border-color: var(--accent-line); color: var(--accent); }
+.fs-step.is-failed .fs-mark { border-color: var(--danger); color: var(--danger); }
+.fs-step.is-locked { opacity: 0.55; }
+.fs-step.is-done strong { color: var(--text-dim); font-weight: 500; }
+.fs-body { display: grid; gap: 2px; min-width: 0; }
+.fs-detail { color: var(--text-dim); font-size: 0.9em; overflow-wrap: anywhere; }
+.fs-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.fs-link { color: var(--accent); white-space: nowrap; }
+.fs-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fs-foot a { color: var(--accent); }
+.fs-link-button { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; font: inherit; }
+@media (max-width: 560px) {
+  .fs-step { grid-template-columns: 24px minmax(0, 1fr); }
+  .fs-action { grid-column: 2; }
+}

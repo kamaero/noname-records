@@ -11,6 +11,7 @@
  * changes itself and preselect «моя роль».
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
+import { markFirstStepsSeen } from "../utils/firstStepsSeen";
 import { Link, Navigate, useNavigate, useParams, useSearchParams, type NavigateFunction } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, describeApiError } from "../api/client";
@@ -267,6 +268,7 @@ export function ScriptReader({
     [allChapters, allowedChapterIds],
   );
   const bookId = data?.book.id ?? "";
+  useEffect(() => { markFirstStepsSeen(bookId); }, [bookId]);
   // Лор — шпаргалка о мире книги: видят все, включая диктора. Кнопки нет, если у
   // книги нет автора или у автора не загружена энциклопедия (ручка отвечает пустым).
   const [loreOpen, setLoreOpen] = useState(false);
