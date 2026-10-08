@@ -26,8 +26,9 @@ def test_absent_until_downloaded_and_markup_skips_the_layer():
 
 def test_download_marks_ready_only_after_success():
     def loader(workdir):
-        (stress_model.model_dir() / "nn").mkdir(parents=True)
-        (stress_model.model_dir() / "nn" / "w.bin").write_bytes(b"x" * 2_000_000)
+        from pathlib import Path
+        (Path(workdir) / "nn").mkdir(parents=True)
+        (Path(workdir) / "nn" / "w.bin").write_bytes(b"x" * 2_000_000)
     stress_model.download(loader=loader)
     assert stress_model.state()["state"] == "ready"
     assert stress_model.state()["downloaded_mb"] >= 1
@@ -35,7 +36,8 @@ def test_download_marks_ready_only_after_success():
 
 def test_a_failed_download_is_reported_and_not_ready():
     def loader(workdir):
-        (stress_model.model_dir() / "half.bin").write_bytes(b"x")
+        from pathlib import Path
+        (Path(workdir) / "half.bin").write_bytes(b"x")
         raise OSError("нет сети")
     stress_model.download(loader=loader)
     body = stress_model.state()
@@ -96,3 +98,35 @@ def test_routes_refuse_in_studio_and_without_admin(monkeypatch):
     client.cookies.set("session", session_serializer.dumps({"uid": "a", "sub": "a", "roles": ["admin"]}))
     assert client.get("/api/settings/stress-model").json()["state"] == "auto"
     assert client.post("/api/settings/stress-model").status_code == 409
+
+
+def test_a_retry_after_a_broken_download_finishes(monkeypatch):
+    # RUAccent решает «качать или нет» по наличию папки, а не по полноте файлов: обрыв после
+    # первой папки без перекладки оставил бы её навсегда, и повтор падал бы на недостающем файле
+    def broken(workdir):
+        from pathlib import Path
+        (Path(workdir) / "dictionary").mkdir(parents=True)
+        (Path(workdir) / "dictionary" / "partial").write_bytes(b"x")
+        raise OSError("связь оборвалась")
+
+    def ruaccent_like(workdir):
+        from pathlib import Path
+        folder = Path(workdir) / "dictionary"
+        if not folder.exists():
+            folder.mkdir(parents=True)
+            (folder / "omographs.json.gz").write_bytes(b"x")
+        if not (folder / "omographs.json.gz").exists():
+            raise FileNotFoundError("omographs.json.gz")
+
+    stress_model.download(loader=broken)
+    assert stress_model.state()["state"] == "failed"
+    stress_model.download(loader=ruaccent_like)
+    assert stress_model.state()["state"] == "ready"
+    assert not (stress_model.model_dir() / "dictionary" / "partial").exists()
+
+
+def test_leftovers_of_a_closed_app_do_not_count_as_ready(monkeypatch):
+    # программу закрыли посреди загрузки: следующий запуск видит не «готово», а «нет»
+    stress_model.model_dir().mkdir(parents=True)
+    (stress_model.model_dir() / "dictionary").mkdir()
+    assert stress_model.state()["state"] == "absent"
