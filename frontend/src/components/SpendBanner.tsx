@@ -1,4 +1,8 @@
-/** Полоса о лимите трат — администратору, когда месяц перешёл 80 % лимита. */
+/** Полоса о лимите трат — администратору, когда месяц перешёл 80 % лимита.
+ *
+ * Прогон тратит деньги, пока страница открыта: без опроса полоса показывала остаток на
+ * момент открытия, и «лимит исчерпан» узнавали, только перейдя на другую страницу.
+ * Раз в минуту хватает — траты идут главами, а не секундами. */
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
@@ -12,6 +16,7 @@ export function SpendBanner({ enabled }: { enabled: boolean }) {
     enabled,
     retry: false,
     staleTime: 60_000,
+    refetchInterval: 60_000,
   });
   const data = query.data;
   if (!enabled || !data || !data.limit_rub) return null;
