@@ -86,13 +86,13 @@ def _canon_known_names(db, book_id: str) -> set[str] | None:
     import sqlite3
 
     from app.services.canon_reconcile import reconcile
-    from app.services.canon_seed import CANON_DB
+    from app.services.canon_seed import canon_db_path
     from app.services.char_map_assess import _load_canon_rows, assess_char_map
 
     try:
         if not assess_char_map(db, book).canon_available:
             return None
-        rows = _load_canon_rows(CANON_DB)
+        rows = _load_canon_rows(canon_db_path())
     except (OSError, sqlite3.Error, ValueError):
         # Корпус — внешний файл: его может не быть, он может быть недочитан.
         # Карта от этого работать не перестаёт, просто молчит о каноне. Импорты —

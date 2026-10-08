@@ -17,7 +17,8 @@ from typing import Any
 from app.config import settings
 from app.services.character_names import _normalize_character_aliases as _aliases
 from app.services.canon_reconcile import reconcile
-from app.services.canon_seed import CANON_DB, _is_canon_author
+from app.services.canon_seed import _is_canon_author
+from app.services.canon_seed import canon_db_path as _canon_db_path
 
 
 @dataclass
@@ -61,7 +62,7 @@ def _load_canon_rows(db_path: str) -> list[tuple]:
         con.close()
 
 
-def assess_char_map(db, book, *, canon_db_path: str = CANON_DB) -> CharMapAssessment:
+def assess_char_map(db, book, *, canon_db_path: str | None = None) -> CharMapAssessment:
     from app.models import Character
 
     chars = (
@@ -79,7 +80,7 @@ def assess_char_map(db, book, *, canon_db_path: str = CANON_DB) -> CharMapAssess
     canon_available = _is_canon_author(db, str(getattr(book, "author_id", "") or ""))
     known = new = 0
     if canon_available:
-        canon_rows = _load_canon_rows(canon_db_path)
+        canon_rows = _load_canon_rows(canon_db_path or _canon_db_path())
         canon_available = bool(canon_rows)
         if canon_available:
             book_chars = [(c.name, _aliases(c.aliases)) for c in chars]

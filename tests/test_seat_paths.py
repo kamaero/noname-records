@@ -37,3 +37,33 @@ def test_no_hardcoded_user_data_paths():
     offenders = [str(p.relative_to(ROOT)) for p in (ROOT / "app").rglob("*.py")
                  if p.name != "paths.py" and pattern.search(p.read_text(encoding="utf-8"))]
     assert offenders == []
+
+
+def test_dictionaries_and_canon_follow_the_data_folder(monkeypatch, tmp_path):
+    # Викисловарь, авторские ударения и канон — файлы, которые кладёт человек (или скрипт
+    # импорта): в настольной версии им место в папке данных, а не внутри пакета программы.
+    monkeypatch.setattr(settings, "data_dir", str(tmp_path))
+    from app.services import canon_seed
+    from app.v2 import stress, stress_forms
+    assert stress_forms.default_path() == tmp_path / "stress_forms.sqlite"
+    assert stress.author_stress_dir() == tmp_path / "author_stress"
+    assert Path(canon_seed.canon_db_path()) == tmp_path / "canon_kb.sqlite"
+
+
+def test_forms_table_in_the_data_folder_is_opened(monkeypatch, tmp_path):
+    from app.v2 import stress_forms
+    monkeypatch.setattr(settings, "data_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "stress_forms_db_path", "")
+    monkeypatch.setattr(stress_forms, "_DEFAULT", None)
+    opened = []
+    monkeypatch.setattr(stress_forms, "open_lookup", lambda path: opened.append(path) or (lambda word: None))
+    stress_forms.default_forms_lookup("сомнамбула")
+    assert opened == [tmp_path / "stress_forms.sqlite"]
+
+
+def test_no_data_folder_joins_outside_paths_py():
+    # «data» как часть пути через Path(...) / "data" или os.path.join(..., "data", ...)
+    pattern = re.compile(r"""(/\s*["']data["']|join\([^)]*["']data["']\s*,)""")
+    offenders = [str(p.relative_to(ROOT)) for p in (ROOT / "app").rglob("*.py")
+                 if p.name != "paths.py" and pattern.search(p.read_text(encoding="utf-8"))]
+    assert offenders == []

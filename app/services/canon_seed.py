@@ -12,8 +12,10 @@ import json
 import os
 import sqlite3
 
-_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CANON_DB = os.path.join(_REPO, "data", "canon_kb.sqlite")
+def canon_db_path() -> str:
+    """Выверенный канон — файл, который кладёт оператор; в папке данных, а не в пакете."""
+    from app.paths import data_path
+    return str(data_path("canon_kb.sqlite"))
 CANON_AUTHOR_SLUG = "belozerov"
 
 _INSTRUCTION = (
@@ -23,8 +25,9 @@ _INSTRUCTION = (
 )
 
 
-def build_canon_roster(db_path: str = CANON_DB) -> str:
+def build_canon_roster(db_path: str | None = None) -> str:
     """Confirmed (human-verified) canon characters as 'Name (alias1, alias2); …'."""
+    db_path = db_path or canon_db_path()
     if not os.path.exists(db_path):
         return ""
     con = sqlite3.connect(db_path)
@@ -58,7 +61,7 @@ def _is_canon_author(db, author_id: str) -> bool:
     return bool(a and (a.slug or "").strip().lower() == CANON_AUTHOR_SLUG)
 
 
-def canon_roster_system_suffix(db, book, db_path: str = CANON_DB) -> str:
+def canon_roster_system_suffix(db, book, db_path: str | None = None) -> str:
     if not _is_canon_author(db, str(getattr(book, "author_id", "") or "")):
         return ""
     roster = build_canon_roster(db_path)
