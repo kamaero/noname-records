@@ -82,6 +82,8 @@ class Settings:
     admin_password_hash: str = os.getenv("ADMIN_PASSWORD_HASH", "")
     #: папка пользовательских данных; на VPS — `data` рядом с кодом, как всегда
     data_dir: str = os.getenv("DATA_DIR", "data")
+    #: studio — VPS для студии (как всегда); one — настольная программа одного человека
+    seat_mode: str = os.getenv("SEAT_MODE", "studio")
     # База и записи выводятся из DATA_DIR, только если не заданы явно: установщик VPS задаёт
     # их в .env, и для него ничего не меняется.
     database_url: str = os.getenv("DATABASE_URL") or (
