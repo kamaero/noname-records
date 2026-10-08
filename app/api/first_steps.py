@@ -22,6 +22,15 @@ def _gate(request: Request):
     return None
 
 
+async def _json_object(request: Request) -> dict | None:
+    """Тело-объект или None: пустое, битое или не объект — понятный отказ 400, а не 500."""
+    try:
+        body = await request.json()
+    except ValueError:
+        return None
+    return body if isinstance(body, dict) else None
+
+
 def _checklist() -> dict:
     with SessionLocal() as db:
         return first_steps.checklist(db)
@@ -51,8 +60,10 @@ async def api_first_steps_sample(request: Request):
 async def api_first_steps_seen(request: Request):
     if (error := _gate(request)) is not None:
         return error
-    body = await request.json()
-    book_id = str((body or {}).get("book_id") or "") if isinstance(body, dict) else ""
+    body = await _json_object(request)
+    if body is None or not isinstance(body.get("book_id"), str):
+        return JSONResponse({"error": "Ожидается book_id — строка."}, status_code=400)
+    book_id = body["book_id"]
     with SessionLocal() as db:
         return {"ok": first_steps.mark_seen(db, book_id)}
 
@@ -60,8 +71,8 @@ async def api_first_steps_seen(request: Request):
 async def api_first_steps_flags(request: Request):
     if (error := _gate(request)) is not None:
         return error
-    body = await request.json()
-    flags = {k: body.get(k) for k in ("hidden", "no_limit") if isinstance(body, dict) and k in body}
+    body = await _json_object(request) or {}
+    flags = {k: body.get(k) for k in ("hidden", "no_limit") if k in body}
     if not flags or any(not isinstance(v, bool) for v in flags.values()):
         return JSONResponse({"error": "Ожидаются hidden и/или no_limit: true или false."}, status_code=400)
     with SessionLocal() as db:

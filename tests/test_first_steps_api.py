@@ -64,3 +64,12 @@ def test_flags_persist(factory):
 
 def test_bad_flag_body_is_rejected(factory):
     assert _client(["admin"]).put("/api/first-steps", json={"hidden": "yes"}).status_code == 400
+
+
+def test_a_broken_body_is_a_clear_refusal_not_a_server_error(factory):
+    admin = _client(["admin"])
+    for method, path, body in (("put", "/api/first-steps", "{"), ("put", "/api/first-steps", ""),
+                               ("put", "/api/first-steps", "[1]"), ("post", "/api/first-steps/seen", ""),
+                               ("post", "/api/first-steps/seen", "{"), ("post", "/api/first-steps/seen", '{"book_id": 5}')):
+        response = getattr(admin, method)(path, content=body, headers={"content-type": "application/json"})
+        assert response.status_code == 400, (method, path, body, response.status_code)
