@@ -672,6 +672,15 @@ class StudioSettings(Base):
     monthly_limit_rub: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     #: последний порог, о котором уже написали владельцу: «2026-10:80» / «2026-10:100»
     spend_warned_month: Mapped[str] = mapped_column(String(16), nullable=False, default="", server_default="")
+    #: книга-пример «Первых шагов»; пусто — ещё не импортировали. Если книгу удалили,
+    #: id указывает в пустоту — шаг 4 сам увидит, что книги нет, и предложит импорт снова
+    sample_book_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
+    #: администратор осознанно работает без лимита — шаг «лимит» отмечен и при 0
+    onboarding_no_limit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: карточку «Первые шаги» скрыли; вернуть — ссылкой в «Настройках»
+    onboarding_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: когда впервые открыли каст или Читалку примера — шаг 6; на студию, а не на человека
+    onboarding_result_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     updated_by: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
