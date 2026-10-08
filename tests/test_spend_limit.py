@@ -11,6 +11,7 @@ from app.db import Base
 from app.models import AuditLog
 from app.services import spend
 from app.services.studio_settings import studio_settings
+from tests.spend_helpers import calm_now
 
 
 @pytest.fixture()
@@ -26,7 +27,7 @@ def db():
 def _spent(db, rub_millions=1):
     for _ in range(rub_millions):  # 1 млн входных токенов DeepSeek = 66 ₽ при курсе 100
         spend.record(db, step="attribution", provider="deepseek", model="deepseek-v4-pro",
-                     unit="tokens", input_units=1_000_000, output_units=0)
+                     unit="tokens", input_units=1_000_000, output_units=0, now=calm_now())
 
 
 def _check(db, estimate, **kw):
@@ -89,7 +90,7 @@ def test_thresholds_warn_once_each_and_again_next_month(db):
     assert spend.warn_thresholds(db, now, send) == 0
     _spent(db, 1)                                     # 66 % — ещё молчим
     spend.record(db, step="sound", provider="deepseek", model="deepseek-v4-pro", unit="tokens",
-                 input_units=200_000, output_units=0)  # +13,2 ₽ → 79,2 %
+                 input_units=200_000, output_units=0, now=calm_now())  # +13,2 ₽ → 79,2 %
     assert spend.warn_thresholds(db, now, send) == 0
     _spent(db, 1)                                     # 145 % — сразу 100 %
     assert spend.warn_thresholds(db, now, send) == 1 and "100" in sent[-1]

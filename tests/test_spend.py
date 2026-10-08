@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 from app.db import Base
 from app.models import ModelPrice, SpendEntry
 from app.services import spend
+from tests.spend_helpers import calm_now
 
 
 @pytest.fixture()
@@ -23,7 +24,7 @@ def db():
 
 def test_a_catalog_model_is_priced_in_rubles(db):
     row = spend.record(db, step="attribution", provider="deepseek", model="deepseek-v4-pro",
-                       unit="tokens", input_units=1_000_000, output_units=1_000_000)
+                       unit="tokens", input_units=1_000_000, output_units=1_000_000, now=calm_now())
     assert row.price_known and row.rub == pytest.approx((0.66 + 1.98) * 100)
 
 
@@ -67,7 +68,7 @@ def test_the_summary_sums_the_month_and_never_shows_a_negative_rest(db):
     studio_settings(db=db).monthly_limit_rub = 100
     for _ in range(3):
         spend.record(db, step="attribution", provider="deepseek", model="deepseek-v4-pro",
-                     unit="tokens", input_units=1_000_000, output_units=0)
+                     unit="tokens", input_units=1_000_000, output_units=0, now=calm_now())
     spend.record(db, step="sound", provider="routerai", model="vendor/unknown", unit="tokens",
                  input_units=1, output_units=1)
     summary = spend.month_summary(db, spend.month_key(datetime.utcnow()))
