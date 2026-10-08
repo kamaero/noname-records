@@ -51,6 +51,7 @@ export function FirstStepsCard() {
   const data = query.data;
   if (!data || !data.visible) return null;
   const book = data.sample_book_id ? `/books/${encodeURIComponent(data.sample_book_id)}` : "";
+  const reader = `/reader?book_id=${encodeURIComponent(data.sample_book_id)}`;
 
   function action(step: FirstStep) {
     if (step.done && step.key !== "result") return null;
@@ -73,7 +74,8 @@ export function FirstStepsCard() {
         return book && step.state !== "locked" ? (
           <span className="fs-actions">
             <Link className="fs-link" to={`${book}/cast`}>Каст</Link>
-            <Link className="fs-link" to="/reader">Читалка</Link>
+            {/* сразу в первую размеченную главу примера: из общего списка книг его ещё надо найти */}
+            <Link className="fs-link" to={reader}>Читалка</Link>
           </span>
         ) : null;
     }

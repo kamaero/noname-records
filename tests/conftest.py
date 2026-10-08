@@ -109,27 +109,6 @@ def _fresh_step_cache():
     step_models.clear_cache()
 
 
-@pytest.fixture(autouse=True)
-def _calm_clock_for_peak(monkeypatch):
-    """Пиковый тариф DeepSeek (будни 01–04 и 06–10 UTC) удваивает цену записи, сделанной
-    «сейчас». Тесты, которые не передают время, падали бы только в эти часы — сьют краснел
-    по расписанию. Текущий момент в тестах — не пик; момент, переданный явно, считается по
-    настоящим окнам, так что проверки самого пика работают как раньше."""
-    from datetime import timedelta
-
-    from app.time_utils import utcnow_naive
-    from app.v2 import model_catalog
-
-    real = model_catalog.is_peak
-
-    def is_peak(moment):
-        if moment is not None and abs(moment - utcnow_naive()) < timedelta(minutes=5):
-            return False
-        return real(moment)
-
-    monkeypatch.setattr(model_catalog, "is_peak", is_peak)
-
-
 @pytest.fixture(scope="session")
 def _throwaway_spend_engine():
     """Одна база в памяти на весь прогон: таблицы на каждый тест заново стоили минуты."""
