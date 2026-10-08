@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from app.config import settings
 from app.models import ModelPrice, SpendEntry
 from app.time_utils import utcnow_naive
 
@@ -285,8 +286,29 @@ def record_call(provider: str, model: str, *, unit: str, input_units: int, outpu
             logger.exception("spend: не записал вызов %s/%s", provider, model)
 
 
+#: адреса, которые студия задаёт в .env; прокси перед провайдером в адресе его имени не несёт
+_CONFIGURED_URLS = (("deepseek_base_url", "deepseek"), ("deepseek_anthropic_base_url", "deepseek"),
+                    ("claude_base_url", "claude"), ("openai_base_url", "openai"),
+                    ("openrouter_base_url", "openrouter"), ("routerai_base_url", "routerai"),
+                    ("zai_base_url", "zai"))
+
+
+def _norm(url: str) -> str:
+    return str(url or "").strip().lower().rstrip("/")
+
+
 def provider_from_url(base_url: str) -> str:
-    url = str(base_url or "").lower()
+    """Чей это вызов. Сначала — заданные адреса провайдеров (самый длинный совпавший: два
+    прокси могут жить на одном хосте), потом — слово в адресе. Иначе прокси студии
+    записывался «Другим», и траты не сходились с провайдером."""
+    url = _norm(base_url)
+    best, best_len = "", 0
+    for attr, name in _CONFIGURED_URLS:
+        configured = _norm(getattr(settings, attr, ""))
+        if configured and (url == configured or url.startswith(configured + "/")) and len(configured) > best_len:
+            best, best_len = name, len(configured)
+    if best:
+        return best
     for marker, name in (("routerai", "routerai"), ("openrouter", "openrouter"), ("deepseek", "deepseek"),
                          ("anthropic", "claude"), ("openai", "openai"), ("z.ai", "zai")):
         if marker in url:
