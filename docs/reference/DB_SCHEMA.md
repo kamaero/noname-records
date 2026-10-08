@@ -2,9 +2,9 @@
 
 Получено интроспекцией `SQLAlchemy`-метаданных: импортируются `app.models` и `app.v2.models`, дальше используется `Base.metadata` (та же `Base`, что в `app/db.py`).
 
-Всего таблиц: **53**.
+Всего таблиц: **54**.
 
-_Сгенерировано из коммита 34793b0._
+_Сгенерировано из коммита 4308e7c._
 
 ## Таблицы
 
@@ -968,6 +968,21 @@ The base class of the class hierarchy.
 
 - `ix_spend_entries_created_at`: created_at
 
+### `spend_holds` — `app.models.SpendHold`
+
+Смета запущенного прогона, ещё не потраченная.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `estimate_rub` | FLOAT | нет |  |  | python:0.0 |
+| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `what` | VARCHAR(80) | нет |  |  | python:'' |
+
+Индексы:
+
+- `ix_spend_holds_created_at`: created_at
+
 ### `step_models` — `app.models.StepModel`
 
 Модель, выбранная студией для шага. Нет строки — значение по умолчанию из кода.
@@ -991,7 +1006,11 @@ Studio-wide defaults, one row (`id == "default"`).
 | `default_rate_rub_per_min` | INTEGER | нет |  |  | python:1000 |
 | `id` | VARCHAR(36) | нет | да |  | python:'default' |
 | `monthly_limit_rub` | INTEGER | нет |  |  | python:0; server:0 |
+| `onboarding_hidden` | BOOLEAN | нет |  |  | python:False |
+| `onboarding_no_limit` | BOOLEAN | нет |  |  | python:False |
+| `onboarding_result_seen_at` | DATETIME | да |  |  |  |
 | `role_deadline_date` | VARCHAR(10) | нет |  |  | python:'2026-12-31'; server:2026-12-31 |
+| `sample_book_id` | VARCHAR(36) | нет |  |  | python:''; server: |
 | `spend_warned_month` | VARCHAR(16) | нет |  |  | python:''; server: |
 | `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
 | `updated_by` | VARCHAR(120) | нет |  |  | python:'' |
@@ -1194,3 +1213,4 @@ A word the author has waved off: «ударение тут не нужно, ег
 | `0043_bot_contacts` | бот: учёт контактов (кто вышел на связь) и время последней сводки владельцу | `0043_bot_contacts.py` |
 | `0044_provider_keys_step_models` | Ключи нейросетей и модели шагов — на сайте. | `0044_provider_keys_step_models.py` |
 | `0045_spend` | Журнал трат, цены моделей и месячный лимит. | `0045_spend.py` |
+| `0046_onboarding` | «Первые шаги»: книга-пример и флаги карточки в studio_settings. | `0046_onboarding.py` |

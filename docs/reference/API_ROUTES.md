@@ -2,9 +2,9 @@
 
 Список получен через интроспекцию реального приложения — импортируется `app.main:app` и обходится `app.routes` (только `fastapi.routing.APIRoute`). Колонка «Обработчик» — модуль и имя функции, «Описание» — первая строка docstring обработчика, если она есть.
 
-Всего маршрутов: **152**, групп: **35**.
+Всего маршрутов: **156**, групп: **36**.
 
-_Сгенерировано из коммита 34793b0._
+_Сгенерировано из коммита 4308e7c._
 
 ## `/` (1)
 
@@ -64,6 +64,15 @@ _Сгенерировано из коммита 34793b0._
 | POST | `/api/dictors/{user_id}/demos` | `app.api.dictors:api_dictor_demo_upload` | Любое аудио или видео; в демо уходят первые две минуты, MP3 192 кбит/с (ffmpeg). |
 | POST | `/api/dictors/{user_id}/main-demo` | `app.api.dictors:api_dictor_main_demo` |  |
 | PATCH | `/api/dictors/{user_id}/note` | `app.api.dictors:api_dictor_note` |  |
+
+## `/api/first-steps` (4)
+
+| Методы | Путь | Обработчик | Описание |
+|---|---|---|---|
+| GET | `/api/first-steps` | `app.api.first_steps:api_first_steps` |  |
+| PUT | `/api/first-steps` | `app.api.first_steps:api_first_steps_flags` |  |
+| POST | `/api/first-steps/sample` | `app.api.first_steps:api_first_steps_sample` |  |
+| POST | `/api/first-steps/seen` | `app.api.first_steps:api_first_steps_seen` |  |
 
 ## `/api/log` (1)
 
