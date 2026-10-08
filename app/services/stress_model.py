@@ -49,7 +49,23 @@ def state() -> dict:
     return {"state": current, "downloaded_mb": _downloaded_mb(), "error": _STATE["error"]}
 
 
+def ruaccent_package_dir():
+    from importlib.util import find_spec
+    from pathlib import Path
+
+    spec = find_spec("ruaccent")
+    if spec is None or not spec.origin:
+        raise RuntimeError("В сборке программы нет RUAccent — напишите разработчику.")
+    return Path(spec.origin).parent
+
+
 def _default_loader(workdir: str) -> None:
+    # RUAccent кладёт модули лемматизатора koziev не в workdir, а в папку своего пакета, и
+    # импортирует их оттуда. В установленной программе пакет только для чтения, поэтому
+    # koziev приходит со сборкой (проект 3); здесь только проверка — писать в пакет нельзя.
+    if not (ruaccent_package_dir() / "koziev").is_dir():
+        raise RuntimeError("В сборке программы нет словарей лемматизатора RUAccent (koziev) — "
+                           "это ошибка сборки, а не сети. Напишите разработчику.")
     from ruaccent import RUAccent
 
     from app.v2.stress_ruaccent import OMOGRAPH_MODEL_SIZE
