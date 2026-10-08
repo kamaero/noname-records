@@ -20,7 +20,14 @@ def session_payload(request: Request) -> dict:
         payload = session_serializer.loads(token)
     except BadSignature:
         return {}
-    return payload if isinstance(payload, dict) else {}
+    if not isinstance(payload, dict):
+        return {}
+    from app.seat import one_seat, seat_fingerprint
+
+    # в «одном месте» действует только сессия этого запуска
+    if one_seat() and payload.get("seat") != seat_fingerprint():
+        return {}
+    return payload
 
 
 def session_roles(request: Request) -> set[str]:
