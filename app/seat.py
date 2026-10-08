@@ -3,14 +3,47 @@
 Одна настройка вместо развилки по коду: VPS-режим (`studio`) не меняется и проверяется тем
 же сьютом. Режим читается в момент вызова — тесты и точка входа переключают его после импорта.
 """
+import hashlib
+
 from app.config import settings
 from app.time_utils import utcnow_naive
 
+OWNER_ID = "local-owner"
+ALLOWED_HOSTS = ("127.0.0.1", "localhost")
 INTERRUPTED = "Приложение закрыли во время прогона — запустите его заново."
 
 
 def one_seat() -> bool:
     return str(settings.seat_mode or "").strip().lower() == "one"
+
+
+#: многопользовательские части, которых в «одном месте» нет (наполняется в задаче 4)
+HIDDEN_PREFIXES: tuple[str, ...] = ()
+
+
+def is_hidden(path: str) -> bool:
+    return any(path == p or path.startswith(p + "/") for p in HIDDEN_PREFIXES)
+
+
+def seat_fingerprint() -> str:
+    """Отпечаток ключа запуска — в подписанной сессии. Новый запуск — новый ключ, и cookie
+    прошлого запуска перестаёт действовать без всякого списка отозванных."""
+    return hashlib.sha256(str(settings.seat_token or "").encode()).hexdigest()[:32]
+
+
+def local_owner(db):
+    """Учётка владельца программы: одна, создаётся при первом входе. Нужна там, где код
+    пишет автора действия (журнал, голоса, траты)."""
+    from app.models import User, UserRole
+
+    user = db.get(User, OWNER_ID)
+    if user is None:
+        user = User(id=OWNER_ID, login="owner", password_hash="", display_name="Владелец", is_active="true")
+        db.add(user)
+        db.add(UserRole(user_id=OWNER_ID, role="admin"))
+        db.add(UserRole(user_id=OWNER_ID, role="author"))
+        db.commit()
+    return user
 
 
 def mark_interrupted_runs(db) -> int:
