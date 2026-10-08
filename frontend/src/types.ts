@@ -17,6 +17,8 @@ export type MeResponse = {
   bot_reachable?: boolean | null;
   /** сервер решил открыть приветственное окно само */
   show_onboarding?: boolean;
+  /** studio — VPS; one — настольная программа одного человека */
+  seat_mode?: "studio" | "one";
 };
 
 export type MeBotReachResponse = {
@@ -1375,6 +1377,8 @@ export type PublicAuthConfigResponse = {
   telegram_bot_username: string;
   studio_name?: string;
   setup_missing: boolean;
+  /** one — настольная программа: формы входа нет, сессию даёт запуск программы */
+  seat_mode?: "studio" | "one";
 };
 
 /* ---------- v2 pipeline progress (GET /api/v2/books/{id}/progress) ---------- */

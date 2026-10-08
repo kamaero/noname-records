@@ -87,6 +87,8 @@ export function roleAccess(me: MeResponse) {
 
 export function buildNav(me: MeResponse): { primary: NavItem[]; secondary: NavItem[] } {
   const { isAdmin, editor, isAgent, canPrepare, canRecord } = roleAccess(me);
+  // в «одном месте» нет учёток и проб: пункты меню для них вели бы на пустые страницы
+  const oneSeat = me.seat_mode === "one";
 
   const primary: NavItem[] = [
     {
@@ -103,9 +105,9 @@ export function buildNav(me: MeResponse): { primary: NavItem[]; secondary: NavIt
     { to: "/asr", label: "ASR", icon: "wave", show: canRecord, match: (p) => startsWithAny(p, ["/asr"]) },
   ];
   const secondary: NavItem[] = [
-    { to: "/auditions", label: "Пробы", icon: "play", show: editor || isAgent, muted: true, match: (p) => startsWithAny(p, ["/auditions"]) },
+    { to: "/auditions", label: "Пробы", icon: "play", show: (editor || isAgent) && !oneSeat, muted: true, match: (p) => startsWithAny(p, ["/auditions"]) },
     { to: "/dictors", label: "Дикторы", icon: "mic", show: editor, muted: true, match: (p) => startsWithAny(p, ["/dictors"]) },
-    { to: "/users", label: "Пользователи", icon: "users", show: isAdmin, muted: true, match: (p) => startsWithAny(p, ["/users"]) },
+    { to: "/users", label: "Пользователи", icon: "users", show: isAdmin && !oneSeat, muted: true, match: (p) => startsWithAny(p, ["/users"]) },
     { to: "/settings", label: "Настройки", icon: "settings", show: isAdmin, muted: true, match: (p) => startsWithAny(p, ["/settings"]) },
     { to: "/log", label: "Лог", icon: "log", show: isAdmin, muted: true, match: (p) => startsWithAny(p, ["/log"]) },
     { to: "/help", label: "Помощь", icon: "help", show: true, muted: true, match: (p) => startsWithAny(p, ["/help"]) },

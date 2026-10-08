@@ -116,6 +116,18 @@ export function LoginPage() {
     return <Navigate to={redirectTo} replace />;
   }
 
+  // Настольная версия: формы входа нет — сессию открывает только запуск программы
+  // (ключ запуска), а сюда попадают, когда cookie прошлого запуска перестала действовать.
+  if (configQuery.data?.seat_mode === "one") {
+    return (
+      <div className="lg">
+        <main className="lg-col">
+          <div className="panel panel-pad">Сессия закончилась. Закройте Noname Records и откройте снова.</div>
+        </main>
+      </div>
+    );
+  }
+
   const telegramNote = configQuery.isLoading
     ? "Загружаю вход через Telegram…"
     : configQuery.isError

@@ -16,6 +16,7 @@ import { Button, Field, PageHeader } from "../ui";
 import type { AiBalance, AiProvider, AiSettings, AiStep, FirstSteps, MeResponse } from "../types";
 import { useSearchParams } from "react-router-dom";
 import { SpendBanner } from "../components/SpendBanner";
+import { StressModelBlock } from "../components/StressModelBlock";
 import { SpendTab } from "./SpendTab";
 import "./SettingsPage.css";
 import "../components/FirstStepsCard.css";
@@ -357,6 +358,8 @@ export function SettingsPage({ me }: { me: MeResponse }) {
               {data.steps.map((step) => <StepRow key={step.step} step={step} keyed={keyed} onSaved={reload} />)}
             </ul>
           </section>
+
+          <StressModelBlock />
         </>
       )}
     </div>
