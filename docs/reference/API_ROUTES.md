@@ -2,9 +2,9 @@
 
 Список получен через интроспекцию реального приложения — импортируется `app.main:app` и обходится `app.routes` (только `fastapi.routing.APIRoute`). Колонка «Обработчик» — модуль и имя функции, «Описание» — первая строка docstring обработчика, если она есть.
 
-Всего маршрутов: **156**, групп: **36**.
+Всего маршрутов: **159**, групп: **37**.
 
-_Сгенерировано из коммита 4308e7c._
+_Сгенерировано из коммита 193054e._
 
 ## `/` (1)
 
@@ -104,7 +104,7 @@ _Сгенерировано из коммита 4308e7c._
 | POST | `/api/recording/replica-patch` | `app.api.recording:build_recording_handlers.<locals>.recording_replica_patch` |  |
 | GET | `/api/recording/workspace` | `app.api.recording:build_recording_handlers.<locals>.recording_workspace` |  |
 
-## `/api/settings` (12)
+## `/api/settings` (14)
 
 | Методы | Путь | Обработчик | Описание |
 |---|---|---|---|
@@ -120,6 +120,8 @@ _Сгенерировано из коммита 4308e7c._
 | POST | `/api/settings/rate` | `app.api.budget_api:build_budget_api_handlers.<locals>.api_save_studio_rate` | The studio's default rate. Books do not store it; they read it. |
 | GET | `/api/settings/spend` | `app.api.ai_settings:api_spend` |  |
 | PUT | `/api/settings/spend/limit` | `app.api.ai_settings:api_spend_limit` |  |
+| GET | `/api/settings/stress-model` | `app.api.stress_model:api_stress_model` |  |
+| POST | `/api/settings/stress-model` | `app.api.stress_model:api_stress_model_download` |  |
 
 ## `/api/telegram` (1)
 
@@ -329,6 +331,12 @@ _Сгенерировано из коммита 4308e7c._
 | Методы | Путь | Обработчик | Описание |
 |---|---|---|---|
 | POST | `/logout` | `app.auth_routes:register_auth_routes.<locals>.logout` |  |
+
+## `/seat` (1)
+
+| Методы | Путь | Обработчик | Описание |
+|---|---|---|---|
+| GET | `/seat` | `app.api.seat:api_seat_enter` |  |
 
 ## `/validation` (1)
 
