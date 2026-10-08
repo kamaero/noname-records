@@ -66,13 +66,22 @@ def get_ruaccent():
     with _LOCK:
         if _INSTANCE is not None:
             return _INSTANCE
+        load_kwargs = {}
+        from app.seat import one_seat
+        if one_seat():
+            from app.services import stress_model
+            # Настольная версия: модель только скачанная по кнопке, из папки данных. Без неё
+            # слой пропускается, но не навсегда — скачают, и заработает без перезапуска.
+            if not stress_model.is_ready():
+                return None
+            load_kwargs = {"workdir": str(stress_model.model_dir())}
         try:
             from ruaccent import RUAccent
         except ImportError:
             _UNAVAILABLE = True
             return None
         accent = RUAccent()
-        accent.load(omograph_model_size=OMOGRAPH_MODEL_SIZE, use_dictionary=True, tiny_mode=False)
+        accent.load(omograph_model_size=OMOGRAPH_MODEL_SIZE, use_dictionary=True, tiny_mode=False, **load_kwargs)
         _patch_token_type_ids(accent)
         _INSTANCE = accent
         return _INSTANCE

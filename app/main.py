@@ -22,6 +22,7 @@ from app.api.auditions_feed import api_auditions_feed
 from app.api.ai_settings import register_ai_settings_routes
 from app.api.first_steps import register_first_steps_routes
 from app.api.seat import register_seat_routes
+from app.api.stress_model import register_stress_model_routes
 from app.api.dictors import register_dictors_routes
 from app.api.telegram_webhook import api_telegram_webhook
 from app.route_bootstrap import register_application_routes
@@ -339,6 +340,7 @@ register_dictors_routes(app)
 register_ai_settings_routes(app)
 register_first_steps_routes(app)
 register_seat_routes(app)
+register_stress_model_routes(app)
 app.add_api_route("/api/auditions/feed", api_auditions_feed, methods=["GET"])
 
 app.add_api_route("/api/v2/chapters/{chapter_id}/script", api_v2_chapter_script, methods=["GET"])
