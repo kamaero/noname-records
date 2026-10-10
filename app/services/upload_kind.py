@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from app.models import Character
+from app.seat import one_seat
 from app.services.audio_uploads import AUDITION, TAKE
 from app.services.author_profile import normalize_name
 from app.services.telegram import names_match
@@ -40,4 +41,10 @@ def is_approved_for_role(db, *, role: str, actor_name: str) -> bool:
 
 
 def classify_upload_kind(db, *, role: str, actor_name: str) -> str:
+    # В «одном месте» проб нет: режиссёр сам раздал роли и грузит то, что ему прислали.
+    # Сверка с кастом здесь только вредна — не утверждённый в касте актёр или рассказчик,
+    # чей актёр записан в смете, превращали запись в пробу, а пробы там скрыты и сверку
+    # не проходят. Одна точка на загрузку, подсказку имени и предпросмотр.
+    if one_seat():
+        return TAKE
     return TAKE if is_approved_for_role(db, role=role, actor_name=actor_name) else AUDITION

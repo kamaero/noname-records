@@ -11,7 +11,8 @@ HIDDEN = [("get", "/api/users"), ("post", "/api/users/merge"), ("post", "/api/te
           ("get", "/api/v2/books/b1/auditions"), ("post", "/api/deadlines/d1/extend"),
           ("post", "/dictor-pro/batch-validate")]
 KEPT = [("get", "/api/dictors/picker"), ("get", "/api/me"), ("get", "/api/public/auth-config"),
-        ("get", "/api/books"), ("get", "/api/v2/books/b1/cast")]
+        ("get", "/api/books"), ("get", "/api/v2/books/b1/cast"),
+        ("post", "/api/recording/batch-validate")]
 
 
 @pytest.fixture()
