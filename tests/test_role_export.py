@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 import app.v2.role_export as role_export
 from app.db import Base
-from app.v2.role_export import build_role_export
+from app.v2.role_export import build_role_export, content_disposition, download_names, render_text
 from tests.role_export_book import BOOK, build_book
 
 
@@ -105,3 +105,36 @@ def test_unpublished_chapters_stay_out_for_a_dictor(db):
 
 def test_an_unknown_book_is_none(db):
     assert build_role_export(db, "nope", "Мира") is None
+
+
+def test_the_text_reads_like_the_screen(db):
+    text = render_text(build_role_export(db, BOOK, "Мира"))
+
+    assert text.startswith("Мира — «Тихая гавань»\nАктёр: Анна Тестова\n")
+    assert "Заметка режиссёра: говорит быстро" in text
+    assert "Ударения стоят в редких словах." in text
+    assert "=== Глава 3. Тайна ===\nФайл записи: TG_Ch03_Mira_AnnaTestova.wav" in text
+    assert "  Рассказчик: И тогда дверь открылась.\n▶ Мира: — Я не знала, [— сказала она,] — что ты здесь." in text
+    assert "▶ Мира: — Прости\u0301, карли\u0301ца задержала." in text
+    assert "  Ярош: — Ты опоздала.\n▶ Мира: — Знаю." in text
+
+
+def test_a_title_without_the_word_chapter_gets_it(db):
+    from app.v2.role_export import Chapter, chapter_heading
+
+    assert chapter_heading(Chapter(index=7, title="Пролог", filename="")) == "Глава 7. Пролог"
+    assert chapter_heading(Chapter(index=7, title="", filename="")) == "Глава 7"
+    assert chapter_heading(Chapter(index=7, title="Глава 7. Тайна", filename="")) == "Глава 7. Тайна"
+
+
+def test_the_download_name_survives_quotes_and_yo(db):
+    export = build_role_export(db, BOOK, "Мира")
+    export.role, export.book_title = "Ёжик «Малый»", "Тихая гавань"
+
+    full, ascii_name = download_names(export, "pdf")
+    header = content_disposition(export, "pdf")
+
+    assert full == "Ёжик «Малый» — «Тихая гавань».pdf"
+    assert ascii_name == "TG_EzhikMalyy.pdf"
+    header.encode("latin-1")  # заголовок HTTP — latin-1; кириллица только в filename*
+    assert "filename*=UTF-8''" in header and 'filename="TG_EzhikMalyy.pdf"' in header
