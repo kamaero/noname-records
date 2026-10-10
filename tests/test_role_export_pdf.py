@@ -21,6 +21,7 @@ def test_the_fonts_are_shipped_with_the_app():
     for name in FONTS.values():
         assert (FONT_DIR / name).is_file()
     assert (FONT_DIR / "OFL.txt").read_text(encoding="utf-8").count("SIL OPEN FONT LICENSE") >= 1
+    assert "bitstream-vera" in (FONT_DIR / "DejaVu-LICENSE.txt").read_text(encoding="utf-8")
 
 
 def test_together_they_cover_what_a_script_prints():
@@ -66,3 +67,21 @@ def test_a_big_role_breaks_into_pages(export):
     export.chapters = [Chapter(index=1, title="Глава 1", filename="", lines=lines)]
 
     assert len(PdfReader(io.BytesIO(render_pdf(export))).pages) > 5
+
+
+def test_a_letter_outside_the_app_fonts_still_reaches_the_pdf(export):
+    # Ω и ₽ в книгах бывают; без запасного шрифта они молча пропадали из реплики
+    export.chapters[0].lines[0].pieces = [Piece("Слово Ω и 100 ₽ конец", True)]
+
+    text = _text(render_pdf(export))
+
+    assert "Ω" in text and "₽" in text
+
+
+def test_a_sign_no_font_has_is_marked_and_named_not_dropped(export):
+    export.chapters[0].lines[0].pieces = [Piece("Знак 漢 конец", True)]
+
+    text = _text(render_pdf(export))
+
+    assert "�" in text
+    assert "текстовой версии" in text and "U+6F22" in text
