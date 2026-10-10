@@ -2,9 +2,9 @@
 
 Список получен через интроспекцию реального приложения — импортируется `app.main:app` и обходится `app.routes` (только `fastapi.routing.APIRoute`). Колонка «Обработчик» — модуль и имя функции, «Описание» — первая строка docstring обработчика, если она есть.
 
-Всего маршрутов: **159**, групп: **37**.
+Всего маршрутов: **162**, групп: **37**.
 
-_Сгенерировано из коммита 193054e._
+_Сгенерировано из коммита 73b3bfa._
 
 ## `/` (1)
 
@@ -94,11 +94,12 @@ _Сгенерировано из коммита 193054e._
 |---|---|---|---|
 | GET | `/api/public/auth-config` | `app.api.frontend_core:build_frontend_core_handlers.<locals>.api_public_auth_config` |  |
 
-## `/api/recording` (5)
+## `/api/recording` (6)
 
 | Методы | Путь | Обработчик | Описание |
 |---|---|---|---|
 | POST | `/api/recording/batch` | `app.api.recording:build_recording_handlers.<locals>.recording_batch` | Дубли утверждённых ролей — и, отдельным видом, пробы на роль. |
+| POST | `/api/recording/batch-validate` | `app.api.dictor_uploads:build_dictor_upload_handlers.<locals>.dictor_pro_batch_validate` |  |
 | GET | `/api/recording/filename` | `app.api.recording:build_recording_handlers.<locals>.recording_filename_hint` | Точное имя, которым диктору назвать этот файл. |
 | POST | `/api/recording/files/{audio_id}/delete` | `app.api.recording:build_recording_handlers.<locals>.recording_delete_audio` | Стереть загруженную запись — кнопка «удалить» в разделе записи. |
 | POST | `/api/recording/replica-patch` | `app.api.recording:build_recording_handlers.<locals>.recording_replica_patch` |  |
@@ -165,7 +166,7 @@ _Сгенерировано из коммита 193054e._
 |---|---|---|---|
 | GET | `/api/v2/authors/{author_id}/cast-discrepancies` | `app.v2.api:api_v2_cast_discrepancies` | `GET /api/v2/authors/{id}/cast-discrepancies` — где у персонажа цикла разные актёры. |
 
-## `/api/v2/books` (45)
+## `/api/v2/books` (47)
 
 | Методы | Путь | Обработчик | Описание |
 |---|---|---|---|
@@ -202,6 +203,8 @@ _Сгенерировано из коммита 193054e._
 | POST | `/api/v2/books/{book_id}/publish` | `app.v2.api:api_v2_publish` | `POST /api/v2/books/{book_id}/publish` — approved chapters to the actors. |
 | GET | `/api/v2/books/{book_id}/recording` | `app.v2.api:api_v2_book_recording` | Сколько ролей записано в каждой главе книги — и какие главы можно забирать. |
 | GET | `/api/v2/books/{book_id}/role-script` | `app.v2.api:api_v2_role_script` | Every line of one role across the book, with the paragraphs around it. |
+| GET | `/api/v2/books/{book_id}/role-script.pdf` | `app.v2.api:api_v2_role_script_pdf` | Сценарий роли в PDF. Большая роль — сотни страниц; ручка синхронная, сайт не стоит. |
+| GET | `/api/v2/books/{book_id}/role-script.txt` | `app.v2.api:api_v2_role_script_txt` | Сценарий роли текстом. Синхронная ручка — FastAPI ведёт её в пуле потоков. |
 | GET | `/api/v2/books/{book_id}/role-traps` | `app.v2.api:api_v2_role_traps` | «Слова-ловушки»: редкие слова из реплик роли, по главам, с ударением. |
 | POST | `/api/v2/books/{book_id}/run` | `app.v2.api:api_v2_run` | Put the v2 pipeline on the `high` queue for the book; 409 while a run is active. |
 | GET | `/api/v2/books/{book_id}/sound` | `app.v2.sound_api:api_v2_sound_book` | `GET /api/v2/books/{id}/sound` — растущий список мест книги, пары на решение, прогон. |
