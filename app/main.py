@@ -74,6 +74,8 @@ from app.v2.api import (
     api_v2_progress,
     api_v2_role_script,
     api_v2_role_traps,
+    api_v2_role_script_pdf,
+    api_v2_role_script_txt,
     api_v2_run,
     api_v2_set_book_title,
     api_v2_set_model,
@@ -367,6 +369,8 @@ app.add_api_route("/api/v2/characters/{character_id}/palette", api_v2_character_
 app.add_api_route("/api/v2/books/{book_id}/chapters", api_v2_book_chapters, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/role-script", api_v2_role_script, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/role-traps", api_v2_role_traps, methods=["GET"])
+app.add_api_route("/api/v2/books/{book_id}/role-script.txt", api_v2_role_script_txt, methods=["GET"])
+app.add_api_route("/api/v2/books/{book_id}/role-script.pdf", api_v2_role_script_pdf, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/disputed", api_v2_disputed, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/consilium", api_v2_consilium, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/consilium/estimate", api_v2_consilium_estimate, methods=["GET"])
