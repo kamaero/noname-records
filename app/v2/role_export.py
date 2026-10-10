@@ -90,10 +90,25 @@ def _pieces(segment: dict, spellings: set[str]) -> list[Piece]:
     не должен прочитать их как свои; знаки препинания между кусками своих не делят."""
     text = str(segment.get("text") or "")
     own = [False] * len(text)
-    for span in segment.get("spans") or []:
-        if span["speaker"] in spellings:
-            for index in range(max(0, span["start"]), min(len(text), span["end"])):
+    # Перекрытия решаются как в Читалке (`splitRuns` в render.tsx): по началу, затем по
+    # концу, и поздний спан получает только то, что не занял ранний. Иначе сценарий
+    # отдал бы актёру слова, которые на экране принадлежат партнёру.
+    spans = sorted(
+        (
+            (max(0, min(len(text), span["start"])), max(0, min(len(text), span["end"])), span["speaker"])
+            for span in segment.get("spans") or []
+        ),
+        key=lambda item: (item[0], item[1]),
+    )
+    cursor = 0
+    for start, end, speaker in spans:
+        start = max(start, cursor)
+        if end <= start:
+            continue
+        if speaker in spellings:
+            for index in range(start, end):
                 own[index] = True
+        cursor = end
     marks = _visible(segment.get("stress") or [])
     runs: list[Piece] = []
     start = 0

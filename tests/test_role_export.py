@@ -138,3 +138,26 @@ def test_the_download_name_survives_quotes_and_yo(db):
     assert ascii_name == "TG_EzhikMalyy.pdf"
     header.encode("latin-1")  # заголовок HTTP — latin-1; кириллица только в filename*
     assert "filename*=UTF-8''" in header and 'filename="TG_EzhikMalyy.pdf"' in header
+
+
+def _segment(text, *spans):
+    return {"text": text, "stress": [],
+            "spans": [{"start": start, "end": end, "speaker": who} for who, start, end in spans]}
+
+
+def test_an_earlier_overlapping_span_keeps_its_words_as_in_the_reader():
+    # Читалка (splitRuns) отдаёт перекрытие тому, кто начался раньше: актёр не должен
+    # получить строкой то, что на экране принадлежит партнёру
+    from app.v2.role_export import _pieces
+
+    pieces = _pieces(_segment("Чужое своё", ("Мира", 0, 10), ("Ярош", 0, 6)), {"Мира"})
+
+    assert [(p.text, p.own) for p in pieces] == [("Чужое", False), ("своё", True)]
+
+
+def test_a_span_swallowed_by_an_earlier_one_gives_the_role_nothing():
+    from app.v2.role_export import _pieces
+
+    pieces = _pieces(_segment("Чужое своё", ("Ярош", 0, 10), ("Мира", 6, 10)), {"Мира"})
+
+    assert [(p.text, p.own) for p in pieces] == [("Чужое своё", False)]
