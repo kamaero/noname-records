@@ -1,7 +1,7 @@
 /**
  * Upload state for the recording panel: a batch (validate → preview → upload).
  * Same endpoints and bodies as before:
- *   POST /dictor-pro/batch-validate   (json)  — what the server will store, before it stores it
+ *   POST /api/recording/batch-validate   (json)  — what the server will store, before it stores it
  *   POST /api/recording/batch         (form)  — files[] + meta_json
  *
  * The old per-line take (`/api/recording/replica-patch`, `line_index` = fountain
@@ -55,7 +55,7 @@ export function useRecordingUploads(target: UploadTarget) {
       Сбрасывается новым выбором файлов: подтверждение относится к конкретной пачке. */
   const [confirmChapter, setConfirmChapter] = useState(false);
   /** Сервер отказал по `chapter_mismatch` — а предпросмотр этого не показал.
-      Предпросмотр не гарантирован: упавший `/dictor-pro/batch-validate` просто
+      Предпросмотр не гарантирован: упавший `/api/recording/batch-validate` просто
       очищает список, и тогда галочки «Глава выбрана верно» на экране нет — снять отказ
       диктору нечем, и пачка встаёт намертво. Отказ загрузки об этом знает достоверно,
       поэтому галочку показываем и по нему. Живёт по тем же правилам, что и само
@@ -83,7 +83,7 @@ export function useRecordingUploads(target: UploadTarget) {
       confirm_chapter: confirm,
     };
     try {
-      const result = await apiPostJson<BatchValidateResponse>("/dictor-pro/batch-validate", {
+      const result = await apiPostJson<BatchValidateResponse>("/api/recording/batch-validate", {
         book_code: t.bookCode,
         actor_name: t.actorName.trim(),
         files: next.map((file) => ({ name: file.name, size: file.size })),

@@ -62,6 +62,11 @@ function chapterHeading(index: number, title: string): string {
   return /^глава\s*\d+/i.test(clean) ? clean : `Глава ${index}. ${clean}`;
 }
 
+/** Сценарий роли файлом: те же главы и права, что у страницы (ручки role-script.pdf/.txt). */
+function exportHref(bookId: string, role: string, ext: "pdf" | "txt"): string {
+  return `/api/v2/books/${encodeURIComponent(bookId)}/role-script.${ext}?role=${encodeURIComponent(role)}`;
+}
+
 const PAGE = 300;
 const RADII = [0, 1, 2, 3, 5];
 
@@ -320,7 +325,7 @@ export function RoleScriptPage() {
               className={more ? "btn btn-sm v2r-btn v2r-more is-on" : "btn btn-sm v2r-btn v2r-more"}
               onClick={() => setMore((open) => !open)}
               aria-expanded={more}
-              title="Контекст, ударения, размер шрифта, печать"
+              title="Контекст, ударения, размер шрифта, PDF и текст"
             >
               {more ? "Свернуть" : "Ещё"}
             </button>
@@ -365,9 +370,18 @@ export function RoleScriptPage() {
               ))}
             </div>
 
-          <button type="button" className="btn btn-sm v2r-btn v2r-print" onClick={() => window.print()}>
-            <Icon name="doc" /> PDF / печать
-          </button>
+          {counts.lines > 0 ? (
+            <span className="v2r-print v2r-export">
+              {/* Файл, а не печать: в окне настольной программы печать ненадёжна, а режиссёру
+                  нужно отправить сценарий актёру. Ссылка, а не fetch, — браузер сам сохранит файл. */}
+              <a className="btn btn-sm v2r-btn" href={exportHref(bookId, role, "pdf")} download>
+                <Icon name="doc" /> PDF
+              </a>
+              <a className="btn btn-sm v2r-btn" href={exportHref(bookId, role, "txt")} download>
+                Текст
+              </a>
+            </span>
+          ) : null}
           </div>
         </div>
       </header>

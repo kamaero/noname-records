@@ -7,7 +7,7 @@
  *
  * Endpoints are the same as before this page was rebuilt:
  *   GET  /api/recording/workspace?book_id=&chapter_id=  → published chapters, cast, my_roles, recent_files
- *   POST /dictor-pro/batch-validate, POST /api/recording/batch  (useRecordingUploads)
+ *   POST /api/recording/batch-validate, POST /api/recording/batch  (useRecordingUploads)
  *
  * `?preview=1` is a client-only flag for checking the layout on a book that is
  * not published yet: the chapter list falls back to the book's v2-marked chapters
