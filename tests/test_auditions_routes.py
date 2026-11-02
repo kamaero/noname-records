@@ -32,7 +32,6 @@ def _audition(actor="Роман Сомов"):
 
 
 def _patch(monkeypatch, *, audition=None, rows=None, tmp_path=None, reads=None):
-    monkeypatch.setattr("app.v2.api.attach_reactions", lambda db, rows, **_: rows)
     monkeypatch.setattr("app.v2.api.book_auditions", lambda db, *, book_id, only_actor="": rows)
     monkeypatch.setattr("app.v2.api.find_audition", lambda db, audio_id: audition)
     monkeypatch.setattr("app.v2.api.audio_size", lambda key, *, location="nas": len(AUDIO))

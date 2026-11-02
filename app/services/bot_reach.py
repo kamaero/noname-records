@@ -14,9 +14,6 @@ from __future__ import annotations
 
 import requests
 
-API = "https://api.telegram.org/bot{token}/getChat"
-
-
 def check_bot_reach(rows: list[dict], *, token: str, timeout: int = 8) -> dict:
     """Опросить телеграм о каждой записи. Недостижимые — первыми: их и надо читать.
 
@@ -28,7 +25,9 @@ def check_bot_reach(rows: list[dict], *, token: str, timeout: int = 8) -> dict:
     if not str(token or "").strip():
         return {"items": [], "checked": 0, "unreachable": 0, "error": "no_token"}
 
-    url = API.format(token=token)
+    from app.services.telegram import bot_api_url
+
+    url = bot_api_url("getChat", token)
     items: list[dict] = []
     for row in rows:
         chat_id = str(row.get("telegram_user_id") or "")

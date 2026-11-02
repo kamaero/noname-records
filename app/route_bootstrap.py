@@ -70,6 +70,8 @@ def register_application_routes(
             "api_save_budget_character": budget_api_handlers["api_save_budget_character"],
             "api_studio_rate": budget_api_handlers["api_studio_rate"],
             "api_save_studio_rate": budget_api_handlers["api_save_studio_rate"],
+            "api_recording_book": budget_api_handlers["api_recording_book"],
+            "api_save_recording_book": budget_api_handlers["api_save_recording_book"],
             "api_users": frontend_core_handlers["api_users"],
             "api_attach_telegram": frontend_core_handlers["api_attach_telegram"],
             "api_bot_reach": frontend_core_handlers["api_bot_reach"],

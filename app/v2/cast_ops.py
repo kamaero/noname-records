@@ -205,27 +205,55 @@ def create_role(db, *, book_id: str, name: str, actor_uid: str, actor_name: str 
     return {"created": True, "character_id": str(character.id), "name": wanted}
 
 
-def book_cast(db, book_id: str, *, only_speaking: bool = False, actor_name: str = "") -> list[dict]:
-    """Legend rows for the book; the narrator first, then by v2 line count.
+def move_auditions_to_role(db, *, book_id: str, character_id: str, role: str, audition_actor: str,
+                           actor_uid: str, actor_name: str = "") -> dict:
+    """Пробы актёра под ошибочным написанием роли — под роль каста.
 
-    `actor_name` is who is reading: every row it casts to him comes back with
-    `mine`, so a picker can put his own parts on top. The cast and the account
-    spell a person differently — «Примеродин Александр» against «Александр Примеродин» —
-    and `names_match` is the studio's answer to that, shared with the recording panel.
-
-    A speaker in an attribution is matched to a character by name or alias with the
-    profile's folding (stress marks and case ignored). Speakers the cast does not
-    know are not rows here — the cast editor edits `Character` rows, and an unknown
-    speaker is the attribution's problem, visible in the reader's UNSURE legend.
+    Правится проба, а не каст: владелец не хочет, чтобы опечатка диктора в имени
+    файла становилась вторым именем роли (13.10). После переезда лента, оценки и
+    отказы находят настоящую роль по её собственному имени.
     """
-    reader = str(actor_name or "").strip()
-    characters = [
+    from app.models import ScriptBook
+    from app.services.audio_rename import rename_audition_role
+    from app.v2.store import record_operator_intervention
+
+    book = db.get(ScriptBook, str(book_id or "").strip())
+    if book is None:
+        raise CreateRoleError("book_not_found")
+    character = db.get(Character, str(character_id or "").strip())
+    if character is None or str(character.book_id) != str(book.id):
+        raise CreateRoleError("character_not_found")
+    was = " ".join(str(role or "").split())
+    actor = " ".join(str(audition_actor or "").split())
+    if not was or not actor:
+        raise CreateRoleError("name_required")
+    now = str(character.name or "")
+    moved = rename_audition_role(db, book=book, was=was, now=now, actor_name=actor)
+    if moved:
+        record_operator_intervention(
+            db, book=book, action_type="audition_role_rename", actor_uid=actor_uid, actor_name=actor_name,
+            reason="роль пробы записана диктором иначе, чем в книге",
+            payload={"character_id": str(character.id), "role_was": was, "role": now,
+                     "actor_name": actor, "files": moved},
+        )
+    return {"moved": moved, "character_id": str(character.id), "name": now}
+
+
+def _cast_rows(db, book_id: str) -> list[Character]:
+    return [
         row for row in db.query(Character).filter(Character.book_id == book_id).all()
         if str(row.name or "").strip() and not is_placeholder_name(row.name)
     ]
-    narrator_row = next((row for row in characters if is_narrator_name(row.name)), None)
-    narrator_key = str(narrator_row.id) if narrator_row is not None else ""
 
+
+def _speaker_tally(db, book_id: str, characters: list[Character],
+                   narrator_key: str) -> "tuple[collections.Counter, dict[str, set[int]]]":
+    """Реплики (абзацы) и главы каждой роли по текущей разметке, ключ — id персонажа.
+
+    Говорящий в разметке сопоставляется с персонажем по имени или псевдониму со
+    свёрткой профиля (ударения и регистр не важны). Неизвестный касту говорящий сюда
+    не попадает: это забота разметки, видимая в легенде Читалки как UNSURE.
+    """
     by_key: dict[str, str] = {}
     for row in characters:
         by_key.setdefault(normalize_name(row.name), str(row.id))
@@ -265,7 +293,67 @@ def book_cast(db, book_id: str, *, only_speaking: bool = False, actor_name: str 
         if (target, str(segment_id)) not in counted:
             counted.add((target, str(segment_id)))
             lines[target] += 1
-        chapters[target].add(chapter_index.get(segment_chapter.get(str(segment_id), ""), 0))
+        chapter_id = segment_chapter.get(str(segment_id), "")
+        if chapter_id in chapter_index:
+            chapters[target].add(chapter_index[chapter_id])
+    return lines, chapters
+
+
+#: ключ кэша в `db.info`: карта глав ролей живёт, пока жива сессия
+_ROLE_CHAPTERS_CACHE = "role_chapter_map"
+
+
+def role_chapter_map(db, book_id: str) -> "dict[str, set[int]] | None":
+    """Главы, где роль говорит по текущей разметке: id персонажа → номера глав.
+
+    Беда, ради которой это есть: сроки, «сдано X из Y», /status и рассылки считали главы
+    роли по `appears_in` — графе, которую заполняет извлечение персонажей и которая не
+    следует за правками разметки. 29.10 рассылка послала дикторам главы, где их реплик
+    давно нет (Хдыбдяр, гл. 15 и 39), и не назвала главы, куда реплики переехали, а бот
+    по той же графе не узнал бы такую главу в присланной «колбасе».
+
+    `None` — у книги нет разметки вовсе: тогда звать некого, кроме `appears_in`.
+    Пустое множество у роли с разметкой — честный ответ «реплик нет», а не повод
+    вернуться к старой графе.
+
+    Кэш на сессию: проход по всей разметке книги стоит десятые доли секунды, а сроки и
+    /status спрашивают про каждую роль подряд. Сессия, которая правит разметку и тут же
+    спрашивает главы, увидела бы старую карту — таких путей нет, а запросы короткие.
+    """
+    book_id = str(book_id or "").strip()
+    cache = db.info.setdefault(_ROLE_CHAPTERS_CACHE, {})
+    if book_id in cache:
+        return cache[book_id]
+    has_markup = db.query(V2Segment.id).filter(V2Segment.book_id == book_id).first() is not None
+    if not has_markup:
+        cache[book_id] = None
+        return None
+    characters = _cast_rows(db, book_id)
+    narrator_row = next((row for row in characters if is_narrator_name(row.name)), None)
+    narrator_key = str(narrator_row.id) if narrator_row is not None else ""
+    _lines, chapters = _speaker_tally(db, book_id, characters, narrator_key)
+    cache[book_id] = {key: set(value) for key, value in chapters.items()}
+    return cache[book_id]
+
+
+def book_cast(db, book_id: str, *, only_speaking: bool = False, actor_name: str = "") -> list[dict]:
+    """Legend rows for the book; the narrator first, then by v2 line count.
+
+    `actor_name` is who is reading: every row it casts to him comes back with
+    `mine`, so a picker can put his own parts on top. The cast and the account
+    spell a person differently — «Примернкяхаххчб Примервлщющючб» against «Примервлщющючб Примернкяхаххчб» —
+    and `names_match` is the studio's answer to that, shared with the recording panel.
+
+    A speaker in an attribution is matched to a character by name or alias with the
+    profile's folding (stress marks and case ignored). Speakers the cast does not
+    know are not rows here — the cast editor edits `Character` rows, and an unknown
+    speaker is the attribution's problem, visible in the reader's UNSURE legend.
+    """
+    reader = str(actor_name or "").strip()
+    characters = _cast_rows(db, book_id)
+    narrator_row = next((row for row in characters if is_narrator_name(row.name)), None)
+    narrator_key = str(narrator_row.id) if narrator_row is not None else ""
+    lines, chapters = _speaker_tally(db, book_id, characters, narrator_key)
 
     bg_map, text_map, weight_map, style_map = build_character_style_maps(characters, extra_names=[NARRATOR, UNSURE])
 

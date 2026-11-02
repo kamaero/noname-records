@@ -1,16 +1,21 @@
 /* ============================================================
-   Запись — reader on the left, the upload panel on the right.
+   «Сценарий» — the reader the whole width, one quiet bar above it.
+   «Загрузка» — the upload form on its own page, two columns.
+   Until 29.10 both lived on one page (reader + sticky panel).
    Tokens only (styles.css). The reader keeps its own stylesheet;
    this file only trims its toolbar in embedded mode.
    ============================================================ */
 
-.rec-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: var(--gap);
-  align-items: start;
+.script-page { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.script-bar {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px;
+  padding: 10px var(--pad);
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
 }
-.rec-stage { min-width: 0; }
+.script-bar-field { display: flex; flex-direction: column; gap: 4px; min-width: 200px; max-width: 320px; flex: 0 1 260px; }
+.script-bar-field .rec-label { margin: 0; }
+.script-bar-link { font-size: 13px; padding-bottom: 8px; }
+.script-bar-upload { margin-left: auto; }
 
 /* embedded reader: no book line, no top prev/next, no print, no radius — search / stress / font stay */
 .v2r--embedded { --v2r-rail-w: 220px; }
@@ -20,17 +25,16 @@
 .v2r--embedded .v2r-radius { display: none; }
 .v2r--embedded .v2r-seg { margin-left: auto; }
 
-/* ---------- panel ---------- */
+/* ---------- «Загрузка» ---------- */
+.takes-page { display: flex; flex-direction: column; gap: var(--gap); max-width: 1180px; }
 .rec-panel {
-  position: sticky; top: var(--gap);
-  display: flex; flex-direction: column; gap: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 28px;
   padding: var(--pad);
-  max-height: calc(100vh - 56px - 42px - 2 * var(--gap));
-  overflow: auto;
+  align-items: start;
 }
-.rec-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.rec-panel-title { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
-.rec-panel-actor { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.rec-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
 .rec-label {
   margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.09em;
@@ -47,7 +51,7 @@
 /* ---------- drop zone ---------- */
 .rec-drop {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-  min-height: 96px; padding: 14px 12px;
+  min-height: 160px; padding: 14px 12px;
   border: 1px dashed var(--border-strong); border-radius: var(--radius);
   background: var(--surface-2); color: var(--text-dim);
   text-align: center; font-size: 13px; line-height: 1.4; cursor: pointer;
@@ -93,16 +97,10 @@
 .rec-file-cell { font-size: 11.5px; overflow-wrap: anywhere; }
 .rec-table-empty { margin: 0; font-size: 12.5px; color: var(--text-faint); }
 
-/* ---------- narrow: the panel stacks under the reader ---------- */
-@media (max-width: 999px) {
-  .rec-layout { grid-template-columns: minmax(0, 1fr); }
-  .rec-panel { position: static; max-height: none; overflow: visible; }
-}
-/* On a phone «under the reader» means «past the whole chapter»: a dictor would have
-   scrolled three thousand words to reach the button that uploads his take. The panel
-   is the tool, the script is what you scroll — so the tool goes first. */
-@media (max-width: 760px) {
-  .rec-panel { order: -1; }
+/* ---------- narrow: the two columns of «Загрузка» stack ---------- */
+@media (max-width: 899px) {
+  .rec-panel { grid-template-columns: minmax(0, 1fr); }
+  .script-bar-upload { margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .rec-drop { transition: none; }

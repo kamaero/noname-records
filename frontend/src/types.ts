@@ -19,7 +19,65 @@ export type MeResponse = {
   show_onboarding?: boolean;
   /** studio — VPS; one — настольная программа одного человека */
   seat_mode?: "studio" | "one";
+  /** раздел «Смета» — только учётке владельца */
+  can_see_payouts?: boolean;
 };
+
+/** «Смета». */
+export type PayoutKind = "advance" | "final" | "offset" | "person_advance";
+
+export type PayoutPayment = {
+  id: string;
+  kind: PayoutKind;
+  amount_rub: number;
+  paid_at: string;
+  note: string;
+  paid_by: string;
+};
+
+/** past — по роли платили, но её у человека больше нет (сняли, отдали другому, книгу удалили) */
+export type PayoutRoleState = "done" | "in_progress" | "no_chapters" | "no_fee" | "past";
+
+export type PayoutRole = {
+  book_id: string;
+  book_title: string;
+  role_key: string;
+  role_name: string;
+  actor_name: string;
+  /** null — сумма в смете книги не посчитана */
+  fee: number | null;
+  done: number;
+  total: number;
+  state: PayoutRoleState;
+  payments: PayoutPayment[];
+  paid: number;
+  owed: number;
+  overpaid: number;
+};
+
+export type PayoutPerson = {
+  key: string;
+  name: string;
+  telegram_user_id: string;
+  telegram_url: string;
+  roles: PayoutRole[];
+  person_advances: PayoutPayment[];
+  owed: number;
+  paid: number;
+  /** авансы по ролям в работе + незачтённый аванс без роли */
+  advances: number;
+  in_work: number;
+  /** незачтённый аванс без роли */
+  credit: number;
+  /** сколько аванса без роли уже зачтено в роли */
+  offsets: number;
+  /** аванс без роли сверх заработанного */
+  unearned: number;
+};
+
+export type PayoutTotals = { owed: number; paid: number; advances: number; in_work: number; credit: number; unearned: number };
+
+export type PayoutsResponse = { ok: boolean; totals: PayoutTotals; people: PayoutPerson[] };
 
 export type MeBotReachResponse = {
   ok: boolean;
@@ -100,6 +158,10 @@ export type BookListItem = {
   stop_requested: boolean;
   chapter_count: number;
   character_count: number;
+  /** когда автор отметил «Карта проверена»; пусто — не отмечал */
+  cast_checked_at: string;
+  /** ISO, когда книгу объявили озвученной; пусто — нет */
+  voiced_at?: string;
   book_annotation: string;
   /** автор для витрины «Автор - "Название"»; пусто — книга подписана одним названием */
   author: string;
@@ -874,6 +936,8 @@ export type BookRecordingChapter = {
   missing_lines: number;
   /** пусто — главу ещё не забирали в сведение */
   delivered_at: string;
+  /** пусто — глава не отмечена «Сдана» (сведена, прослушана, выложена) */
+  released_at: string;
   /** «Файл есть» и «файл цел» — разные вещи: обрыв на середине даёт запись
    * в базе и обрезок на диске. */
   integrity_ok: number;
@@ -1045,6 +1109,8 @@ export type DictorChapterItem = {
   id: string;
   chapter_index: number;
   chapter_title: string;
+  /** ISO, когда владелец принял главу; пусто — не сдана */
+  released_at?: string;
 };
 
 export type DictorRecentFile = {

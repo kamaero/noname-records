@@ -1,0 +1,140 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiGet, apiPostJson, describeApiError } from "../../../api/client";
+import { Button, Dialog } from "../../../ui";
+
+type ThanksPerson = { actor: string; chat: string; roles: string[]; name: string; sent_at: string; delivered: boolean };
+type ThanksResponse = {
+  ok: boolean;
+  text: string;
+  preview: string;
+  people: ThanksPerson[];
+  no_chat: { actor: string; roles: string[] }[];
+};
+type ThanksResult = { sent: string[]; failed: string[]; already: string[] };
+
+/** «А, Б и В» — как в письме, которое соберёт сервер. */
+function joinRoles(roles: string[]): string {
+  if (roles.length <= 1) return roles.join("");
+  return `${roles.slice(0, -1).join(", ")} и ${roles[roles.length - 1]}`;
+}
+
+/** Актёры записаны «Фамилия Имя»: в письме обращаются по имени. */
+function firstName(actor: string): string {
+  const parts = actor.trim().split(/\s+/);
+  return parts.length > 1 ? parts[1] : parts[0] || "";
+}
+
+/** Предпросмотр считается здесь, а не берётся с сервера: текст правят на лету,
+ *  а запрос на каждую букву не нужен. */
+function fill(text: string, person: ThanksPerson | undefined, book: string): string {
+  return text
+    .split("{name}").join(person ? person.name || firstName(person.actor) : "")
+    .split("{roles}").join(person ? joinRoles(person.roles) : "")
+    .split("{book}").join(book);
+}
+
+type Props = { bookId: string; bookTitle: string; onClose: () => void };
+
+export function ThanksDialog({ bookId, bookTitle, onClose }: Props) {
+  const path = `/api/v2/books/${encodeURIComponent(bookId)}/thanks`;
+  const query = useQuery({ queryKey: ["v2", "book-thanks", bookId], queryFn: () => apiGet<ThanksResponse>(path), retry: false, gcTime: 0 });
+  // null — человек ещё не правил текст, показываем серверный
+  const [edited, setEdited] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<ThanksResult | null>(null);
+
+  const data = query.data;
+  const text = edited ?? data?.text ?? "";
+  const willGet = (data?.people ?? []).filter((p) => !p.sent_at);
+  const already = (data?.people ?? []).filter((p) => p.sent_at && p.delivered);
+  // Отметка есть, а доставки нет: отправка упала. Повторно не шлём (письмо могло дойти) — пишут сами.
+  const undelivered = (data?.people ?? []).filter((p) => p.sent_at && !p.delivered);
+
+  const send = async () => {
+    if (!willGet.length || !text.trim()) return;
+    if (!window.confirm(`Отправить письмо ${willGet.length} получателям? Отозвать его нельзя.`)) return;
+    setSending(true);
+    setError("");
+    try {
+      setResult(await apiPostJson<ThanksResult>(path, { text }));
+    } catch (err) {
+      setError(describeApiError(err, "не удалось отправить"));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const footer = result ? (
+    <Button variant="primary" onClick={onClose} data-autofocus>Закрыть</Button>
+  ) : (
+    <>
+      <Button variant="ghost" onClick={onClose} disabled={sending}>Отмена</Button>
+      <Button variant="primary" loading={sending} disabled={!willGet.length || !text.trim()} onClick={send}>
+        {`Отправить ${willGet.length}`}
+      </Button>
+    </>
+  );
+
+  return (
+    <Dialog title="Благодарственное письмо" subtitle={bookTitle} onClose={onClose} footer={footer} className="thanks-dialog">
+      {query.isLoading ? <p className="ui-note ui-note--info">Загрузка…</p> : null}
+      {query.isError ? (
+        <p className="ui-note ui-note--error" role="alert">
+          {describeApiError(query.error, "не удалось загрузить письмо")}
+        </p>
+      ) : null}
+      {result ? (
+        <div className="thanks-summary" role="status">
+          <p>Отправлено: {result.sent.length}{result.sent.length ? ` — ${result.sent.join(", ")}` : ""}</p>
+          <p>Не доставлено: {result.failed.length}{result.failed.length ? ` — ${result.failed.join(", ")}` : ""}</p>
+          <p>Уже было: {result.already.length}{result.already.length ? ` — ${result.already.join(", ")}` : ""}</p>
+        </div>
+      ) : data ? (
+        <div className="thanks-body">
+          <label className="thanks-label" htmlFor="thanks-text">Текст письма</label>
+          <textarea id="thanks-text" className="thanks-text" rows={8} value={text} onChange={(e) => setEdited(e.target.value)} />
+          <p className="thanks-hint">В тексте работают {"{name}"}, {"{roles}"} и {"{book}"}.</p>
+          {willGet[0] ? (
+            <>
+              <div className="thanks-label">Так письмо увидит {willGet[0].actor}</div>
+              <pre className="thanks-preview">{fill(text, willGet[0], bookTitle)}</pre>
+            </>
+          ) : null}
+          <div className="thanks-label">Получат ({willGet.length})</div>
+          {willGet.length ? (
+            <ul className="thanks-list">
+              {willGet.map((p) => <li key={p.actor}>{p.actor} → {p.name} <span>{joinRoles(p.roles)}</span></li>)}
+            </ul>
+          ) : <p className="thanks-hint">Некому отправлять.</p>}
+          {already.length ? (
+            <>
+              <div className="thanks-label">Уже отправлено ({already.length})</div>
+              <ul className="thanks-list">
+                {already.map((p) => <li key={p.actor}>{p.actor} → {p.name} <span>{joinRoles(p.roles)}</span></li>)}
+              </ul>
+            </>
+          ) : null}
+          {undelivered.length ? (
+            <>
+              <div className="thanks-label">Не доставлено — напишите сами ({undelivered.length})</div>
+              <ul className="thanks-list">
+                {undelivered.map((p) => <li key={p.actor}>{p.actor} → {p.name} <span>{joinRoles(p.roles)}</span></li>)}
+              </ul>
+            </>
+          ) : null}
+          {data.no_chat.length ? (
+            <>
+              <div className="thanks-label">Нет связи с ботом — напишите сами</div>
+              <ul className="thanks-list">
+                {data.no_chat.map((p) => <li key={p.actor}>{p.actor} <span>{joinRoles(p.roles)}</span></li>)}
+              </ul>
+            </>
+          ) : null}
+          {error ? <p className="ui-note ui-note--error" role="alert">{error}</p> : null}
+        </div>
+      ) : null}
+    </Dialog>
+  );
+}

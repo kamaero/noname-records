@@ -11,7 +11,7 @@ from app.api import auditions_feed as feed_api
 from app.auth import session_serializer
 from app.db import Base
 from app.main import app
-from app.models import AudioFile, AuditionReaction, Character, ScriptBook
+from app.models import AudioFile, AuditionScore, Character, ScriptBook
 from app.services.audio_uploads import derive_book_code
 
 
@@ -36,7 +36,9 @@ def factory(monkeypatch):
             db.add(AudioFile(id=aid, book_code=derive_book_code(book), original_filename="p.wav", stored_key=f"k/{aid}",
                              mime_type="audio/wav", size_bytes=1, chapter="Глава 1", role=role, actor_name=actor,
                              kind="audition", canonical_filename=f"{aid}.wav", uploaded_at=when))
-        db.add(AuditionReaction(audio_file_id="a1", voter_uid="author", voter_name="Примеродин Александр", value=1))
+        for lane, uid, score in (("author", "author", 8), ("studio", "owner", 7)):
+            db.add(AuditionScore(book_id="b1", role="Саяху", actor_name="Кравченко Алёна", lane=lane,
+                                 voter_uid=uid, voter_name="Примеродин Александр", score=score))
         db.commit()
     return factory
 
@@ -49,17 +51,21 @@ def _client(roles, name="Кто-то"):
 
 def test_the_feed_holds_every_book_newest_first_with_the_role_state(factory):
     body = _client(["admin"]).get("/api/auditions/feed").json()
-    assert [item["id"] for item in body["items"]] == ["a3", "a1", "a2"]
+    assert [item["key"] for item in body["items"]] == [
+        "b2|Астрид|Ветрова Ольга", "b1|Саяху|Кравченко Алёна", "b1|Саяху|Ветрова Ольга"
+    ]
     first, maura = body["items"][0], body["items"][1]
     assert (first["book_title"], first["character_id"], first["role_actor"], first["role_auditions"]) == \
         ("Сад великанов. Книга 3", "c2", "", 1)
-    assert (maura["role_actor"], maura["role_auditions"], maura["author_reaction"]) == ("Кравченко Алёна", 2, 1)
-    assert body["can_approve"] is True and body["can_react"] is True
+    assert (maura["role_actor"], maura["role_auditions"], maura["approved"]) == ("Кравченко Алёна", 2, True)
+    assert maura["scores"]["author"] == {"score": 8, "name": "Примеродин Александр", "reason": "", "comment": ""}
+    assert [a["id"] for a in maura["auditions"]] == ["a1"]
+    assert body["can_approve"] is True and body["can_score"] == ["studio"]
 
 
 def test_the_author_may_react_and_approve(factory):
     body = _client(["author"]).get("/api/auditions/feed").json()
-    assert body["can_react"] is True and body["can_approve"] is True
+    assert body["can_score"] == ["author"] and body["can_approve"] is True
 
 
 def test_an_agent_listens_but_does_not_approve(factory):
@@ -69,7 +75,7 @@ def test_an_agent_listens_but_does_not_approve(factory):
 
 def test_a_dictor_sees_no_reactions_on_others(factory):
     body = _client(["dictor"], name="Ветрова Ольга").get("/api/auditions/feed").json()
-    assert {item["id"]: item["author_reaction"] for item in body["items"]}["a1"] is None
+    assert body["items"][1]["scores"] is None and body["can_score"] == []
 
 
 def test_new_since_counts_only_fresh_ones(factory):
@@ -79,3 +85,30 @@ def test_new_since_counts_only_fresh_ones(factory):
 
 def test_anonymous_gets_401(factory):
     assert TestClient(app).get("/api/auditions/feed").status_code == 401
+
+
+def test_reject_and_take_back_by_hand(factory):
+    client = _client(["admin"])
+    pair = {"book_id": "b1", "role": "Саяху", "actor_name": "Ветрова Ольга"}
+
+    body = client.post("/api/auditions/reject", json=pair).json()
+    assert body["ok"] and body["rejection"]["status"] == "pending"
+    feed = client.get("/api/auditions/feed").json()["items"]
+    [row] = [p for p in feed if p["actor_name"] == "Ветрова Ольга" and p["role"] == "Саяху"]
+    assert row["rejection"]["status"] == "pending"
+
+    body = client.post("/api/auditions/reject", json={**pair, "cancel": True}).json()
+    assert body["ok"] and body["rejection"] is None
+
+
+def test_the_approved_actor_is_not_rejected(factory):
+    r = _client(["admin"]).post("/api/auditions/reject",
+                                json={"book_id": "b1", "role": "Саяху", "actor_name": "Кравченко Алёна"})
+    assert r.status_code == 400 and r.json()["error"] == "approved"
+
+
+def test_only_those_who_approve_may_reject(factory):
+    pair = {"book_id": "b1", "role": "Саяху", "actor_name": "Ветрова Ольга"}
+    assert _client(["agent"]).post("/api/auditions/reject", json=pair).status_code == 403
+    assert _client(["dictor"]).post("/api/auditions/reject", json=pair).status_code == 403
+    assert _client(["author"]).post("/api/auditions/reject", json=pair).status_code == 200

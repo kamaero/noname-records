@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 
 MAX_SECONDS = 120
@@ -38,5 +39,30 @@ def to_demo_mp3(source_path: str, target_path: str) -> dict:
         digest = hashlib.md5(handle.read()).hexdigest()
     return {"duration_seconds": _duration(target_path), "trimmed": source_seconds > MAX_SECONDS + 0.5,
             "size_bytes": os.path.getsize(target_path), "md5": digest}
+
+
+_NOISE = re.compile(r"^(?:\d{5,}_)?", re.IGNORECASE)
+MEDIA_EXTENSIONS = frozenset({".wav", ".mp3", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".flac", ".wma",
+                              ".mp4", ".mov", ".webm", ".mkv", ".avi", ".3gp"})
+
+
+def is_media_file(path: str) -> bool:
+    """Аудио или видео по расширению; картинки, документы и прочее демо не бывают."""
+    return os.path.splitext(str(path or ""))[1].lower() in MEDIA_EXTENSIONS
+
+
+def demo_title(file_title: str, speaker_name: str) -> str:
+    """Имя файла без расширения, служебного «Демо» и имени диктора."""
+    stem = os.path.splitext(str(file_title or ""))[0]
+    stem = _NOISE.sub("", stem).replace("_", " ")
+    words = stem.split()
+    if words and words[0].lower() in {"демо", "demo"}:
+        words = words[1:]
+        if len(words) > 2 and words[0][:1].isupper() and words[1][:1].isupper():
+            words = words[2:]
+    drop = {"демо", "demo"} | {w.lower() for w in str(speaker_name or "").split()}
+    words = [w for w in words if w.lower() not in drop]
+    title = " ".join(words).strip()
+    return title or "демо"
 
 

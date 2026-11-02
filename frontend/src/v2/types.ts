@@ -60,6 +60,8 @@ export type ReaderChapterRef = {
   has_v2: boolean;
   /** the author has marked this chapter checked */
   approved: boolean;
+  /** ISO, когда владелец принял главу; пусто — не сдана */
+  released_at?: string;
 };
 
 /** `POST /api/v2/books/{id}/characters` */
@@ -312,11 +314,17 @@ export type AuditionItem = {
   uploaded_at: string;
   /** для подтверждения удаления — экран называет цену, а не спрашивает голое «удалить файл?» */
   duration_seconds: number;
-  /** 👍 — 1, 👎 — -1; null — реакции нет или смотрящему её не видно */
-  author_reaction: 1 | -1 | null;
-  /** судьба отказа по паре «актёр + роль»; null — отказа нет или не видно */
-  rejection: AuditionRejection | null;
 };
+
+export type AuditionLane = "author" | "studio";
+
+/** Что не понравилось автору при оценке ниже 7 (с 04.10; до 11.10 — 5 и ниже). */
+export type AuditionReason = "voice" | "manner" | "all";
+
+/** Оценка 1–10 одной дорожки; `name` — кто нажал последним; `reason` — «» или `AuditionReason`;
+    `comment` — своими словами, только для студии (с 11.10). */
+export type AuditionScore = { score: number; name: string; reason?: string; comment?: string };
+export type AuditionScores = Record<AuditionLane, AuditionScore | null>;
 
 export type AuditionRejectionStatus = "pending" | "sent" | "no_account" | "ambiguous" | "failed";
 
@@ -327,20 +335,47 @@ export type AuditionRejection = {
   sent_at: string;
 };
 
-export type AuditionReactionResponse = {
-  ok: boolean;
-  author_reaction: 1 | -1 | null;
+/** Актёр на роль — строка ленты и листа проб; файлы — внутри. */
+export type AuditionPair = {
+  key: string;
+  book_id: string;
+  book_title: string;
+  role: string;
+  actor_name: string;
+  /** "" — роли нет в касте книги */
+  character_id: string;
+  /** кто сейчас в карточке роли; «Имя?» — предложение */
+  role_actor: string;
+  /** роли нет в касте, но есть похожая («Лйра» → «Лира»); null — нет или роль найдена */
+  role_guess: { character_id: string; name: string; actor_name: string } | null;
+  /** сколько актёров пробовалось на эту роль */
+  role_auditions: number;
+  /** этот актёр утверждён на эту роль */
+  approved: boolean;
+  /** роли этой книги, на которые актёр уже утверждён — такие пары по умолчанию скрыты */
+  busy_on: string[];
+  /** свежие сверху */
+  auditions: AuditionItem[];
+  /** самая свежая проба пары */
+  uploaded_at: string;
+  /** null — смотрящему оценки не положены (диктор, агент) */
+  scores: AuditionScores | null;
+  lane_labels: Record<AuditionLane, string> | null;
+  /** судьба отказа по паре; null — отказа нет или не видно */
   rejection: AuditionRejection | null;
 };
 
 export type AuditionsResponse = {
   ok: boolean;
-  items: AuditionItem[];
+  items: AuditionPair[];
   /** утверждать на роль могут владелец и автор; слушают все */
   can_approve: boolean;
-  /** ставить 👍/👎 может только автор */
-  can_react: boolean;
+  /** дорожки, которые этот человек вправе нажимать */
+  can_score: AuditionLane[];
 };
+
+/** `rejection` — судьба отказа пары после оценки: оба ниже 7 — отказ уйдёт через 15 минут. */
+export type AuditionScoreResponse = { ok: boolean; scores: AuditionScores; rejection: AuditionRejection | null };
 
 export type ConsiliumKind = "wrong_voice" | "identity_play" | "narrator_border" | "readers_split";
 

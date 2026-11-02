@@ -1,7 +1,7 @@
 import "./CastPage.css";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiGet, apiPostJson, describeApiError } from "../api/client";
 import { saveCharacterAbout, type CharacterAbout } from "../v2/editorApi";
@@ -23,8 +23,9 @@ import "../components/cast/AuditionsSheet.css";
 import { isAgentRoles } from "../layout/AppShell";
 import { Button, EmptyState, Field, PageHeader, Sheet } from "../ui";
 import { editorKeys, formatWhen, invalidateReader, toBudgetRow, useBookAuditions, useBookCast } from "../v2/editorApi";
-import type { AuditionItem, AuditionReactionResponse } from "../v2/types";
-import type { BookBudgetResponse, CharacterMapAcknowledgeResponse, CharacterMapCheckedResponse, CharacterMapForgetResponse, CharacterMapResponse, MeResponse, RoleApproval, RoleIntersection, RoleVoteResult, PublicAuthConfigResponse, SaveBookBudgetPayload, SaveBookBudgetResponse, SaveBudgetCharacterPayload, SaveBudgetCharacterResponse } from "../types";
+import type { AuditionLane, AuditionPair } from "../v2/types";
+import { bestAuthorScore, postScore, type ScoreAnswer } from "../viewModels/auditionPairs";
+import type { BookBudgetResponse, BooksResponse, CharacterMapAcknowledgeResponse, CharacterMapCheckedResponse, CharacterMapForgetResponse, CharacterMapResponse, MeResponse, RoleApproval, RoleIntersection, RoleVoteResult, PublicAuthConfigResponse, SaveBookBudgetPayload, SaveBookBudgetResponse, SaveBudgetCharacterPayload, SaveBudgetCharacterResponse } from "../types";
 import {
   chapterMismatch,
   collectActorNames,
@@ -120,8 +121,18 @@ function describeRenameError(error: unknown, fallback: string): string {
 /** Shown only until the first budget response lands; the server is the authority. */
 const DEFAULT_RATE_FALLBACK = 1000;
 
+/* Книгу меняют выбором в заголовке, и маршрут остаётся тем же — React оставил бы
+   страницу жить с состоянием прежней книги: поиском, раскрытыми ролями, отметкой
+   «Карта не проверена». Ключ по книге начинает каст каждой книги с чистого листа. */
 export function CastPage() {
   const { bookId = "" } = useParams();
+  return <CastBookPage key={bookId} />;
+}
+
+function CastBookPage() {
+  const { bookId = "" } = useParams();
+  const navigate = useNavigate();
+  const booksQuery = useQuery({ queryKey: ["books"], queryFn: () => apiGet<BooksResponse>("/api/books") });
   useEffect(() => { markFirstStepsSeen(bookId); }, [bookId]);
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
@@ -173,11 +184,11 @@ export function CastPage() {
       pushToast({ tone: "error", title: "Не удалено", detail: describeApiError(error, "Не удалось удалить пробу.") });
     },
   });
-  // 👍/👎 ставит автор; за 👎 через 15 минут уходит вежливый отказ — его судьбу лист
-  // показывает из того же ответа `/auditions`, поэтому после реакции его и перечитываем.
-  const reactMutation = useMutation({
-    mutationFn: ({ id, value }: { id: string; value: 1 | -1 | 0 }) =>
-      apiPostJson<AuditionReactionResponse>(`/api/v2/auditions/${encodeURIComponent(id)}/reaction`, { value }),
+  // Оценку 1–10 ставят автор (верхняя шкала) и студия (нижняя); после неё лист
+  // перечитывается — порядок претендентов зависит от оценки автора.
+  const scoreMutation = useMutation({
+    mutationFn: ({ pair, lane, value, answer }: { pair: AuditionPair; lane: AuditionLane; value: number | null; answer?: ScoreAnswer | null }) =>
+      postScore(pair, lane, value, answer),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: auditionsQueryKey });
     },
@@ -185,44 +196,37 @@ export function CastPage() {
       pushToast({ tone: "error", title: "Реакция не сохранена", detail: describeApiError(error, "Не удалось сохранить реакцию.") });
     },
   });
+  const rows = useMemo<CastRow[]>(
+    () => mergeRoleFacts(mergeCastCounts((budgetQuery.data?.characters || []) as CastRow[], castQuery.data?.characters), mapQuery.data?.rows),
+    [budgetQuery.data, castQuery.data, mapQuery.data],
+  );
   const auditionsByRole = useMemo(() => {
     const items = auditionsQuery.data?.items ?? [];
-    const map = new Map<string, AuditionItem[]>();
-    for (const item of items) {
-      const role = item.role.trim();
+    // Ключ — имя роли в касте, а не то, как роль записана в пробе: сервер узнаёт
+    // персонажа по регистру и псевдонимам, и проба попадает в строку своего персонажа.
+    const castName = new Map(rows.map((row) => [row.character_id, row.name]));
+    const map = new Map<string, AuditionPair[]>();
+    for (const pair of items) {
+      const role = (castName.get(pair.character_id) ?? pair.role).trim();
       if (!role) continue;
       const list = map.get(role);
-      if (list) list.push(item);
-      else map.set(role, [item]);
+      if (list) list.push(pair);
+      else map.set(role, [pair]);
     }
     return map;
-  }, [auditionsQuery.data]);
+  }, [auditionsQuery.data, rows]);
   const auditionCounts = useMemo(
     () => new Map([...auditionsByRole].map(([role, list]) => [role, list.length])),
     [auditionsByRole],
   );
-  const auditionVotes = useMemo(
-    () =>
-      new Map(
-        [...auditionsByRole].map(([role, list]) => [
-          role,
-          {
-            up: list.filter((item) => item.author_reaction === 1).length,
-            down: list.filter((item) => item.author_reaction === -1).length,
-          },
-        ]),
-      ),
+  const auditionBest = useMemo(
+    () => new Map([...auditionsByRole].map(([role, list]) => [role, bestAuthorScore(list)])),
     [auditionsByRole],
   );
   const [auditionsRole, setAuditionsRole] = useState("");
   const crossingCount = useMemo(
     () => (mapQuery.data?.intersections ?? []).filter((item) => !item.acknowledged).length,
     [mapQuery.data],
-  );
-
-  const rows = useMemo<CastRow[]>(
-    () => mergeRoleFacts(mergeCastCounts((budgetQuery.data?.characters || []) as CastRow[], castQuery.data?.characters), mapQuery.data?.rows),
-    [budgetQuery.data, castQuery.data, mapQuery.data],
   );
   /** Пересечения по имени роли: строка показывает худшее из непризнанных. */
   const intersectionsByRole = useMemo(() => {
@@ -777,6 +781,23 @@ export function CastPage() {
       />
 
       <div className="cast-toolbar">
+        {/* Каст у каждой книги свой: книгу меняют здесь, рядом с фильтрами, а адрес
+            остаётся адресом книги — ссылку на каст можно переслать. */}
+        <label className="cast-book-pick">
+          <Icon name="books" />
+          <select
+            value={bookId}
+            aria-label="Книга, чей каст показан"
+            onChange={(event) => navigate(`/books/${encodeURIComponent(event.target.value)}/cast`)}
+          >
+            {(booksQuery.data?.items ?? []).some((book) => book.id === bookId) ? null : (
+              <option value={bookId}>{loading ? "…" : title}</option>
+            )}
+            {(booksQuery.data?.items ?? []).map((book) => (
+              <option key={book.id} value={book.id}>{book.display_title || book.title}</option>
+            ))}
+          </select>
+        </label>
         <Button
           ref={toolbarFallbackRef}
           size="sm"
@@ -874,7 +895,7 @@ export function CastPage() {
           actorPicker={actorPicker}
           bookId={bookId}
           auditionCounts={auditionCounts}
-          auditionVotes={auditionVotes}
+          auditionBest={auditionBest}
           onAuditions={onAuditions}
           intersectionsByRole={intersectionsByRole}
           openDetail={openDetail}
@@ -934,8 +955,7 @@ export function CastPage() {
       {auditionsRole ? (
         <AuditionsSheet
           role={auditionsRole}
-          items={auditionsByRole.get(auditionsRole) ?? []}
-          assignedTo={rows.find((row) => row.name === auditionsRole)?.actor_name || ""}
+          pairs={auditionsByRole.get(auditionsRole) ?? []}
           onAssign={
             auditionsQuery.data?.can_approve
               ? (actor) => {
@@ -952,10 +972,10 @@ export function CastPage() {
           /* `mutate`, а не `void mutateAsync`: отказ разобран в `onError`, а
              отброшенный промис давал бы unhandled rejection. */
           onDelete={(item) => deleteAuditionMutation.mutate(item.id)}
-          canReact={auditionsQuery.data?.can_react}
+          canScore={auditionsQuery.data?.can_score ?? []}
           showRejection={auditionsQuery.data?.can_approve}
-          reactingId={reactMutation.isPending ? reactMutation.variables?.id : undefined}
-          onReact={(item, value) => reactMutation.mutate({ id: item.id, value })}
+          scoringKey={scoreMutation.isPending ? scoreMutation.variables?.pair.key : undefined}
+          onScore={(pair, lane, value, answer) => scoreMutation.mutate({ pair, lane, value, answer })}
           onClose={() => setAuditionsRole("")}
         />
       ) : null}

@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.background import BackgroundTask
 
 from app.api._helpers import bad_request_response, error_response, forbidden_response, not_found_response, unauthorized_response
-from app.auth import can_react_to_auditions, has_any_role, is_authenticated as _is_authenticated, session_payload, session_roles
+from app.auth import audition_score_lanes, has_any_role, is_authenticated as _is_authenticated, session_payload, session_roles
 from app.constants import DICTOR_ROLES
 from app.api._spend_gate import limit_gate, with_warning
 from app.db import SessionLocal
@@ -33,8 +33,10 @@ from app.services.audio_integrity import chapter_has_broken_files, enqueue_verif
 from app.services.audio_storage import file_size as audio_size, read_range as read_audio_range, resolve_path as audio_path
 from app.services.audio_naming import book_token
 from app.services.audio_uploads import derive_book_code
-from app.services.audition_reactions import ReactionError, attach_reactions, set_reaction
-from app.services.auditions import book_auditions, find_audition, inline_disposition, slice_for_range
+from app.services.audition_rejections import rejection_view, sync_rejection_with_scores
+from app.services.audition_scores import ScoreError, send_reaction_to_owner, set_comment, set_score
+from app.services.audition_pairs import book_pairs
+from app.services.auditions import find_audition, inline_disposition, slice_for_range
 from app.services import book_title as book_title_service
 from app.services.consilium_store import accept_finding, book_findings, dismiss_finding
 from app.services.recording_impact import chapter_has_recognition, impacts_for_reassign, recording_impacts
@@ -50,7 +52,7 @@ from app.services.chapter_delivery import (
 from app.time_utils import iso_utc, utcnow_naive
 from app.v2.attribution_ops import ReassignError, reassign_segment
 from app.v2 import model_catalog
-from app.v2.cast_ops import CreateRoleError, book_cast, create_role
+from app.v2.cast_ops import CreateRoleError, book_cast, create_role, move_auditions_to_role
 from app.v2.character_map import (
     CharacterMapError,
     adopt_speaker,
@@ -639,6 +641,14 @@ def api_v2_chapter_archive(request: Request, chapter_id: str):
     )
 
 
+def book_auditions(db, *, book_id: str, only_actor: str = "") -> list[dict] | None:
+    """Сырые данные для списка проб книги — без проверки прав и формирования ответа."""
+    book = db.get(ScriptBook, str(book_id or "").strip())
+    if book is None:
+        return None
+    return book_pairs(db, book, sees_scores=False, viewer_name=only_actor)
+
+
 def api_v2_book_auditions(request: Request, book_id: str):
     """Пробы этой книги — слушают все, утверждают на роль двое.
 
@@ -648,19 +658,12 @@ def api_v2_book_auditions(request: Request, book_id: str):
     """
     if not _is_authenticated(request):
         return unauthorized_response()
+    lanes = audition_score_lanes(request)
     with SessionLocal() as db:
-        book_id = str(book_id or "").strip()
-        rows = book_auditions(db, book_id=book_id)
-        if rows is not None:
-            rows = attach_reactions(
-                db, rows, book_id=book_id, viewer_name=_reader_name(request), sees_all=_can_edit(request),
-            )
+        rows = book_auditions(db, book_id=book_id, only_actor=_reader_name(request))
     if rows is None:
         return not_found_response("book_not_found")
-    return JSONResponse({
-        "ok": True, "items": rows, "can_approve": _can_edit(request),
-        "can_react": can_react_to_auditions(request),
-    })
+    return JSONResponse({"ok": True, "items": rows, "can_approve": _can_edit(request), "can_score": lanes})
 
 
 def storage_unavailable_for(location: str) -> bool:
@@ -686,29 +689,57 @@ def storage_unavailable_for(location: str) -> bool:
     return nas_health.nas_online() is not True
 
 
-async def api_v2_audition_reaction(request: Request, audio_id: str):
-    """👍/👎 на пробу. Ставит только автор — не «редактор»: `admin` тут не подразумевается,
-    потому что реакция — голос именно автора, а за 👎 следует письмо диктору."""
+async def api_v2_audition_score(request: Request):
+    """Оценка 1–10 актёру на роль. Каждый жмёт только свою дорожку: автор — верхнюю,
+    владелец студии — нижнюю. `score: null` снимает оценку. Письма оценка не шлёт."""
     if not _is_authenticated(request):
         return unauthorized_response()
-    if not can_react_to_auditions(request):
-        return forbidden_response()
     body = await _json_body(request)
     if body is None:
         return bad_request_response()
+    lane = str(body.get("lane") or "")
+    if lane not in audition_score_lanes(request):
+        return forbidden_response()
     uid, name = _actor(request)
-    try:
-        value = int(body.get("value"))
-    except (TypeError, ValueError):
-        return bad_request_response("bad_value")
     with SessionLocal() as db:
         try:
-            result = set_reaction(db, str(audio_id or "").strip(), voter_uid=uid, voter_name=name, value=value)
-        except ReactionError as error:
+            scores = set_score(
+                db, book_id=str(body.get("book_id") or "").strip(), role=str(body.get("role") or ""),
+                actor_name=str(body.get("actor_name") or ""), lane=lane, score=body.get("score"),
+                voter_uid=uid, voter_name=name, reason=str(body.get("reason") or "") or None,
+            )
+            # Причина и слова для студии из одного окна — одним запросом и одним письмом
+            # владельцу, а не двумя подряд.
+            if "comment" in body and body.get("score") is not None:
+                scores = set_comment(
+                    db, book_id=str(body.get("book_id") or "").strip(), role=str(body.get("role") or ""),
+                    actor_name=str(body.get("actor_name") or ""), lane=lane, comment=str(body.get("comment") or ""),
+                    voter_uid=uid, voter_name=name,
+                )
+        except ScoreError as error:
             if error.code == "not_found":
                 return not_found_response("audition_not_found")
             return bad_request_response(error.code)
-    return JSONResponse({"ok": True, **result})
+        # Оба оценили ниже 7 — через 15 минут вежливый отказ; подняли или сняли оценку —
+        # ждущий отказ отменяется (решение владельца 04.10).
+        pair = {"book_id": str(body.get("book_id") or "").strip(), "role": str(body.get("role") or ""),
+                "actor_name": str(body.get("actor_name") or "")}
+        try:
+            rej = sync_rejection_with_scores(db, **pair)
+            db.commit()
+        except IntegrityError:
+            # Автор и студия нажали одновременно: обе сверки завели строку отказа, вторая
+            # упёрлась в уникальность пары. Оценка уже сохранена — сверяем ещё раз.
+            db.rollback()
+            rej = sync_rejection_with_scores(db, **pair)
+            db.commit()
+        rejection = rejection_view(rej)
+    said = str(body.get("reason") or "") or str(body.get("comment") or "").strip()
+    # Автор назвал причину или сказал своими словами — владелец узнаёт сразу (решение 11.10).
+    # Голая оценка не пишет: её видно в карточке, а письмо на каждое нажатие стало бы шумом.
+    notify = BackgroundTask(send_reaction_to_owner, pair["book_id"], pair["role"], pair["actor_name"]) \
+        if lane == "author" and said else None
+    return JSONResponse({"ok": True, "scores": scores, "rejection": rejection}, background=notify)
 
 
 def api_v2_audition_audio(request: Request, audio_id: str):
@@ -1395,6 +1426,31 @@ async def api_v2_create_role(request: Request, book_id: str):
         except CreateRoleError as exc:
             if exc.code == "book_not_found":
                 return not_found_response("book_not_found")
+            return bad_request_response(exc.code)
+        db.commit()
+    return JSONResponse({"ok": True, **result})
+
+
+async def api_v2_move_auditions(request: Request, book_id: str, character_id: str):
+    """Пробы, подписанные иначе, чем роль в книге («Лйра»), — под эту роль («Лира»)."""
+    if not _is_authenticated(request):
+        return unauthorized_response()
+    if not _can_edit(request):
+        return forbidden_response()
+    body = await _json_body(request)
+    if body is None:
+        return bad_request_response()
+    actor_uid, actor_name = _actor(request)
+    with SessionLocal() as db:
+        try:
+            result = move_auditions_to_role(
+                db, book_id=str(book_id or ""), character_id=str(character_id or ""),
+                role=str(body.get("role") or ""), audition_actor=str(body.get("actor_name") or ""),
+                actor_uid=actor_uid, actor_name=actor_name,
+            )
+        except CreateRoleError as exc:
+            if exc.code in ("book_not_found", "character_not_found"):
+                return not_found_response(exc.code)
             return bad_request_response(exc.code)
         db.commit()
     return JSONResponse({"ok": True, **result})

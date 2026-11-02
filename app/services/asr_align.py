@@ -48,6 +48,18 @@ TAKE_THRESHOLD = 0.90
 #: похожего места дальше в потоке: «Что?..» звучит в главе десятки раз, и жадный сбор
 #: набрал на ней восемь «подходов», потеряв следующую реплику.
 MIN_TAKE_WORDS = 3
+#: короче или равна этому — реплика «короткая» для правила о перепрыгнутой соседке:
+#: три слова тоже находятся где попало. 28.10 («Хубрхю», глава 55) «А… о… т…» (три
+#: однобуквенных слова) нашлась на 0.8 внутри «„А“, „о“, „н“ и „т“» за полторы минуты
+#: вперёд, и курсор перепрыгнул двенадцать прочитанных реплик.
+SHORT_LINE_WORDS = 3
+#: ниже этого найденное место короткой реплики — «слабое»: точное совпадение («Что
+#: это?» на 1.0) правило не трогает, его и так берёт ближайшее место. Замер 20.10:
+#: снимать точные короткие совпадения — значит терять их.
+WEAK_SCORE = 0.85
+#: насколько уверенно должна найтись в перепрыгнутом куске следующая реплика, чтобы
+#: прыжок признать ошибкой. Почти дословно: та же планка, что у повторного подхода.
+CONFIDENT_SCORE = TAKE_THRESHOLD
 
 _WORD = re.compile(r"[а-яёa-z0-9]+")
 #: буквенные окончания порядкового после дефиса — от длинных к коротким. Порядок,
@@ -407,6 +419,84 @@ def _needed_by_a_later_line(
     return _rival_pull(expected, index, stream, start, end) >= score - RIVAL_MARGIN
 
 
+def _later_lines_in(
+    expected: list[str],
+    index: int,
+    stretch: list[tuple[str, float, float]],
+    threshold: float,
+    *,
+    min_words: int,
+) -> list[int]:
+    """Какие из ближайших следующих реплик звучат в этом куске потока.
+
+    Сравнение — лучшим отрезком внутри куска, а не всем куском: перепрыгнутое бывает
+    длиннее реплики-соседки. Соседки короче `min_words` не спрашиваем, когда кусок
+    длинный: короткая реплика («А?..») «находится» почти в любом длинном куске.
+    """
+    found: list[int] = []
+    if not stretch:
+        return found
+    for offset in range(1, RIVAL_DEPTH + 1):
+        rival = index + offset
+        if rival >= len(expected):
+            break
+        target = normalize_words(expected[rival])
+        if len(target) < min_words:
+            continue
+        rival_score, _s, _e = _best_span(target, stretch, 0, lookahead=len(stretch))
+        if rival_score >= threshold:
+            found.append(rival)
+    return found
+
+
+def _reread_right_after(target: list[str], stream: list[tuple[str, float, float]], cursor: int) -> bool:
+    """Звучит ли реплика снова вплотную за этим местом — то есть читается ли пара заново."""
+    score, start, _end = _best_span(target, stream, cursor, lookahead=TAKE_GAP_WORDS)
+    return score >= CONFIDENT_SCORE and start - cursor <= TAKE_GAP_WORDS
+
+
+def _jumps_over_a_later_line(
+    expected: list[str],
+    index: int,
+    stream: list[tuple[str, float, float]],
+    cursor: int,
+    start: int,
+    score: float,
+) -> bool:
+    """Не лежит ли между курсором и найденным местом одна из следующих реплик.
+
+    Диктор читает сверху вниз, поэтому место реплики не может стоять за местом
+    следующей. 20.10 («Лира», глава 47) однословная «Нет,», которую диктор пропустил,
+    нашлась в слове «не» пятнадцатью словами дальше — внутри реплики через одну, — и
+    курсор перепрыгнул прочитанную «Я бы вообще убила вас…»: письмо назвало
+    пропущенными две прочитанные реплики. Короткую реплику похожее слово найдёт почти
+    где угодно; что она не на своём месте, видно только по тому, что она перепрыгнула.
+
+    Два случая, и оба только для короткой реплики и только про длинную соседку
+    (длинная реплика случайно далеко не находится, а короткая соседка сама «находится»
+    в любом перепрыгнутом куске — замер по 260 сверкам прода: без этих условий правило
+    теряло точные совпадения вроде «Что это?» и «Спит дракон под горой»):
+
+    - реплика короче `MIN_TAKE_WORDS` — соседке достаточно подойти перепрыгнутому
+      куску не хуже, чем найденное место этой реплике (на мусор между подходами —
+      «ой, ещё раз» — правило не срабатывает);
+    - реплика до `SHORT_LINE_WORDS` слов, найденная слабо (ниже `WEAK_SCORE`), — если
+      соседка звучит в перепрыгнутом почти дословно (`CONFIDENT_SCORE`). 28.10
+      («Хубрхю», глава 55): «А… о… т…» встала на 0.8 в «„А“, „о“, „н“ и „т“», хотя
+      следующая «Тоа… атом… атом?..» дословно звучала полторы минуты раньше, и сверка
+      потеряла весь прочитанный между ними блок — двенадцать реплик.
+    """
+    if start <= cursor:
+        return False
+    words = len(normalize_words(expected[index]))
+    skipped = stream[cursor:start]
+    if words < MIN_TAKE_WORDS:
+        return bool(_later_lines_in(expected, index, skipped, max(MATCH_THRESHOLD, score), min_words=MIN_TAKE_WORDS))
+    if words <= SHORT_LINE_WORDS and score < WEAK_SCORE:
+        return bool(_later_lines_in(expected, index, skipped, CONFIDENT_SCORE, min_words=MIN_TAKE_WORDS))
+    return False
+
+
 def _take_at(stream: list[tuple[str, float, float]], start: int, end: int, score: float) -> dict:
     """Один подход метками времени, а не индексами слов: дальше с ними работает монтаж."""
     return {
@@ -443,6 +533,20 @@ def _collect_takes(
             break
         if next_start - cursor > TAKE_GAP_WORDS:
             break
+        jumped = _later_lines_in(expected, index, stream[cursor:next_start], CONFIDENT_SCORE, min_words=1)
+        if any(not _reread_right_after(normalize_words(expected[r]), stream, next_end) for r in jumped):
+            # Между подходами дословно звучит следующая реплика, а за «подходом» её
+            # повтора нет — значит это не повтор пары, а похожие слова дальше в
+            # сценарии. 28.10 («Юмкуба», глава 14): «Ты хочешь мне изменять!» взяла
+            # «вторым подходом» «ты хочешь изменять» из длинной реплики через две и
+            # перепрыгнула прочитанные «Тогда подпиши!» и «Ты лжец,» — обе в пропуски.
+            #
+            # Повтор пары («А», «Б», «А», «Б»…) правило не трогает: без этой оговорки
+            # замер по проду снял 192 подхода, 161 из них дословные (1.0), — диктор
+            # перечитывает реплику вместе с репликой-соседкой. Узнаётся он по тому, что соседка звучит
+            # и за подходом. Соседку спрашиваем любой длины: окно — не больше
+            # `TAKE_GAP_WORDS` слов, а лишний отказ стоит только подхода.
+            break
         if _needed_by_a_later_line(expected, index, stream, next_start, next_end, next_score):
             break
         takes.append(_take_at(stream, next_start, next_end, next_score))
@@ -478,6 +582,15 @@ def align_transcript(expected: list[str], spoken: list[dict]) -> dict:
             # значит эту диктор пропустил, а мы едва не отдали ей чужое место и не
             # увели за собой все реплики до конца главы.
             matched = False
+        if matched and _jumps_over_a_later_line(expected, index, stream, cursor, start, score):
+            # Найденное место — за следующей репликой: эту диктор пропустил, а мы
+            # чуть не увели курсор через прочитанную.
+            matched = False
+            # Повторного поиска «до отвергнутого места» нет намеренно: он находил
+            # реплику внутри той самой соседки, которую она перепрыгнула («Нет,» в
+            # «нести» из «Сам нести буду.»), и прочитанная соседка уходила в пропуски —
+            # беда «Эины» 20.10. Ограничить его надёжно не удалось; реплика остаётся
+            # ненайденной, и это честнее чужого места.
         takes: list[dict] = []
         if matched:
             # Курсор двигает только найденная реплика: пропущенная не должна съесть

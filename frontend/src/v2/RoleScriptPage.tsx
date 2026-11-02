@@ -68,6 +68,8 @@ function exportHref(bookId: string, role: string, ext: "pdf" | "txt"): string {
 }
 
 const PAGE = 300;
+/** Потолок одного запроса на сервере (MAX_LIMIT в role_view.py): для PDF роли берём всё сразу. */
+const PRINT_PAGE = 1000;
 const RADII = [0, 1, 2, 3, 5];
 
 export function RoleScriptPage() {
@@ -80,7 +82,10 @@ export function RoleScriptPage() {
   // «Слова-ловушки» instead of the lines — in the address, so the list can be sent and printed
   const traps = params.get("view") === "traps";
   const fresh = params.get("fresh") !== "0";
-  const [limit, setLimit] = useState(PAGE);
+  // ?print=1 — пришли из «Каста» по числу реплик (просьба агента 29.10): нужен PDF со
+  // всеми репликами роли, а не первая страница из 300 и не ручное «Показать ещё».
+  const printMode = params.get("print") === "1";
+  const [limit, setLimit] = useState(printMode ? PRINT_PAGE : PAGE);
   const [prefs, updatePrefs] = useReaderPrefs();
   // a phone keeps the arrows — they are how an actor walks his lines — and folds the rest
   const compact = useIsMobile();
@@ -97,7 +102,7 @@ export function RoleScriptPage() {
   const [target, setTarget] = useState<WordTarget | null>(null);
   const queryClient = useQueryClient();
 
-  useEffect(() => setLimit(PAGE), [bookId, role, radius]);
+  useEffect(() => setLimit(printMode ? PRINT_PAGE : PAGE), [bookId, role, radius]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => setTarget(null), [bookId, role, radius]);
 
   const query = useQuery({
@@ -110,6 +115,22 @@ export function RoleScriptPage() {
   });
 
   const data = query.data;
+  // Окно печати — один раз, когда реплики загрузились и отрисовались. Метку из адреса
+  // снимаем, чтобы обновление вкладки не открывало печать снова. Заголовок вкладки —
+  // имя файла, которое браузер предложит для PDF.
+  const printedRef = useRef(false);
+  useEffect(() => {
+    if (!printMode || printedRef.current || !data || query.isFetching) return;
+    printedRef.current = true;
+    const book = data.book?.title || "";
+    document.title = book ? `${role} — ${book}` : role;
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("print");
+      return next;
+    }, { replace: true });
+    window.setTimeout(() => window.print(), 300);
+  }, [printMode, data, query.isFetching, role, setParams]);
   useEffect(() => setCanonOpen(false), [bookId, role]);
   // Кнопка — только когда текст правда не влез: у коротких описаний она лишняя.
   useLayoutEffect(() => {
@@ -188,7 +209,7 @@ export function RoleScriptPage() {
   const backHref = recordingContext
     ? (bookId ? recordingHref(bookId, params.toString()) : "/recording")
     : (bookId ? `/reader?book_id=${encodeURIComponent(bookId)}` : "/reader");
-  const backLabel = recordingContext ? "К записи" : "К читалке";
+  const backLabel = recordingContext ? "К сценарию" : "К читалке";
 
   if (!bookId || !role) {
     return (
@@ -399,7 +420,16 @@ export function RoleScriptPage() {
 
       <div className="v2r-body">
         <div className="v2r-main">
-          {about || inChapters.length > 0 ? (
+          {/* шапка-панель при печати скрыта, а PDF без имени роли — безымянная стопка листов */}
+          <div className="v2r-print-title">
+            <div className="v2r-print-title-book">{data.book.title || "Книга"}</div>
+            <h2>{data.role}</h2>
+            <div className="num">
+              {counts.lines} {plural(counts.lines, "реплика", "реплики", "реплик")} · {counts.chapters}{" "}
+              {plural(counts.chapters, "глава", "главы", "глав")}
+            </div>
+          </div>
+          {about || inChapters.length > 0 || data.canon ? (
             <aside className="v2r-rolecard" style={roleColor ? { borderLeftColor: roleColor } : undefined}>
               {about?.note ? <p className="v2r-rolecard-note">{about.note}</p> : null}
               {about?.facts ? <p className="v2r-rolecard-facts">{about.facts}</p> : null}

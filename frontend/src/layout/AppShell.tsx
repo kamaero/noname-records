@@ -57,6 +57,8 @@ function markAutoShownThisTab(uid: string) {
   }
 }
 
+/** каст книги живёт под `/books/:id/cast`, но в навбаре это раздел «Каст», не «Библиотека» */
+const isCastPath = (p: string) => p === "/cast" || /^\/books\/[^/]+\/cast$/.test(p);
 const startsWithAny = (p: string, prefixes: string[]) => prefixes.some((prefix) => p === prefix || p.startsWith(`${prefix}/`));
 
 /** Агент — и никто больше: носитель роли, у которого нет прав редактора.
@@ -98,14 +100,17 @@ export function buildNav(me: MeResponse): { primary: NavItem[]; secondary: NavIt
       show: me.full_access,
       match: (p) =>
         p === "/" ||
-        startsWithAny(p, ["/command", "/books", "/upload"]),
+        (startsWithAny(p, ["/command", "/books", "/upload"]) && !isCastPath(p)),
     },
     { to: "/reader", label: "Подготовка", icon: "doc", show: canPrepare, match: (p) => startsWithAny(p, ["/reader", "/script"]) },
-    { to: "/recording", label: "Запись", icon: "mic", show: canRecord, match: (p) => startsWithAny(p, ["/recording", "/dictor-pro", "/dictor-neo"]) },
+    { to: "/recording", label: "Сценарий", icon: "mic", show: canRecord, match: (p) => startsWithAny(p, ["/recording", "/dictor-pro", "/dictor-neo"]) },
+    { to: "/takes", label: "Загрузка", icon: "upload", show: canRecord, match: (p) => startsWithAny(p, ["/takes"]) },
     { to: "/asr", label: "ASR", icon: "wave", show: canRecord, match: (p) => startsWithAny(p, ["/asr"]) },
   ];
   const secondary: NavItem[] = [
+    { to: "/cast", label: "Каст", icon: "cast", show: editor || isAgent, muted: true, match: isCastPath },
     { to: "/auditions", label: "Пробы", icon: "play", show: (editor || isAgent) && !oneSeat, muted: true, match: (p) => startsWithAny(p, ["/auditions"]) },
+    { to: "/payouts", label: "Смета", icon: "ruble", show: Boolean(me.can_see_payouts), muted: true, match: (p) => startsWithAny(p, ["/payouts"]) },
     { to: "/dictors", label: "Дикторы", icon: "mic", show: editor, muted: true, match: (p) => startsWithAny(p, ["/dictors"]) },
     { to: "/users", label: "Пользователи", icon: "users", show: isAdmin && !oneSeat, muted: true, match: (p) => startsWithAny(p, ["/users"]) },
     { to: "/settings", label: "Настройки", icon: "settings", show: isAdmin, muted: true, match: (p) => startsWithAny(p, ["/settings"]) },

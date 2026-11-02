@@ -31,6 +31,8 @@ def _register(app: FastAPI, startup_called: list[str]) -> None:
             "api_save_budget_character": _noop,
             "api_studio_rate": _noop,
             "api_save_studio_rate": _noop,
+            "api_recording_book": _noop,
+            "api_save_recording_book": _noop,
         },
         frontend_core_handlers={
             "api_public_auth_config": _noop,
@@ -91,6 +93,7 @@ def test_register_application_routes_exposes_the_surviving_spa_paths() -> None:
         "/api/budget/{book_id}",
         "/api/budget/character/{char_id}",
         "/api/settings/rate",
+        "/api/studio/recording-book",
         "/api/recording/workspace",
         "/api/recording/filename",
         "/api/recording/files/{audio_id}/delete",

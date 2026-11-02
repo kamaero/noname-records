@@ -178,11 +178,11 @@ def delete_audio_file(
     # согласованной, просто операция не завершилась.
     db.query(AsrJob).filter(AsrJob.audio_file_id == audio.id).delete()
     if str(audio.kind or "") == AUDITION:
-        # Локальный импорт: `audition_reactions` сам импортирует этот модуль.
-        from app.services.audition_reactions import forget_audition
+        # Локальный импорт: `audition_rejections` сам импортирует этот модуль.
+        from app.services.audition_rejections import forget_audition
 
-        # Реакции и отказ — в том же коммите, что и строка: иначе 👎 удалённой пробы
-        # продолжал бы держать отказ, и письмо ушло бы про пробу, которой уже нет.
+        # Оценки и отказ — в том же коммите, что и строка: иначе отказ продолжал бы
+        # ждать письма про пробу, которой уже нет.
         forget_audition(db, audio)
     db.delete(audio)
     db.add(PendingMirrorDeletion(stored_key=stored_key, book_code=book_code, deleted_by=str(actor_name or "")))

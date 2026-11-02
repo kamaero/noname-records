@@ -18,12 +18,14 @@ from app.auth import (
 from app.config import settings
 from app.handler_factories import build_handler_registry
 from app.rate_limit import limiter
-from app.api.auditions_feed import api_auditions_feed
+from app.api.auditions_feed import api_auditions_feed, api_auditions_reject
 from app.api.ai_settings import register_ai_settings_routes
 from app.api.first_steps import register_first_steps_routes
 from app.api.seat import register_seat_routes
 from app.api.stress_model import register_stress_model_routes
 from app.api.dictors import register_dictors_routes
+from app.api.payouts import register_payouts_routes
+from app.v2.lifecycle_api import register_lifecycle_routes
 from app.api.telegram_webhook import api_telegram_webhook
 from app.route_bootstrap import register_application_routes
 from app.routers.auth import register_auth_routes
@@ -58,6 +60,7 @@ from app.v2.api import (
     api_v2_auto_publish,
     api_v2_chapter_approve,
     api_v2_create_role,
+    api_v2_move_auditions,
     api_v2_chapter_source,
     api_v2_consilium,
     api_v2_consilium_accept,
@@ -86,7 +89,7 @@ from app.v2.api import (
     api_v2_audition_audio,
     api_v2_take_audio,
     api_v2_book_auditions,
-    api_v2_audition_reaction,
+    api_v2_audition_score,
     api_v2_book_recording,
     api_v2_chapter_archive,
     api_v2_chapter_asr,
@@ -344,6 +347,7 @@ register_first_steps_routes(app)
 register_seat_routes(app)
 register_stress_model_routes(app)
 app.add_api_route("/api/auditions/feed", api_auditions_feed, methods=["GET"])
+app.add_api_route("/api/auditions/reject", api_auditions_reject, methods=["POST"])
 
 app.add_api_route("/api/v2/chapters/{chapter_id}/script", api_v2_chapter_script, methods=["GET"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/source", api_v2_chapter_source, methods=["GET"])
@@ -354,11 +358,12 @@ app.add_api_route("/api/v2/books/{book_id}/stress-skip", api_v2_stress_skip, met
 app.add_api_route("/api/v2/books/{book_id}/homographs", api_v2_homographs, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/auditions", api_v2_book_auditions, methods=["GET"])
 app.add_api_route("/api/v2/auditions/{audio_id}/audio", api_v2_audition_audio, methods=["GET"])
-app.add_api_route("/api/v2/auditions/{audio_id}/reaction", api_v2_audition_reaction, methods=["POST"])
+app.add_api_route("/api/v2/auditions/score", api_v2_audition_score, methods=["POST"])
 app.add_api_route("/api/v2/takes/{audio_id}/audio", api_v2_take_audio, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/recording", api_v2_book_recording, methods=["GET"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/recording", api_v2_chapter_recording, methods=["GET"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/archive.zip", api_v2_chapter_archive, methods=["GET"])
+register_lifecycle_routes(app)
 app.add_api_route("/api/v2/chapters/{chapter_id}/asr", api_v2_chapter_asr, methods=["POST"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/verify", api_v2_chapter_verify, methods=["POST"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/session-archive", api_v2_chapter_session_archive, methods=["POST"])
@@ -414,6 +419,7 @@ app.add_api_route("/api/v2/books/{book_id}/character-map/acknowledge", api_v2_ch
 app.add_api_route("/api/v2/books/{book_id}/character-map/forget", api_v2_character_map_forget, methods=["POST"])
 app.add_api_route("/api/v2/books/{book_id}/character-map/checked", api_v2_character_map_checked, methods=["POST"])
 app.add_api_route("/api/v2/books/{book_id}/characters", api_v2_create_role, methods=["POST"])
+app.add_api_route("/api/v2/books/{book_id}/characters/{character_id}/auditions", api_v2_move_auditions, methods=["POST"])
 app.add_api_route("/api/v2/books/{book_id}/profile", api_v2_profile, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/profile/sync", api_v2_profile_sync, methods=["POST"])
 app.add_api_route("/api/v2/books/{book_id}/profile/apply", api_v2_profile_apply, methods=["POST"])

@@ -108,7 +108,8 @@ def rename_actor_in_audio(db, *, was: str, now: str) -> int:
     changed = 0
     moves: list[tuple[str, str]] = []
     for item in db.query(AudioFile).filter(AudioFile.actor_name == was).order_by(AudioFile.uploaded_at.asc()).all():
-        kind = classify_upload_kind(db, role=str(item.role or ""), actor_name=now)
+        kind = classify_upload_kind(db, role=str(item.role or ""), actor_name=now,
+                                    book_code=str(item.book_code or ""))
         # Номер фикса и порядковый номер переносятся из прежнего имени: без них фикс
         # и основной файл той же роли после переименования назывались бы одинаково.
         fix, ordinal = name_suffixes(str(item.canonical_filename or ""))
@@ -137,3 +138,68 @@ def rename_actor_in_audio(db, *, was: str, now: str) -> int:
     if moves:
         _undo_moves_on_rollback(db, moves)
     return changed
+
+
+def rename_audition_role(db, *, book, was: str, now: str, actor_name: str) -> int:
+    """Пробы актёра под ошибочным написанием роли («Лйра») — под написание книги («Лира»).
+
+    Роль пробы диктор пишет на слух в имени файла. Владелец не хочет, чтобы его ошибка
+    становилась вторым именем роли в касте (13.10), — поэтому правится проба, а не каст:
+    роль, каноническое имя и файл на диске, а с ними оценки и отказ пары (их ключ —
+    роль и актёр). Вид записи остаётся «проба»: пересчёт по касту сделал бы её дублем,
+    если актёр уже утверждён на роль.
+
+    Если у пары под верным написанием оценка той же дорожки или отказ уже есть, они
+    остаются, а перенесённые уходят: ключ пары один, а голос там — о пробе, присланной
+    позже. Не коммитит.
+    """
+    from app.models import AuditionRejection, AuditionScore
+    from app.services.audio_uploads import AUDITION, derive_book_code
+
+    was, now = " ".join(str(was or "").split()), " ".join(str(now or "").split())
+    if not was or not now or was == now:
+        return 0
+    book_code = derive_book_code(str(book.title or ""))
+    taken = {str(name or "") for (name,) in db.query(AudioFile.canonical_filename).all()}
+    moves: list[tuple[str, str]] = []
+    items = (db.query(AudioFile)
+             .filter(AudioFile.kind == AUDITION, AudioFile.book_code == book_code,
+                     AudioFile.role == was, AudioFile.actor_name == actor_name)
+             .order_by(AudioFile.uploaded_at.asc()).all())
+    for item in items:
+        taken.discard(str(item.canonical_filename or ""))
+        _fix, ordinal = name_suffixes(str(item.canonical_filename or ""))
+        while True:
+            name = canonical_audio_name(
+                book_code=book_code, chapter=str(item.chapter or ""), role=now, actor_name=actor_name,
+                original_filename=str(item.original_filename or ""), kind=AUDITION, ordinal=ordinal, fix=None,
+            )
+            if name not in taken:
+                break
+            ordinal += 1
+        taken.add(name)
+        item.role = now
+        item.canonical_filename = name
+        moved = _move_to_name(db, item, name)
+        if moved:
+            moves.append(moved)
+    if moves:
+        _undo_moves_on_rollback(db, moves)
+
+    lanes = {str(lane) for (lane,) in db.query(AuditionScore.lane).filter(
+        AuditionScore.book_id == book.id, AuditionScore.role == now, AuditionScore.actor_name == actor_name)}
+    for score in db.query(AuditionScore).filter(
+            AuditionScore.book_id == book.id, AuditionScore.role == was, AuditionScore.actor_name == actor_name):
+        if str(score.lane) in lanes:
+            db.delete(score)
+        else:
+            score.role = now
+    has_rejection = db.query(AuditionRejection.id).filter_by(
+        book_id=book.id, role=now, actor_name=actor_name).first() is not None
+    for rej in db.query(AuditionRejection).filter_by(book_id=book.id, role=was, actor_name=actor_name):
+        if has_rejection:
+            db.delete(rej)
+        else:
+            rej.role = now
+    db.flush()
+    return len(items)

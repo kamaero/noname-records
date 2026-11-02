@@ -73,3 +73,20 @@ def test_the_narrator_letter_has_no_deadline(db, monkeypatch):
     role_approval.notify_role_approved(db, book_id="b1", book_title="СВ3", role=NARRATOR_DISPLAY_NAME,
                                        actor_name="Ветрова Ольга")
     assert "Срок" not in texts[0] and "Стоимость" not in texts[0]
+
+
+
+def test_the_audition_letter_says_send_it_to_the_bot(db, monkeypatch):
+    """С 06.10 пробу принимает и бот (пакет C2): приглашение называет оба пути."""
+    text = _sent(db, monkeypatch, "Ветрова Ольга?")
+    assert "пришлите её сюда, в бот, — аудиофайлом или голосовым (до " in text
+    assert "раздел «Загрузка»" in text
+
+
+def test_the_audition_letter_names_the_bot_limit_of_the_current_node(db, monkeypatch):
+    """С 22.10 бот на своём узле и берёт файлы до 2 ГБ: письмо не должно гнать WAV на сайт
+    старым «до 20 МБ». Облако — по-прежнему 20 МБ."""
+    monkeypatch.setattr(settings, "telegram_api_base", "http://127.0.0.1:8092")
+    assert "(до 2 ГБ)" in _sent(db, monkeypatch, "Ветрова Ольга?")
+    monkeypatch.setattr(settings, "telegram_api_base", "")
+    assert "(до 20 МБ)" in _sent(db, monkeypatch, "Ветрова Ольга?")

@@ -387,3 +387,30 @@ def test_the_narrator_never_makes_a_pair(db):
     assert {(row["role_a"], row["role_b"]) for row in pairs} == {("Гамук", "Инвнехлизад")}
     # и никакого «признано по умолчанию» больше нет
     assert "acknowledged_default" not in pairs[0]
+
+
+def test_one_actor_written_name_first_and_surname_first_is_one_actor(db):
+    """В касте «Карты» владелец записан и «Примерщюагоэсгв Примеряфеицшпчб», и «Примеряфеицшпчб Примерщюагоэсгв»
+    (28.10): строки разные, человек один, и пересечения его ролей не искались."""
+    _role(db, "За'Лоул", "Примеряфеицшпчб Примерщюагоэсгв")
+    _role(db, "Ге'Коон", "Примерщюагоэсгв Примеряфеицшпчб")
+    _say(db, "ch-1", 0, "За'Лоул")
+    _say(db, "ch-1", 1, "Ге'Коон")
+    db.commit()
+
+    found = role_intersections(db, BOOK)
+
+    assert [(row["role_a"], row["role_b"]) for row in found] == [("Ге'Коон", "За'Лоул")]
+    assert found[0]["severity"] == "dialogue"
+
+
+def test_a_bare_first_name_is_not_glued_to_a_full_name(db):
+    """Одно имя без фамилии — не повод считать людей одним актёром: Наташ в
+    студии несколько, а ложная пара висела бы до клика «так задумано»."""
+    _role(db, "Хубрхю", "Примерфибггуиув Примерлчзкхкмбб")
+    _role(db, "Дютуви", "Наташа")
+    _say(db, "ch-1", 0, "Хубрхю")
+    _say(db, "ch-1", 0, "Дютуви")
+    db.commit()
+
+    assert role_intersections(db, BOOK) == []

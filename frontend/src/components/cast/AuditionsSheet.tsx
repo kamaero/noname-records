@@ -9,16 +9,19 @@
  * Плеер здесь первый в системе. Отдача — `/api/v2/auditions/{id}/audio`, с `Range`,
  * иначе у `<audio>` не двигается ползунок.
  */
-import { Button, Sheet } from "../../ui";
-import type { AuditionItem, AuditionRejection } from "../../v2/types";
+import { useState } from "react";
+
+import { Button, ScoreScale, Sheet } from "../../ui";
+import type { AuditionItem, AuditionLane, AuditionPair, AuditionRejection } from "../../v2/types";
+import { asksReason, busyConfirmText, isBusy, isRecommended, roleOpen, sortForRole, type ScoreAnswer } from "../../viewModels/auditionPairs";
+import { ReasonNote, useReasonPrompt } from "../auditions/ReasonPrompt";
 
 type AuditionsSheetProps = {
   role: string;
-  items: AuditionItem[];
+  pairs: AuditionPair[];
   /** назначить актёра на роль прямо отсюда — это и есть решение, ради которого слушают.
       Пусто, если слушающий не вправе утверждать: слушают все, решают двое. */
   onAssign?: (actorName: string) => void;
-  assignedTo?: string;
   onClose: () => void;
 
   /** владелец и автор удаляют любую пробу — тот же признак, что решает `can_approve` */
@@ -35,14 +38,14 @@ type AuditionsSheetProps = {
   /** вызывается уже ПОСЛЕ подтверждения — сам вопрос про цену задаёт этот лист */
   onDelete?: (item: AuditionItem) => void;
 
-  /** 👍/👎 ставит только автор; у остальных — метка без кнопок */
-  canReact?: boolean;
+  /** дорожки, которые слушающий вправе нажимать: автор — верхнюю, студия — нижнюю */
+  canScore?: AuditionLane[];
   /** владелец и автор видят, что будет с отказом; диктору — только итог на своей */
   showRejection?: boolean;
-  /** id пробы, реакцию на которую сейчас сохраняют */
-  reactingId?: string;
-  /** 0 — снять реакцию */
-  onReact?: (item: AuditionItem, value: 1 | -1 | 0) => void;
+  /** ключ пары, оценку которой сейчас сохраняют */
+  scoringKey?: string;
+  /** `answer` — причина автора при оценке ниже 7 и слова для студии; спрашивает сам лист */
+  onScore?: (pair: AuditionPair, lane: AuditionLane, value: number | null, answer?: ScoreAnswer | null) => void;
 };
 
 function formatSize(bytes: number): string {
@@ -120,10 +123,10 @@ function formatClock(iso: string): string {
 }
 
 /** Что будет с отказом — словами, а не статусом. */
-function rejectionLine(rejection: AuditionRejection, canReact: boolean): string {
+function rejectionLine(rejection: AuditionRejection): string {
   switch (rejection.status) {
     case "pending":
-      return `Отказ уйдёт диктору в ${formatClock(rejection.due_at)}` + (canReact ? " — снимите 👎, чтобы отменить" : "");
+      return `Отказ уйдёт диктору в ${formatClock(rejection.due_at)}`;
     case "sent":
       return `Отказ отправлен ${formatWhen(rejection.sent_at)}`;
     case "no_account":
@@ -134,87 +137,105 @@ function rejectionLine(rejection: AuditionRejection, canReact: boolean): string 
   }
 }
 
-export function AuditionsSheet({ role, items, onAssign, assignedTo, onClose, canDeleteAny, canDeleteOwn = true, myDisplayName, deletingId, onDelete, canReact, showRejection, reactingId, onReact }: AuditionsSheetProps) {
+const LANES: AuditionLane[] = ["author", "studio"];
+const LANE_TITLE: Record<AuditionLane, string> = { author: "Оценка автора", studio: "Оценка студии" };
+
+export function AuditionsSheet({ role, pairs, onAssign, onClose, canDeleteAny, canDeleteOwn = true, myDisplayName, deletingId, onDelete, canScore = [], showRejection, scoringKey, onScore }: AuditionsSheetProps) {
+  const [showBusy, setShowBusy] = useState(false);
+  const reasonPrompt = useReasonPrompt();
+  const press = async (pair: AuditionPair, lane: AuditionLane, value: number | null) => {
+    const answer = asksReason(lane, value) ? await reasonPrompt.ask(pair, lane, true) : null;
+    onScore?.(pair, lane, value, answer);
+  };
+  const sorted = sortForRole(pairs);
+  const hiddenBusy = sorted.filter(isBusy).length;
+  const shown = showBusy ? sorted : sorted.filter((pair) => !isBusy(pair));
   return (
     <Sheet
       title={`Пробы · ${role}`}
       subtitle={
-        (items.length === 1 ? "Одна проба" : `Проб: ${items.length}`) +
+        (pairs.length === 1 ? "Один претендент" : `Претендентов: ${pairs.length}`) +
         (onAssign ? "" : " · утверждают владелец студии и автор")
       }
       onClose={onClose}
     >
       <ul className="aud-list">
-        {items.map((item) => {
-          const mine = Boolean(assignedTo && assignedTo.trim() === item.actor_name.trim());
+        {shown.map((pair) => {
+          // Признак с сервера: строгое сравнение строк не узнавало «Примерчюнгнчэлв Примеронгялюцз»
+          // в утверждённом «Примеронгялюцз Примерчюнгнчэлв» и предлагало утвердить его повторно.
+          const mine = pair.approved;
           return (
-            <li key={item.id} className="aud-item">
+            <li key={pair.key} className="aud-item">
               <div className="aud-head">
-                <strong className="aud-actor">{item.actor_name || "без имени"}</strong>
-                <span className="aud-when muted">{formatWhen(item.uploaded_at)}</span>
+                <strong className="aud-actor">{pair.actor_name || "без имени"}</strong>
+                {!pair.approved && roleOpen(pair) && isRecommended(pair) ? <span className="aud-recommended">к утверждению</span> : null}
+                {pair.busy_on.length ? <span className="aud-busy">утверждён: {pair.busy_on.map((r) => `«${r}»`).join(", ")}</span> : null}
+                {mine ? (
+                  <span className="aud-assigned">утверждён на роль</span>
+                ) : onAssign && pair.actor_name ? (
+                  <Button size="sm" variant={roleOpen(pair) && isRecommended(pair) ? "primary" : "secondary"} onClick={() => {
+                    if (isBusy(pair) && !window.confirm(busyConfirmText(pair))) return;
+                    onAssign(pair.actor_name);
+                  }}>
+                    Утвердить на роль
+                  </Button>
+                ) : null}
               </div>
-              <audio className="aud-player" controls preload="none" src={`/api/v2/auditions/${encodeURIComponent(item.id)}/audio`}>
-                Ваш браузер не умеет проигрывать аудио.
-              </audio>
-              <div className="aud-foot">
-                <span className="aud-file mono" title={item.original_filename}>
-                  {item.original_filename}
-                  {formatSize(item.size_bytes) ? ` · ${formatSize(item.size_bytes)}` : ""}
-                </span>
-                <div className="aud-actions">
-                  {canReact && onReact ? (
-                    <span className="aud-react-group" role="group" aria-label="Реакция автора">
-                      {([1, -1] as const).map((value) => {
-                        const pressed = item.author_reaction === value;
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            className="aud-react"
-                            aria-pressed={pressed}
-                            disabled={item.id === reactingId}
-                            title={value === 1 ? "Подходит" : "Не подходит — через 15 минут диктору уйдёт вежливый отказ"}
-                            onClick={() => onReact(item, pressed ? 0 : value)}
-                          >
-                            {value === 1 ? "👍" : "👎"}
-                          </button>
-                        );
-                      })}
-                    </span>
-                  ) : item.author_reaction ? (
-                    <span className="aud-reaction">Автор: {item.author_reaction === 1 ? "👍" : "👎"}</span>
-                  ) : null}
-                  {/* «назначен» видят все — это факт; кнопку видит тот, кто вправе решать */}
-                  {mine ? (
-                    <span className="aud-assigned">утверждён на роль</span>
-                  ) : onAssign && item.actor_name ? (
-                    <Button size="sm" variant="secondary" onClick={() => onAssign(item.actor_name)}>
-                      Утвердить на роль
-                    </Button>
-                  ) : null}
-                  {onDelete && canDeleteAudition(item, myDisplayName || "", Boolean(canDeleteAny), canDeleteOwn) ? (
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      loading={Boolean(item.id) && item.id === deletingId}
-                      onClick={() => {
-                        if (confirmDeleteAudition(item, role)) onDelete(item);
-                      }}
-                    >
-                      Удалить
-                    </Button>
-                  ) : null}
+              {pair.scores && pair.lane_labels ? (
+                <div className="aud-scores">
+                  {LANES.map((lane) => {
+                    const can = canScore.includes(lane) && Boolean(onScore);
+                    const value = pair.scores?.[lane]?.score ?? null;
+                    return (
+                      <div key={lane} className="aud-lane">
+                        <span className="aud-lane-name" title={pair.scores?.[lane]?.name || undefined}>{pair.lane_labels?.[lane]}</span>
+                        <ScoreScale value={value} label={LANE_TITLE[lane]} size={can ? "md" : "sm"} disabled={pair.key === scoringKey}
+                          onChange={can ? (next) => void press(pair, lane, next) : undefined} />
+                        <span className="aud-lane-value num">{value ?? ""}</span>
+                        <ReasonNote pair={pair} lane={lane} canAsk={can}
+                          onAsk={async (reasons) => {
+                            const answer = await reasonPrompt.ask(pair, lane, reasons);
+                            if (answer) onScore?.(pair, lane, value, answer);
+                          }} />
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-              {item.rejection && (showRejection || item.rejection.status === "sent") ? (
-                <p className={`aud-rejection aud-rejection-${item.rejection.status}`}>
-                  {rejectionLine(item.rejection, Boolean(canReact))}
-                </p>
+              ) : null}
+              {pair.auditions.map((item) => (
+                <div key={item.id} className="aud-file-row">
+                  <audio className="aud-player" controls preload="none" src={`/api/v2/auditions/${encodeURIComponent(item.id)}/audio`}>
+                    Ваш браузер не умеет проигрывать аудио.
+                  </audio>
+                  <div className="aud-foot">
+                    <span className="aud-file mono" title={item.original_filename}>
+                      {formatWhen(item.uploaded_at)} · {item.original_filename}
+                      {formatSize(item.size_bytes) ? ` · ${formatSize(item.size_bytes)}` : ""}
+                    </span>
+                    {onDelete && canDeleteAudition(item, myDisplayName || "", Boolean(canDeleteAny), canDeleteOwn) ? (
+                      <Button size="sm" variant="danger" loading={Boolean(item.id) && item.id === deletingId}
+                        onClick={() => {
+                          if (confirmDeleteAudition(item, role)) onDelete(item);
+                        }}>
+                        Удалить
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+              {pair.rejection && (showRejection || pair.rejection.status === "sent") ? (
+                <p className={`aud-rejection aud-rejection-${pair.rejection.status}`}>{rejectionLine(pair.rejection)}</p>
               ) : null}
             </li>
           );
         })}
       </ul>
+      {hiddenBusy ? (
+        <Button size="sm" variant="ghost" onClick={() => setShowBusy(!showBusy)}>
+          {showBusy ? "Скрыть занятых" : `Показать занятых (${hiddenBusy})`}
+        </Button>
+      ) : null}
+      {reasonPrompt.dialog}
     </Sheet>
   );
 }

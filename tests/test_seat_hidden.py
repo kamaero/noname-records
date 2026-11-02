@@ -7,7 +7,7 @@ from app.main import app
 
 HIDDEN = [("get", "/api/users"), ("post", "/api/users/merge"), ("post", "/api/telegram/webhook"),
           ("post", "/auth/telegram"), ("get", "/api/me/bot-reach"), ("post", "/login"), ("post", "/logout"),
-          ("get", "/api/auditions/feed"), ("post", "/api/v2/auditions/a1/reaction"),
+          ("get", "/api/auditions/feed"), ("post", "/api/v2/auditions/score"),
           ("get", "/api/v2/books/b1/auditions"), ("post", "/api/deadlines/d1/extend"),
           ("post", "/dictor-pro/batch-validate")]
 KEPT = [("get", "/api/dictors/picker"), ("get", "/api/me"), ("get", "/api/public/auth-config"),

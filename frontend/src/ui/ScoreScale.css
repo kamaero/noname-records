@@ -1,0 +1,19 @@
+/* Шкала оценки проб. Tokens only (styles.css): --score-l, --score-c, --score-off. */
+.score-scale { display: inline-flex; gap: 3px; align-items: center; }
+.score-cell {
+  /* 1 → оттенок 25 (красный), 10 → 145 (зелёный) */
+  --hue: calc(25 + (var(--i) - 1) * 13.333);
+  display: inline-block; flex: none; padding: 0; border: 0; border-radius: 3px;
+  background: oklch(var(--score-l) var(--score-c) var(--hue));
+  opacity: var(--score-off);
+}
+.score-cell.is-on { opacity: 1; }
+.score-scale--md .score-cell { width: 22px; height: 22px; }
+.score-scale--sm .score-cell { width: 10px; height: 10px; border-radius: 2px; }
+.score-scale.is-interactive .score-cell { cursor: pointer; }
+.score-scale.is-interactive .score-cell:hover { opacity: 0.75; }
+.score-scale.is-interactive .score-cell.is-on:hover { opacity: 1; outline: 1px solid var(--text-dim); }
+.score-scale.is-interactive .score-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (max-width: 420px) {
+  .score-scale--md .score-cell { width: 20px; height: 20px; }
+}

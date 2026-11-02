@@ -67,7 +67,7 @@ def _has_button(out):
 def test_start_for_a_dictor_greets_shows_the_button_and_marks_reachable(db):
     _account(db)
     out = handle_update(db, _msg("/start dictor"), now=NOW)
-    assert "Вы на связи с Noname Records" in _texts(out)[0] and _has_button(out)
+    assert "Добро пожаловать в Noname Records" in _texts(out)[0] and _has_button(out)
     assert onboarding.bot_reachable("42") is True
 
 
@@ -78,11 +78,11 @@ def test_start_without_an_account_says_access_is_not_open(db):
 
 def test_start_for_an_admin_has_no_password_button_but_the_broadcast_one(db):
     # С 01.10 у админа — кнопка рассылки; кнопки пароля у него по-прежнему нет.
-    from app.services.bot_dialog import BROADCAST_BUTTON
+    from app.services.bot_dialog import ADMIN_KEYBOARD
     _account(db, roles=("admin", "dictor"))
     out = handle_update(db, _msg("/start"), now=NOW)
     assert "Вы на связи с Noname Records" in _texts(out)[0]
-    assert out[0].payload["reply_markup"]["keyboard"] == [[{"text": BROADCAST_BUTTON}]]
+    assert out[0].payload["reply_markup"] == ADMIN_KEYBOARD
 
 
 def test_button_without_a_password_issues_one(db):
@@ -177,7 +177,7 @@ def test_an_unlinked_row_finds_the_tg_login_the_import_made(db):
 def test_other_text_explains_what_the_bot_does(db):
     _account(db)
     out = handle_update(db, _msg("привет"), now=NOW)
-    assert "умею только" in _texts(out)[0] and _has_button(out)
+    assert "Я присылаю задания" in _texts(out)[0] and _has_button(out)
 
 
 @pytest.mark.parametrize("update", [
@@ -187,3 +187,42 @@ def test_other_text_explains_what_the_bot_does(db):
 ])
 def test_groups_and_other_updates_are_ignored(db, update):
     assert handle_update(db, update, now=NOW) == []
+
+
+
+
+# ---------- порядок работы (приветствие, 05.10) ----------
+
+def test_the_welcome_explains_the_order_of_work(db):
+    """Повод: люди получали доступ, лезли в сценарий и записывали пробы без приглашения."""
+    from app.services.bot_dialog import HOW_BUTTON
+    _account(db)
+    out = handle_update(db, _msg("/start"), now=NOW)
+    text = _texts(out)[0]
+    for step in ("Доступ", "Проба — только по приглашению", "Утверждение", "Запись и проверка", "напишите в студию"):
+        assert step in text
+    assert out[0].payload["parse_mode"] == "HTML"
+    assert out[0].payload["reply_markup"]["keyboard"][0][1] == {"text": HOW_BUTTON}
+
+
+def test_the_how_button_shows_it_again_and_not_to_strangers(db):
+    from app.services.bot_dialog import HOW_BUTTON
+    _account(db)
+    assert "Как мы работаем — по шагам" in _texts(handle_update(db, _msg(HOW_BUTTON), now=NOW))[0]
+    stranger = handle_update(db, _msg(HOW_BUTTON, tid="999"), now=NOW)
+    assert "Доступ к сайту пока не открыт" in _texts(stranger)[0]
+
+
+def test_the_welcome_says_the_audition_can_be_sent_to_the_bot(db):
+    """С 06.10 пробу принимает и бот (пакет C2) — порядок работы должен об этом сказать."""
+    _account(db)
+    text = _texts(handle_update(db, _msg("/help"), now=NOW))[0]
+    assert "Пробу можно прислать прямо сюда, в бот, — файлом или голосовым." in text
+
+
+def test_welcome_says_takes_can_be_sent_to_bot():
+    """Порядок работы не должен говорить «только на сайте»: бот принимает дубли файлом."""
+    from app.services.bot_dialog import WELCOME
+    assert "присылайте файл сюда, в бот" in WELCOME
+    assert "для книги, которая сейчас в работе" in WELCOME
+    assert "с любым именем" in WELCOME

@@ -256,3 +256,7 @@
 /* Эмбиент в ряду действий главы: ход и «✓» — текст, не кнопка; беда прогона — приписка. */
 .asr-ambient { font-size: 12px; color: var(--text-dim); white-space: nowrap; padding: 2px 6px; align-self: center; }
 .asr-ambient-note { display: block; padding: 0 6px; font-size: 0.85em; white-space: normal; }
+
+/* Сданная глава (released_at) — бледная строка: работа по ней закончена. */
+.asr-table tr.asr-row-released td { color: var(--text-faint); }
+.asr-release { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; margin-right: 8px; }

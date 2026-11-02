@@ -31,6 +31,7 @@ def db():
             Character(book_id=book.id, name="Куйбу Гудисди", actor_name="Сомов Роман"),
             Character(book_id=book.id, name="Дгарнин", actor_name=""),
             Character(book_id=other.id, name="Бдеукс", actor_name="Зотов Сергей"),
+            Character(book_id=other.id, name="Кфиухс", actor_name="Примерлаяюмнфшв Примерцосезбсдв"),
         ])
         session.flush()
         yield session
@@ -91,3 +92,56 @@ def test_the_same_name_without_the_mark_is_a_take(db):
     db.flush()
 
     assert classify_upload_kind(db, role="Химера", actor_name="Натали Ким") == "take"
+
+
+def _code(db, title):
+    from app.services.audio_uploads import derive_book_code
+    return derive_book_code(title)
+
+
+def test_suggested_here_is_an_audition_even_if_approved_in_another_book(db):
+    """10.10: Беккер прислала пробу на Ао в «Карте», где она только предложена.
+
+    Утверждение на Ао в «Семье волшебников» сделало пробу дублем главы 5 — в лист проб
+    она не попала. Книга загрузки сказала «предложена» — это проба.
+    """
+    book, other = db.query(ScriptBook).order_by(ScriptBook.id).all()[:2]
+    db.add_all([
+        Character(book_id=book.id, name="Ао", actor_name="Примерасоуогчт Примердбснрфажв?"),
+        Character(book_id=other.id, name="Ао", actor_name="Примерасоуогчт Примердбснрфажв"),
+    ])
+    db.flush()
+
+    kp = _code(db, book.title)
+    assert classify_upload_kind(db, role="Ао", actor_name="Примерасоуогчт Примердбснрфажв", book_code=kp) == "audition"
+    # в той книге, где утверждена, — по-прежнему дубль
+    sv = _code(db, other.title)
+    assert classify_upload_kind(db, role="Ао", actor_name="Примерасоуогчт Примердбснрфажв", book_code=sv) == "take"
+
+
+def test_an_unassigned_role_here_still_takes_the_voice_from_another_book(db):
+    """Новая книга цикла, актёр ещё не проставлен: голос за персонажем — дубль."""
+    book = db.query(ScriptBook).filter(ScriptBook.title == "Карта переправы").one()
+    db.add(Character(book_id=book.id, name="Кфиухс", actor_name=""))
+    db.flush()
+
+    assert classify_upload_kind(db, role="Кфиухс", actor_name="Примерлаяюмнфшв Примерцосезбсдв",
+                                book_code=_code(db, book.title)) == "take"
+
+
+def test_approved_for_someone_else_here_is_an_audition(db):
+    book = db.query(ScriptBook).filter(ScriptBook.title == "Карта переправы").one()
+    db.add(Character(book_id=book.id, name="Кфиухс", actor_name="Примерчюнгнчэлв Примеронгялюцз"))
+    db.flush()
+
+    assert classify_upload_kind(db, role="Кфиухс", actor_name="Примерлаяюмнфшв Примерцосезбсдв",
+                                book_code=_code(db, book.title)) == "audition"
+
+
+def test_the_book_finds_the_role_by_alias(db):
+    book = db.query(ScriptBook).filter(ScriptBook.title == "Карта переправы").one()
+    db.add(Character(book_id=book.id, name="Ао", aliases="Чародейка", actor_name="Примерасоуогчт Примердбснрфажв"))
+    db.flush()
+
+    assert classify_upload_kind(db, role="Чародейка", actor_name="Примерасоуогчт Примердбснрфажв",
+                                book_code=_code(db, book.title)) == "take"

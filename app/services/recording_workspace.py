@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.models import AudioFile, Character, ScriptBook, ScriptChapter
 from app.services.audio_uploads import TAKE, derive_book_code
+from app.services.book_lifecycle import voiced_book_ids
 from app.services.character_colors import build_character_style_maps
 from app.services.recording import resolve_recording_my_roles
 from app.time_utils import iso_utc
@@ -14,6 +15,7 @@ def build_recording_workspace_payload(
     chapter_id: str = "",
     user_id: str = "",
     user_name: str = "",
+    include_voiced: bool = False,
 ) -> dict:
     """Everything the recording screen needs to open on a role, in one answer.
 
@@ -28,6 +30,7 @@ def build_recording_workspace_payload(
         default_actor_name=user_name,
         user_id=user_id,
         user_name=user_name,
+        include_voiced=include_voiced,
     )
     selected_chapter = context.get("selected_chapter")
     book = db.get(ScriptBook, selected_chapter.book_id) if selected_chapter else None
@@ -56,6 +59,8 @@ def build_recording_workspace_payload(
                 "id": str(chapter.id),
                 "chapter_index": int(chapter.chapter_index or 0),
                 "chapter_title": str(chapter.chapter_title or ""),
+                # Сданная глава не пропадает у диктора, а помечается: «Загрузка» подписывает её.
+                "released_at": iso_utc(chapter.released_at) or "",
             }
             for chapter in context.get("chapters") or []
         ],
@@ -129,6 +134,7 @@ def build_recording_workspace_context(
     user_id: str = "",
     user_name: str = "",
     selected_role: str = "",
+    include_voiced: bool = False,
 ) -> dict:
     """Главы, каст с числом реплик и цветами, свои роли и свежие файлы — для экрана записи.
 
@@ -139,6 +145,12 @@ def build_recording_workspace_context(
     from app.v2.cast_ops import chapter_role_counts
 
     chapters_query = db.query(ScriptChapter).filter(ScriptChapter.status == "published")
+    if not include_voiced:
+        # Озвученная книга дикторам и агентам закрыта: записывать в неё больше нечего.
+        # Видит её только владелец (include_voiced) — например, чтобы доложить правку.
+        voiced = voiced_book_ids(db)
+        if voiced:
+            chapters_query = chapters_query.filter(ScriptChapter.book_id.notin_(voiced))
     if str(selected_book_id or "").strip():
         chapters_query = chapters_query.filter(ScriptChapter.book_id == selected_book_id.strip())
     chapters = chapters_query.order_by(ScriptChapter.chapter_index.asc()).limit(500).all()

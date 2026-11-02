@@ -21,7 +21,35 @@ export const hubKeys = {
       инвалидирует `useCharacterMapActions`; разойдись ключи, и слияние обновляло
       бы кэш, которого никто не читает. */
   characterMap: (bookId: string) => ["v2", "character-map", bookId] as const,
+  /** одна на студию: книга, по которой бот принимает дубли */
+  recordingBook: ["studio", "recording-book"] as const,
 };
+
+type RecordingBookResponse = { ok: boolean; book_id: string };
+
+/** Какая книга записывается сейчас и переключатель для админа. Включение у одной книги
+    снимает отметку с другой: поле на сервере одно. */
+export function useRecordingBook() {
+  const queryClient = useQueryClient();
+  const { pushToast } = useToast();
+  const query = useQuery({
+    queryKey: hubKeys.recordingBook,
+    queryFn: () => apiGet<RecordingBookResponse>("/api/studio/recording-book"),
+    retry: false,
+    staleTime: 30_000,
+  });
+  const mutation = useMutation({
+    mutationFn: (bookId: string | null) =>
+      apiPostJson<RecordingBookResponse>("/api/studio/recording-book", { book_id: bookId }),
+    onSuccess: (result) => {
+      queryClient.setQueryData(hubKeys.recordingBook, result);
+    },
+    onError: (error) => {
+      pushToast({ tone: "error", title: "Не удалось переключить", detail: describeApiError(error, "сервер не ответил") });
+    },
+  });
+  return { activeBookId: query.data?.book_id ?? "", loading: query.isLoading, switching: mutation.isPending, set: mutation.mutate };
+}
 
 const v2 = (bookId: string) => `/api/v2/books/${encodeURIComponent(bookId)}`;
 const v1 = (bookId: string) => `/api/books/${encodeURIComponent(bookId)}`;

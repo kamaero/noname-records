@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import zipfile
+import zlib
 from datetime import datetime, timedelta, timezone
 from uuid import NAMESPACE_URL, uuid5
 
@@ -30,7 +31,8 @@ from app.services.audio_mirror import MISMATCH as MIRROR_MISMATCH
 from app.services.audio_naming import book_token, chapter_token
 from app.services.audio_uploads import TAKE, derive_book_code
 from app.services.audition_session import SessionClip, SessionMarker, SessionTrack, build_session_xml
-from app.services.shared_runtime import SERVER_TIMEZONE
+from app.services.author_profile import normalize_name
+from app.services.shared_runtime import SERVER_TIMEZONE, is_narrator_name
 from app.services.asr_run import chapter_replicas
 from app.services.sound_store import _ordinal as _marker_ordinal
 from app.services.sound_store import active_chapter_markers
@@ -170,8 +172,10 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
             role = role_of_audio.get(audio_id, "")
             if role not in best_of_role or entry["coverage"] > best_of_role[role]["coverage"]:
                 best_of_role[role] = entry
-        matched = sum(entry["matched"] for entry in best_of_role.values())
-        missing = sum(entry["missing"] for entry in best_of_role.values())
+        # Только роли главы: дубль переименованной или слитой роли остался на диске, но
+        # его реплик в главе нет, и его находки раздували бы числитель.
+        matched = sum(_heard_paragraphs(entry, int(roles[role])) for role, entry in best_of_role.items() if role in roles)
+        missing = sum(entry["missing"] for role, entry in best_of_role.items() if role in roles)
         total_lines = sum(int(count) for count in roles.values())
         rows.append({
             "chapter_id": str(chapter.id),
@@ -181,6 +185,7 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
             "recorded_roles": done,
             "ready": bool(roles) and done == len(roles),
             "delivered_at": iso_utc(chapter.delivered_at) or "",
+            "released_at": iso_utc(chapter.released_at) or "",
             # None — не считали. Ноль означал бы «ничего не произнесено».
             "asr_coverage": (matched / total_lines) if (seen and total_lines) else None,
             "asr_files": len(seen),
@@ -429,7 +434,7 @@ def chapter_recording_status(db, chapter_id: str) -> dict | None:
             # None, а не ноль: ноль означал бы «ничего не произнесено», а мы не считали.
             # Знаменатель у роли свой: диктор отвечает за свои реплики, а не за главу.
             "asr_coverage": best["coverage"] if best else None,
-            "matched_lines": best["matched"] if best else 0,
+            "matched_lines": _heard_paragraphs(best, int(lines)) if best else 0,
             "missing_lines": best["missing"] if best else 0,
             "duration_seconds": round(sum(float(item.duration_seconds or 0.0) for item in found), 3),
             "size_bytes": sum(int(item.size_bytes or 0) for item in found),
@@ -480,6 +485,18 @@ def _chapter_heading(status: dict) -> str:
     if title.lower().startswith("глава"):
         return title
     return f"Глава {index}. {title}" if title else f"Глава {index}"
+
+
+def _heard_paragraphs(entry: dict, paragraphs: int) -> int:
+    """Сколько абзацев роли найдено в записи — в тех же единицах, что и знаменатель.
+
+    Сверка считает куски роли, а реплика — абзац: слова автора режут реплику на два-три
+    куска. Найденные куски, делённые на абзацы, дали «Карте» 112% (219 из 195). Какой
+    кусок к какому абзацу относится, в сохранённой сверке не записано, поэтому считаем
+    худшее: каждый пропущенный кусок — в своём абзаце. Сто процентов — только без
+    пропусков.
+    """
+    return max(0, paragraphs - min(int(entry["missing"]), paragraphs))
 
 
 def _recognised_by_audio(db, audio_ids: list[str]) -> dict[str, dict]:
@@ -625,14 +642,59 @@ def build_chapter_archive(db, chapter_id: str, target_path: str) -> dict | None:
 
 #: пауза между репликами в черновой сборке — столько, чтобы фразы не слипались
 GAP_SECONDS = 0.35
+#: Тишина, которую клип берёт до первого и после последнего слова. Границы слов от
+#: распознавания тесные: клип, вырезанный ровно по ним, начинался с удара по согласной
+#: и обрывал затухание голоса (владелец, 25.10). Голова длиннее хвоста: глубокий вдох
+#: Рассказчика перед фразой тянется около полусекунды, и 0,3 с резали его посередине
+#: (владелец, 28.10, первая выпущенная глава «Карты»). Чужую речь запас не захватит —
+#: его останавливает середина паузы до соседней реплики. Срезать лишнее монтажёру
+#: проще, чем вытягивать обрубленное.
+BREATH_BEFORE = 0.6
+BREATH_AFTER = 0.4
 #: сколько знаков произносят за секунду; по этому оценивается дыра под пропущенную реплику
 CHARS_PER_SECOND = 14.0
 #: дорожки, которые монтажёр заводит руками перед каждой главой. Пустые, но заведённые:
 #: две под музыку, две под звуки и шумы.
 EXTRA_TRACKS = ("Саундтрек 1", "Саундтрек 2", "Интершум 1", "Интершум 2")
 
+#: Цвета дорожек (владелец, 25.10): глаз находит Рассказчика и эмбиент сразу. Только
+#: оттенки палитры Audition — шаг 14,4°, 25 образцов; другие он рисует, но в своём
+#: списке цветов не узнаёт.
+HUE_STEP = 14.4
+NARRATOR_HUE = 7 * HUE_STEP     # салатовый
+AMBIENT_HUE = 2 * HUE_STEP      # оранжевый
+SOUNDTRACK_HUE = 19 * HUE_STEP  # фиолетовый
+NOISE_HUE = 4 * HUE_STEP        # жёлтый
+#: персонажам — всё, кроме закреплённых цветов и их ближайших соседей: салатовый
+#: Хдыбдяр рядом с салатовым Рассказчиком снова путал бы дорожки
+CHARACTER_HUES = tuple(round(k * HUE_STEP, 1) for k in (0, *range(9, 19), *range(20, 25)))
 
-def build_chapter_session(db, chapter_id: str, *, sample_rate: int = 44100, relative: bool = False) -> str | None:
+
+def colour_tracks(tracks: list[SessionTrack]) -> None:
+    """Раскрасить дорожки сессии. Цвет персонажа выводится из имени — Хдыбдяр одного
+    цвета во всех главах; совпади он с соседом по главе, берётся следующий свободный.
+    Ролей больше, чем цветов (16), — дальше по кругу: лучше повтор, чем серая дорожка."""
+    taken: set[float] = set()
+    for track in tracks:
+        name = str(track.name or "")
+        if is_narrator_name(name):
+            track.hue = NARRATOR_HUE
+        elif name in AMBIENT_TRACKS:
+            track.hue = AMBIENT_HUE
+        elif name.startswith("Саундтрек"):
+            track.hue = SOUNDTRACK_HUE
+        elif name.startswith("Интершум"):
+            track.hue = NOISE_HUE
+        else:
+            # crc32, а не hash(): у hash() строк своя соль в каждом процессе
+            first = zlib.crc32(normalize_name(name).encode("utf-8")) % len(CHARACTER_HUES)
+            order = [CHARACTER_HUES[(first + step) % len(CHARACTER_HUES)] for step in range(len(CHARACTER_HUES))]
+            track.hue = next((hue for hue in order if hue not in taken), order[0])
+            taken.add(track.hue)
+        track.hue = round(track.hue, 1)
+
+
+def build_chapter_session(db, chapter_id: str, *, sample_rate: int | None = None, relative: bool = False) -> str | None:
     """Сессия Audition для главы: треки по ролям, клипы по репликам. `None` — главы нет.
 
     Тонкая обёртка над `build_chapter_session_with_stats` — большинству вызывающих число
@@ -643,7 +705,7 @@ def build_chapter_session(db, chapter_id: str, *, sample_rate: int = 44100, rela
     return xml
 
 
-def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int = 44100,
+def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | None = None,
                                      relative: bool = False) -> tuple[str | None, int]:
     """То же самое, что `build_chapter_session`, и вдобавок число маркеров без места.
 
@@ -698,6 +760,12 @@ def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int = 
         # архивацию дублей, как и сбой маркеров ниже.
         logger.exception("эмбиент не лёг в сессию главы %s — сессия соберётся без него", chapter_id)
     tracks += [SessionTrack(name=name) for name in EXTRA_TRACKS]
+    colour_tracks(tracks)
+    # Пресеты владельца — из его шаблона (`session_template`); нет шаблона — дорожки голые.
+    from app.services import session_template
+
+    session_template.apply_template(tracks, session_template.load_template(),
+                                    voices={row["role"] for row in status["roles"]})
     # Витрина «Автор - "Название"», а не голый `title`: имя сессии монтажёр читает,
     # а код книги для имён файлов берётся из `title` отдельно (ниже, `derive_book_code`).
     book_name = str(getattr(book, "display_title", "") or getattr(book, "title", "") or "") if book else ""
@@ -710,8 +778,32 @@ def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int = 
         # без разметки звукорежиссёра, а не отказ вовсе.
         logger.exception("session_markers сорвались на главе %s — сессия соберётся без маркеров", chapter_id)
         markers, skipped = [], 0
-    xml = build_session_xml(title=title, sample_rate=sample_rate, tracks=tracks, markers=markers)
+    xml = build_session_xml(title=title, sample_rate=sample_rate or session_rate(by_role), tracks=tracks, markers=markers)
     return xml, skipped
+
+
+#: частота сессии, когда ни у одного дубля главы она не снята
+DEFAULT_SESSION_RATE = 44100
+
+
+def session_rate(by_role: dict[str, list]) -> int:
+    """Частота сессии — та, в которой записано большинство дублей главы.
+
+    Файл другой частоты Audition при открытии пересчитывает в «Conformed Files». Сессия
+    в 44,1 кГц при голосах в 48 кГц гнала через пересчёт почти все дубли, а сессия,
+    пересохранённая после этого, ссылалась уже на копии и в следующий раз не нашла ни
+    одного файла (владелец, 27.10). Чем меньше пересчёта, тем меньше таких ловушек.
+    Ничья — в пользу высокой частоты: повышение ничего не теряет, понижение срезает верх.
+    """
+    counts: dict[int, int] = {}
+    for items in by_role.values():
+        for item in items:
+            rate = int(getattr(item, "sample_rate", 0) or 0)
+            if rate > 0:
+                counts[rate] = counts.get(rate, 0) + 1
+    if not counts:
+        return DEFAULT_SESSION_RATE
+    return max(counts, key=lambda rate: (counts[rate], rate))
 
 
 def _script_layout(db, chapter_id: str, *, relative: bool = False):
@@ -997,6 +1089,43 @@ def _takes_of(line: dict) -> list[dict]:
     return []
 
 
+def _speech_by_file(heard: dict[str, list[dict]]) -> dict[str, list[tuple[float, float]]]:
+    """Где в каждом файле звучит распознанная речь — все подходы всех реплик.
+
+    Ключ — файл, из которого режется звук: строка, найденная у соседней роли
+    (`source_audio_file_id`), лежит в чужом файле, и соседствует она с его репликами.
+    """
+    speech: dict[str, list[tuple[float, float]]] = {}
+    for audio_id, lines in heard.items():
+        for line in lines or []:
+            if not line.get("matched"):
+                continue
+            source_id = str(line.get("source_audio_file_id") or audio_id)
+            for take in _takes_of(line):
+                speech.setdefault(source_id, []).append((take["start"], take["end"]))
+    return speech
+
+
+def _with_breath(take: dict, speech: list[tuple[float, float]], duration: float) -> tuple[float, float]:
+    """Границы клипа: подход плюс тишина по краям, но не дальше середины паузы до соседа.
+
+    Середина — чтобы два соседних клипа одного файла не делили ни кусочка звука: иначе
+    конец одной реплики прозвучал бы в начале другой. Край файла — ноль и его длина;
+    длина 0 значит «не снята» (старые записи), и тогда хвост ею не ограничиваем.
+    """
+    start, end = take["start"], take["end"]
+    left = max(0.0, start - BREATH_BEFORE)
+    right = end + BREATH_AFTER
+    if duration and duration > 0:
+        right = min(right, max(end, float(duration)))
+    for other_start, other_end in speech:
+        if other_end <= start:
+            left = max(left, (other_end + start) / 2)
+        elif other_start >= end:
+            right = min(right, (end + other_start) / 2)
+    return left, right
+
+
 def _clip_name(text: str, number: int, total: int) -> str:
     """Имя клипа. Единственный подход не нумеруется: «дубль 1/1» — шум."""
     head = str(text or "")[:80]
@@ -1023,6 +1152,7 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
     минимум увиденных офсетов, а не первый из них.
     """
     files_by_id = files_by_id or {}
+    speech = _speech_by_file(heard)
     placed: list[tuple[str, SessionClip]] = []
     clock = 0.0
     # До какого момента занята дорожка каждой роли её же подходами (плюс зазор).
@@ -1076,14 +1206,16 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
         segment_id = str(replica.get("segment_id") or "")
         if starts is not None and segment_id:
             starts[segment_id] = min(starts.get(segment_id, offset), offset)
-        for number, take in enumerate(takes, start=1):
-            length = max(0.0, take["end"] - take["start"])
+        cuts = [_with_breath(take, speech.get(str(item.id), []), float(getattr(item, "duration_seconds", 0.0) or 0.0))
+                for take in takes]
+        for number, (source_in, source_out) in enumerate(cuts, start=1):
+            length = max(0.0, source_out - source_in)
             placed.append((role, SessionClip(
                 name=_clip_name(str(replica.get("text") or ""), number, len(takes)),
                 path=path,
                 start=offset,
-                source_in=take["start"],
-                source_out=take["end"],
+                source_in=source_in,
+                source_out=source_out,
                 relative=str(item.canonical_filename or "") if relative else "",
             )))
             offset += length
@@ -1094,7 +1226,7 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
         # бывает брошенным: диктор начинает, ошибается на середине и читает заново.
         # Промах в большую сторону оставляет дырку, в меньшую — нахлёст; уборка дешевле
         # распутывания.
-        clock += max(max(0.0, take["end"] - take["start"]) for take in takes) + GAP_SECONDS
+        clock += max(max(0.0, source_out - source_in) for source_in, source_out in cuts) + GAP_SECONDS
     return placed
 
 

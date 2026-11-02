@@ -17,6 +17,10 @@ from app.services.user_admin import TELEGRAM_LOGIN_PREFIX, attach_telegram, crea
 from app.services import studio
 
 INTRO_TTL = timedelta(days=1)
+#: Путь к JSON с базой голосов по умолчанию. В noname-records это публичный шаблон;
+#: конкретная установка подменяет его через --json скрипта.
+VOICES_JSON = "/tmp/noname-voices.json"
+VOICES_WORKDIR = "/tmp/noname-voices-import"
 NAME_MAX = 60
 ASK_FIRST = (f"Здравствуйте! Это бот студии {studio.name()}. Чтобы открыть вам доступ к сайту, напишите, "
              "пожалуйста, фамилию и имя — например: Ветрова Ольга.")
