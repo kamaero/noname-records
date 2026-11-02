@@ -98,6 +98,7 @@ def test_register_application_routes_exposes_the_surviving_spa_paths() -> None:
         "/api/recording/filename",
         "/api/recording/files/{audio_id}/delete",
         "/dictor-pro/batch-validate",
+        "/api/recording/batch-validate",
         "/api/users",
         "/api/users/{user_id}/telegram",
         "/api/users/bot-reach",

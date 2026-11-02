@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from app.models import Character, ScriptBook
+from app.seat import one_seat
 from app.services.audio_naming import book_token
 from app.services.audio_uploads import AUDITION, TAKE, derive_book_code
 from app.services.author_profile import normalize_name
@@ -70,6 +71,12 @@ def _book_verdict(db, *, book_code: str, role: str, actor_name: str) -> bool | N
 
 
 def classify_upload_kind(db, *, role: str, actor_name: str, book_code: str = "") -> str:
+    # В «одном месте» проб нет: режиссёр сам раздал роли и грузит то, что ему прислали.
+    # Сверка с кастом здесь только вредна — не утверждённый в касте актёр или рассказчик,
+    # чей актёр записан в смете, превращали запись в пробу, а пробы там скрыты и сверку
+    # не проходят. Одна точка на загрузку, подсказку имени и предпросмотр.
+    if one_seat():
+        return TAKE
     verdict = _book_verdict(db, book_code=book_code, role=role, actor_name=actor_name)
     if verdict is None:
         verdict = is_approved_for_role(db, role=role, actor_name=actor_name)

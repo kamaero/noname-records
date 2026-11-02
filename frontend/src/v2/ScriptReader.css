@@ -60,6 +60,7 @@
 .v2r-seg-label { padding: 0 6px 0 8px; font-size: 12.5px; color: var(--text-dim); white-space: nowrap; }
 .v2r-stress-seg .v2r-seg-btn { padding: 0 8px; }
 .v2r-print { margin-left: auto; }
+.v2r-export { display: inline-flex; gap: 6px; }
 /* the fold: on a wide screen these controls sit on the row like everything else */
 .v2r-toolbar-more { display: contents; }
 .v2r-toolbar-more[hidden] { display: none; }

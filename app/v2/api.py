@@ -72,6 +72,7 @@ from app.v2.publish_ops import publish_book, unpublish_book
 from app.v2.reader import build_book_chapters, build_chapter_payload
 from app.v2.review_ops import approve_all, set_chapter_approved
 from app.v2.role_intersections import acknowledge_pair, forget_pair, role_intersections
+from app.v2.role_export import build_role_export, content_disposition, render_text
 from app.v2.role_view import role_script, role_traps
 from app.v2.source_view import build_source_view
 from app.v2.store import record_operator_intervention
@@ -1527,6 +1528,49 @@ def api_v2_role_traps(request: Request, book_id: str):
     if payload is None:
         return not_found_response("book_not_found")
     return JSONResponse({"ok": True, **payload})
+
+
+def _role_export_or_error(request: Request, book_id: str):
+    """Сценарий роли для выгрузки — или готовый ответ с отказом.
+
+    Права и главы — как у `role-script`: сбор идёт по всей книге сразу, значит и утечь
+    может вся книга, поэтому диктору — только опубликованное. Роль без реплик — отказ:
+    пустой сценарий актёру не нужен, а пустой PDF похож на сломанный.
+    """
+    if not _is_authenticated(request):
+        return None, unauthorized_response()
+    role = str(request.query_params.get("role") or "").strip()
+    if not role:
+        return None, bad_request_response("role_required")
+    with SessionLocal() as db:
+        export = build_role_export(db, str(book_id or ""), role, published_only=not _can_edit(request))
+    if export is None:
+        return None, not_found_response("book_not_found")
+    if export.line_count == 0:
+        return None, not_found_response("role_has_no_lines")
+    return export, None
+
+
+def api_v2_role_script_txt(request: Request, book_id: str):
+    """Сценарий роли текстом. Синхронная ручка — FastAPI ведёт её в пуле потоков."""
+    export, error = _role_export_or_error(request, book_id)
+    if error is not None:
+        return error
+    # BOM: Word и старый Блокнот на Windows без него спрашивают кодировку
+    body = ("\ufeff" + render_text(export)).encode("utf-8")
+    return Response(body, media_type="text/plain; charset=utf-8",
+                    headers={"Content-Disposition": content_disposition(export, "txt")})
+
+
+def api_v2_role_script_pdf(request: Request, book_id: str):
+    """Сценарий роли в PDF. Большая роль — сотни страниц; ручка синхронная, сайт не стоит."""
+    export, error = _role_export_or_error(request, book_id)
+    if error is not None:
+        return error
+    from app.v2.role_export_pdf import render_pdf
+
+    return Response(render_pdf(export), media_type="application/pdf",
+                    headers={"Content-Disposition": content_disposition(export, "pdf")})
 
 
 # --- the pipeline: progress, run, stop, legacy import -----------------------------------
