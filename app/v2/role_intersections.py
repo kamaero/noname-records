@@ -15,6 +15,7 @@ import collections
 
 from app.models import Character, RolePairNote, ScriptChapter
 from app.services.shared_runtime import is_narrator_name
+from app.services.telegram import _normalize_person_name
 from app.v2.cast_ops import cast_canonicalizer, is_placeholder_name, parse_actor_name
 from app.v2.models import V2Segment
 from app.v2.reader import effective_book_attributions
@@ -56,6 +57,16 @@ def same_race(a: str, b: str) -> bool:
         return True
     short, long_ = (x, y) if len(x) <= len(y) else (y, x)
     return len(short) >= RACE_ROOT and long_.startswith(short)
+
+
+def _person_key(actor: str) -> str:
+    """Один человек при любом порядке слов: «Примеряфеицшпчб Примерщюагоэсгв» и «Примерщюагоэсгв Примеряфеицшпчб».
+
+    В касте «Карты» владелец был записан обоими способами (28.10), и пересечения
+    его ролей не искались — строки-то разные. Не `names_match`: тот признаёт
+    «Наташа» за «Примерфибггуиув Примерлчзкхкмбб», и все Наташи студии стали бы одним актёром.
+    """
+    return " ".join(sorted(_normalize_person_name(actor).split()))
 
 
 def _severity(distance: int) -> str:
@@ -163,11 +174,16 @@ def role_intersections(db, book_id: str) -> list[dict]:
         where[name][chapter_id].append(ordinal_of.get(segment_id, 0))
 
     by_actor: dict[str, list[str]] = collections.defaultdict(list)
+    spellings: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
     for name in where:
-        by_actor[actor_of[name]].append(name)
+        key = _person_key(actor_of[name])
+        by_actor[key].append(name)
+        spellings[key][actor_of[name]] += 1
 
     out: list[dict] = []
-    for actor, roles in by_actor.items():
+    for key, roles in by_actor.items():
+        # в ответе — написание, которое в касте встречается чаще
+        actor = min(spellings[key].items(), key=lambda pair: (-pair[1], pair[0]))[0]
         roles = sorted(roles)
         for i in range(len(roles)):
             for j in range(i + 1, len(roles)):

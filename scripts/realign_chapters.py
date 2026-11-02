@@ -68,12 +68,17 @@ def run(db, chapter_ids, *, apply: bool, notify: bool) -> list[dict]:
         report = realign_chapter(db, chapter_id, notify=False)
         lost = lost_matches(before, chapter_done_jobs(db, chapter_id))
         pending = report.pop("pending_letters")
+        owner_alert = report.pop("pending_owner_alert", "")
 
         if apply:
             db.commit()
         else:
             db.rollback()
         notified = send_moved_letters(db, pending) if (apply and notify) else []
+        if apply and owner_alert:  # холостой прогон не пишет никому, владельцу тоже
+            from app.services.released_alerts import send_owner_alert
+
+            send_owner_alert(db, owner_alert)
         result = {**report, "notified": len(notified), "lost_matches": lost}
         print(json.dumps(result, ensure_ascii=False))
         reports.append(result)

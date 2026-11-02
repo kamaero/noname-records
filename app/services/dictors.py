@@ -195,8 +195,9 @@ def delete_demo(db, demo_id: str) -> str:
     return user_id
 
 
-def add_demo(db, user_id: str, source_path: str, title: str) -> dict:
-    """Любое аудио или видео → MP3 192 кбит/с, не длиннее двух минут (как импорт)."""
+def add_demo(db, user_id: str, source_path: str, title: str, *, source: str = "upload") -> dict:
+    """Любое аудио или видео → MP3 192 кбит/с, не длиннее двух минут (как импорт).
+    `source` — откуда демо: у пересланных боту «telegram», чтобы в карточке было видно происхождение."""
     from app.services import demo_audio as media
 
     user = _dictor(db, user_id)
@@ -211,7 +212,7 @@ def add_demo(db, user_id: str, source_path: str, title: str) -> dict:
             audio_storage.write_file(key, handle.read())
     demo = DictorDemo(id=demo_id, user_id=user.id, title=_clean_name(title) or "демо", stored_key=key,
                       duration_seconds=info["duration_seconds"], size_bytes=info["size_bytes"], md5=info["md5"],
-                      trimmed=info["trimmed"], source="upload")
+                      trimmed=info["trimmed"], source=source)
     db.add(demo)
     db.flush()
     return _demo_row(demo)
@@ -229,9 +230,21 @@ def _name_taken(db, name: str, *, except_id: str = "") -> bool:
     )
 
 
-def create_dictor(db, name: str, telegram_user_id: str = "", username: str = "") -> dict:
+def _numbered(db, name: str) -> str:
+    """Наименьший свободный номер от 2. Сравнение точное: нечёткое совпало бы со всеми номерами."""
+    taken = {_fold(display) for (display,) in db.query(User.display_name).all()}
+    number = 2
+    while _fold(f"{name} {number}") in taken:
+        number += 1
+    return f"{name} {number}"
+
+
+def create_dictor(db, name: str, telegram_user_id: str = "", username: str = "", *, namesake: bool = False) -> dict:
     """Новый диктор. С Telegram — учётка `tg_<id>` без пароля, как у импорта и бота; без него —
-    обычная учётка, пароль показывается один раз."""
+    обычная учётка, пароль показывается один раз.
+
+    `namesake` — владелец сказал «это другой человек» (проект Б): нечёткая проверка похожести
+    пропускается, а имя получает номер — «Иванова Ольга 2», чтобы двух людей различали глазами."""
     from app.services.login_identity import TELEGRAM_PASSWORD_HASH
     from app.services.user_admin import TELEGRAM_LOGIN_PREFIX, UserAdminError, attach_telegram, create_user
 
@@ -241,7 +254,9 @@ def create_dictor(db, name: str, telegram_user_id: str = "", username: str = "")
     tid = str(telegram_user_id or "").strip()
     if tid and not tid.isdigit():
         raise DictorError("bad_telegram_id")
-    if _name_taken(db, clean):
+    if namesake:
+        clean = _numbered(db, clean)
+    elif _name_taken(db, clean):
         raise DictorError("name_taken")
     try:
         if tid:

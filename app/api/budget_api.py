@@ -9,7 +9,9 @@ from app.api._helpers import bad_request_response, forbidden_response, not_found
 from pydantic import BaseModel
 from app.services.budget_rows import collapse_budget_character_rows
 from app.services.studio_settings import (
+    active_book,
     default_rate_rub_per_min,
+    set_active_book,
     set_default_rate,
     set_usd_rub_rate,
     studio_settings,
@@ -56,6 +58,10 @@ class SaveStudioRatePayload(BaseModel):
     default_rate_rub_per_min: int = 1000
     #: rubles per dollar; omitted leaves the stored one alone
     usd_rub_rate: float | None = None
+
+
+class SaveRecordingBookPayload(BaseModel):
+    book_id: str | None = None
 
 
 def build_budget_api_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., Any]]:
@@ -629,7 +635,34 @@ def build_budget_api_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., A
             db.commit()
         return {"ok": True, "default_rate_rub_per_min": rate, "usd_rub_rate": usd}
 
+    async def api_save_recording_book(request: Request, payload: SaveRecordingBookPayload):
+        """Какую книгу студия записывает сейчас. Переключает только админ: от этого
+        зависит, чьи дубли примет бот."""
+        denied = require_admin(request)
+        if denied:
+            return denied
+        with session_local() as db:
+            try:
+                set_active_book(db, payload.book_id, updated_by=session_display_name(request) or "")
+            except ValueError:
+                return not_found_response("book_not_found")
+            book = active_book(db)
+            book_id = str(book.id) if book else ""
+            db.commit()
+        return {"ok": True, "book_id": book_id}
+
+    def api_recording_book(request: Request):
+        if not is_authenticated(request):
+            return unauthorized()
+        with session_local() as db:
+            book = active_book(db)
+            book_id = str(book.id) if book else ""
+            db.commit()
+        return {"ok": True, "book_id": book_id}
+
     return {
+        "api_recording_book": api_recording_book,
+        "api_save_recording_book": api_save_recording_book,
         "api_studio_rate": api_studio_rate,
         "api_save_studio_rate": api_save_studio_rate,
         "api_book_budget": api_book_budget,

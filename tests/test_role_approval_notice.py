@@ -97,14 +97,14 @@ class TestSendingIt:
         box: list[tuple] = []
         monkeypatch.setattr(
             "app.services.role_approval.send_telegram_message",
-            lambda db, text, chat_ids=None, direct=False: box.append((text, chat_ids, direct)) or 1,
+            lambda db, text, chat_ids=None, direct=False, reply_markup=None: box.append((text, chat_ids, direct, reply_markup)) or 1,
         )
         _account(db, name="Роман Сомов", chat_id="111")
 
         result = notify_role_approved(db, book_id="b1", book_title="Карта переправы", role="Дгарнин", actor_name="Роман Сомов")
 
         assert result["notified"] is True
-        text, chat_ids, direct = box[0]
+        text, chat_ids, direct, markup = box[0]
         assert chat_ids == ["111"] and direct is True
         assert "Дгарнин" in text
 
@@ -182,7 +182,7 @@ class TestATentativeAssignmentIsAnAuditionInvite:
         box: list = []
         monkeypatch.setattr(
             "app.services.role_approval.send_telegram_message",
-            lambda db, text, chat_ids=None, direct=False: box.append((text, chat_ids, direct)) or 1,
+            lambda db, text, chat_ids=None, direct=False, reply_markup=None: box.append((text, chat_ids, direct, reply_markup)) or 1,
         )
         _account(db, name="Натали Ким", chat_id="222")
 
@@ -192,7 +192,7 @@ class TestATentativeAssignmentIsAnAuditionInvite:
         assert result["kind"] == "audition"
         assert result["actor_name"] == "Натали Ким"
         assert len(box) == 1
-        text, chat_ids, direct = box[0]
+        text, chat_ids, direct, markup = box[0]
         assert chat_ids == ["222"] and direct is True
         assert "пробу" in text and "Химера" in text
 

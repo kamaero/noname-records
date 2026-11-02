@@ -18,6 +18,7 @@ from app.v2.models import V2Attribution, V2Segment, V2StressMark
 from app.v2.remark_candidates import remark_candidates
 from app.v2.review_ops import is_approved
 from app.v2.store import load_chapter_segments
+from app.time_utils import iso_utc
 from app.v2.word_rarity import is_rare
 
 NARRATOR = "Рассказчик"
@@ -143,6 +144,7 @@ def build_book_chapters(db, book_id: str) -> dict | None:
                 "title": str(row.chapter_title or "").strip(),
                 "has_v2": row.id in with_v2,
                 "approved": is_approved(row),
+                "released_at": iso_utc(row.released_at) or "",
             }
             for row in chapters
         ],

@@ -19,6 +19,8 @@ def register_frontend_routes(app: FastAPI, *, handlers: dict[str, Callable]) -> 
     app.add_api_route("/api/budget/character/{char_id}", handlers["api_save_budget_character"], methods=["POST"])
     app.add_api_route("/api/settings/rate", handlers["api_studio_rate"], methods=["GET"])
     app.add_api_route("/api/settings/rate", handlers["api_save_studio_rate"], methods=["POST"])
+    app.add_api_route("/api/studio/recording-book", handlers["api_recording_book"], methods=["GET"])
+    app.add_api_route("/api/studio/recording-book", handlers["api_save_recording_book"], methods=["POST"])
     app.add_api_route("/api/users", handlers["api_users"], methods=["GET"])
     app.add_api_route("/api/users", handlers["api_create_user"], methods=["POST"])
     app.add_api_route("/api/users/bulk-roles", handlers["api_bulk_user_roles"], methods=["POST"])

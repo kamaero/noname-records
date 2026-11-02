@@ -31,6 +31,22 @@ def _no_outbound_telegram():
 
 
 @pytest.fixture(autouse=True)
+def _no_bot_queues(monkeypatch):
+    """Карточка пробы (C1) и проба из бота (C2) ставятся в очередь RQ, а Redis на этом
+    сервере — боевой: тест не должен ставить настоящую задачу воркеру прода.
+    Тест, которому нужно увидеть постановку, подменяет функцию сам."""
+    import app.api.recording as recording_api
+    import app.api.telegram_webhook as webhook_api
+
+    monkeypatch.setattr(recording_api, "enqueue_card", lambda audio_id, file_id="": "test-job")
+    monkeypatch.setattr(webhook_api, "enqueue_store", lambda upload_id: "test-job")
+    monkeypatch.setattr(webhook_api, "enqueue_take", lambda upload_id: "test-job")
+    monkeypatch.setattr(webhook_api, "enqueue_store_demo", lambda item_id: "test-job")
+    monkeypatch.setattr(webhook_api, "enqueue_store_template", lambda file_id, chat_id: "test-job")
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _no_outbound_elevenlabs(request, monkeypatch):
     """Ни один тест не ходит в ElevenLabs: транспорт по умолчанию (`_urllib_transport`, сеть
     настоящая, каждый вызов — оплаченный трек) подменён падением теста. Тесты, что проверяют
@@ -132,3 +148,30 @@ def _throwaway_spend_ledger(monkeypatch, _throwaway_spend_engine):
     from app.services import spend
 
     monkeypatch.setattr(spend, "SessionLocal", sessionmaker(bind=_throwaway_spend_engine, autoflush=False))
+
+
+@pytest.fixture(autouse=True)
+def _no_asr_retry_wait(monkeypatch):
+    """Повтор распознавания на «сервис занят» ждёт 30 и 120 с (`asr_run.RETRY_DELAYS`).
+    Тест с подменённым 429 ждал бы их по-настоящему — пауза в тестах не ждёт."""
+    from app.services import asr_run
+
+    monkeypatch.setattr(asr_run, "_sleep", lambda seconds: None)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_session_template(monkeypatch, tmp_path):
+    """Настоящий шаблон владельца в тестах не используется: сессии собираются без него."""
+    from app.services import session_template
+
+    monkeypatch.setattr(session_template, "TEMPLATE_PATH", str(tmp_path / "session_template.sesx"))
+
+
+@pytest.fixture
+def no_breath(monkeypatch):
+    """Тесты раскладки по таймлайну считают от точных границ слов: тишина по краям
+    клипа проверяется отдельно (`TestAClipKeepsSilenceAroundTheWords`)."""
+    import app.services.chapter_delivery as delivery
+
+    monkeypatch.setattr(delivery, "BREATH_BEFORE", 0.0)
+    monkeypatch.setattr(delivery, "BREATH_AFTER", 0.0)

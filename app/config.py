@@ -176,6 +176,9 @@ class Settings:
     default_domain_lexicon: str = os.getenv("DEFAULT_DOMAIN_LEXICON", "")
     telegram_bot_username: str = os.getenv("TELEGRAM_BOT_USERNAME", "")
     telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    # Свой узел Bot API (`telegram-bot-api --local`): облако отдаёт ботам файлы только до
+    # 20 МБ, а демо и пробы в WAV больше. Пусто — облако Telegram, как было всегда.
+    telegram_api_base: str = os.getenv("TELEGRAM_API_BASE", "")
     # Секрет webhook бота (заголовок X-Telegram-Bot-Api-Secret-Token). Пусто — адрес выключен.
     telegram_webhook_secret: str = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
     telegram_auth_whitelist: str = os.getenv("TELEGRAM_AUTH_WHITELIST", "")

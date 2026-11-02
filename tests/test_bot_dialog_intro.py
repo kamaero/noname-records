@@ -72,7 +72,7 @@ def test_a_stale_question_sends_back_to_the_link(db):
 
 def test_text_without_a_question_makes_no_account(db):
     out = handle_update(db, _msg("Ветрова Ольга"), now=NOW)
-    assert "умею только" in _texts(out)[0] and db.query(User).count() == 0
+    assert "Я присылаю задания" in _texts(out)[0] and db.query(User).count() == 0
 
 
 def test_an_account_made_meanwhile_is_not_doubled(db):

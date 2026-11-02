@@ -1,9 +1,9 @@
 import "./BookCommandCenterPage.css";
 
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { apiGet, describeApiError } from "../api/client";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPostJson, describeApiError } from "../api/client";
 import { Icon } from "../components/Icon";
 import { SpendBanner } from "../components/SpendBanner";
 import { roleAccess } from "../layout/AppShell";
@@ -11,13 +11,15 @@ import { BookSettingsCard } from "../components/book/v2/BookSettingsCard";
 import { CastCard } from "../components/book/v2/CastCard";
 import { HubMenu, type HubMenuItem } from "../components/book/v2/HubMenu";
 import { PipelineStepper } from "../components/book/v2/PipelineStepper";
+import { ThanksDialog } from "../components/book/v2/ThanksDialog";
 import { RecordingCard } from "../components/book/v2/RecordingCard";
 import { ServiceCard } from "../components/book/v2/ServiceCard";
 import { hubKeys, useHubActions, useHubProgress, type HubActions } from "../components/book/v2/hubApi";
 import { Button, EmptyState, LinkButton, PageHeader, StatusChip, describeStatus } from "../ui";
 import { useBookCast, useBookProfile } from "../v2/editorApi";
+import { useToast } from "../components/ToastProvider";
 import type { ReaderBookChapters } from "../v2/types";
-import type { BooksResponse, MeResponse, V2ProgressResponse } from "../types";
+import type { BookRecordingResponse, BooksResponse, MeResponse, V2ProgressResponse } from "../types";
 import { normalizeBookStatus } from "../viewModels/bookWorkflow";
 import {
   choosePrimaryAction,
@@ -37,6 +39,10 @@ const WAIT_HINT = "Сначала остановите прогон";
 export function BookCommandCenterPage() {
   const { bookId = "" } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { pushToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [thanksOpen, setThanksOpen] = useState(false);
 
   const booksQuery = useQuery({
     queryKey: ["books"],
@@ -62,6 +68,34 @@ export function BookCommandCenterPage() {
     retry: false,
     staleTime: 30_000,
   });
+  const isAdmin = Boolean(meQuery.data?.roles?.includes("admin"));
+  // Рядом с «Озвучена» нужны только опубликованные главы — их и перечисляет выдача записи
+  // (у списка глав признака публикации нет). Читаем её только админу и пока книга не закрыта.
+  const recordingQuery = useQuery({
+    queryKey: hubKeys.recording(bookId),
+    queryFn: () => apiGet<BookRecordingResponse>(`/api/v2/books/${encodeURIComponent(bookId)}/recording`),
+    enabled: hasBook && isAdmin,
+    retry: false,
+  });
+  const voiceMutation = useMutation({
+    mutationFn: (voiced: boolean) => apiPostJson<{ ok: boolean }>(`/api/v2/books/${encodeURIComponent(bookId)}/voiced`, { voiced }),
+    onSuccess: (_, voiced) => {
+      void queryClient.invalidateQueries({ queryKey: ["books"] });
+      if (voiced) setThanksOpen(true); // сразу к благодарственному письму, как по ?thanks=1
+      pushToast({ tone: "success", title: voiced ? "Книга переведена в «Озвучена»" : "Книга возвращена в работу" });
+    },
+    onError: (err) => pushToast({ tone: "error", title: "Не получилось", detail: describeApiError(err, "сервер не ответил") }),
+  });
+  // Task 5 ведёт сюда после «Озвучена» с ?thanks=1: открываем окно и убираем параметр,
+  // чтобы обновление страницы не открывало его снова.
+  const wantsThanks = searchParams.get("thanks") === "1";
+  useEffect(() => {
+    if (!wantsThanks || !isAdmin || !hasBook) return;
+    setThanksOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("thanks");
+    setSearchParams(next, { replace: true });
+  }, [wantsThanks, isAdmin, hasBook, searchParams, setSearchParams]);
   const cast = useBookCast(bookId, hasBook);
   const profile = useBookProfile(bookId, hasBook);
   const actions = useHubActions(bookId, { onDeleted: () => navigate("/", { replace: true }) });
@@ -128,6 +162,11 @@ export function BookCommandCenterPage() {
   // the library's next-step words; its type still says `tokens: number`, the contract sends an object
   const next = describeNextStep(book, progress as unknown as V2ProgressResponse);
 
+  const voiced = Boolean(book.voiced_at);
+  const recordedChapters = recordingQuery.data?.chapters ?? [];
+  const allReleased = recordedChapters.length > 0 && recordedChapters.every((c) => Boolean(c.released_at));
+  const voicedDate = voiced ? new Date(book.voiced_at as string).toLocaleDateString("ru-RU") : "";
+
   const rerun = (step: HubStepKey) => {
     actions.run.mutate({ steps: [step], force: true });
   };
@@ -170,6 +209,16 @@ export function BookCommandCenterPage() {
         subtitle={hubSubtitle(author, book.chapter_count, roles) || book.source_filename}
         actions={
           <>
+            {voiced ? <span className="hub-voiced">Озвучена · {voicedDate}</span> : null}
+            {isAdmin && !voiced && allReleased ? (
+              <Button variant="secondary" loading={voiceMutation.isPending} onClick={() => voiceMutation.mutate(true)}>Перевести в «Озвучена»</Button>
+            ) : null}
+            {isAdmin && voiced ? (
+              <>
+                <Button variant="secondary" onClick={() => setThanksOpen(true)}>Благодарственное письмо</Button>
+                <Button variant="secondary" loading={voiceMutation.isPending} onClick={() => voiceMutation.mutate(false)}>Вернуть в работу</Button>
+              </>
+            ) : null}
             <PrimaryButton kind={primary.kind} label={primary.label} readerTo={readerTo} actions={actions} waiting={chaptersQuery.isLoading} publishArmed={publishArmed} onPublish={publishClick} />
             <HubMenu items={menu} bookTitle={title} onDelete={() => actions.remove.mutate()} deletePending={actions.remove.isPending} />
           </>
@@ -240,6 +289,7 @@ export function BookCommandCenterPage() {
         progress={progress}
         actions={actions}
       />
+      {thanksOpen && isAdmin ? <ThanksDialog bookId={bookId} bookTitle={title} onClose={() => setThanksOpen(false)} /> : null}
     </div>
   );
 }

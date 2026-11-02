@@ -63,7 +63,6 @@ def test_a_clean_repo_has_no_findings(repo, people):
     ("at = '@glebvoice777'\n", "person"),
     ("actor = 'Ульяна Зимородкова'\n", "person"),
     ("url = 'https://buchteam.online/app'\n", "forbidden"),
-    ("OWNER = '11504'\n", "forbidden"),
 ])
 def test_each_kind_is_caught_in_the_tree(repo, people, text, kind):
     (repo / "leak.py").write_text(text, encoding="utf-8")

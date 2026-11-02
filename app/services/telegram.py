@@ -1,5 +1,9 @@
+import contextlib
+import json
 import logging
+import os
 import re
+import tempfile
 
 import requests
 
@@ -19,6 +23,25 @@ logger = logging.getLogger(__name__)
 #: Список оставлен пустым, а не удалён: если кого-то однажды придётся заглушить
 #: по-настоящему, пусть это будет осознанная запись сюда, а не новая ветка в отправке.
 NOTIFY_SUPPRESSED_CHAT_IDS: set[str] = set()
+
+
+CLOUD_API_BASE = "https://api.telegram.org"
+
+
+def api_base() -> str:
+    """Куда ходит бот: облако Telegram или свой узел. Без хвостового `/`."""
+    return (str(settings.telegram_api_base or "").strip() or CLOUD_API_BASE).rstrip("/")
+
+
+def is_local_bot_api() -> bool:
+    """Свой узел: файлы до 2 ГБ, `getFile` отдаёт путь на диске, а не ссылку."""
+    return api_base() != CLOUD_API_BASE
+
+
+def bot_api_url(method: str, token: str | None = None) -> str:
+    """Адрес метода Bot API. Содержит токен — в журнал не выводить."""
+    token = (settings.telegram_bot_token if token is None else token) or ""
+    return f"{api_base()}/bot{token.strip()}/{method}"
 
 
 def telegram_target_chat_ids(db) -> list[str]:
@@ -111,6 +134,7 @@ def send_telegram_message(
     chat_ids: list[str] | None = None,
     disable_web_page_preview: bool = True,
     direct: bool = False,
+    reply_markup: dict | None = None,
 ) -> int:
     """Отправка. `direct` — письмо адресату, а не уведомление о ходе работ.
 
@@ -139,14 +163,13 @@ def send_telegram_message(
         return 0
 
     sent = 0
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    url = bot_api_url("sendMessage", token)
     for chat_id in resolved_chat_ids:
         try:
-            resp = requests.post(
-                url,
-                json={"chat_id": chat_id, "text": text, "disable_web_page_preview": disable_web_page_preview},
-                timeout=8,
-            )
+            payload = {"chat_id": chat_id, "text": text, "disable_web_page_preview": disable_web_page_preview}
+            if reply_markup is not None:
+                payload["reply_markup"] = reply_markup
+            resp = requests.post(url, json=payload, timeout=8)
             if resp.status_code < 400:
                 sent += 1
             else:
@@ -170,7 +193,7 @@ def call_bot_api(method: str, payload: dict) -> bool:
     if not token:
         return False
     try:
-        resp = requests.post(f"https://api.telegram.org/bot{token}/{method}", json=payload, timeout=8)
+        resp = requests.post(bot_api_url(method, token), json=payload, timeout=8)
     except Exception as exc:  # noqa: BLE001
         # Только тип: текст ошибки requests содержит адрес запроса, а в нём — токен бота.
         logger.warning("Bot API %s не ответил: %s", method, type(exc).__name__)
@@ -247,3 +270,86 @@ def notify_book_ready_for_recording(db, book) -> tuple[int, int]:
         )
     )
     return sent, len(cast_chat_ids)
+
+
+
+def send_audio(chat_id, *, caption: str, reply_markup: dict, path: str = "", file_id: str = "",
+               voice: bool = False, filename: str = "") -> bool:
+    """Карточка пробы (пакет C1): по `file_id` — переслать уже лежащий в Telegram файл, по
+    `path` — загрузить. Адресат как есть, без подмены владельцем: это письмо лично ему."""
+    if not settings.telegram_notify_enabled:
+        return False
+    token = (settings.telegram_bot_token or "").strip()
+    if not token:
+        return False
+    method, field = ("sendVoice", "voice") if voice else ("sendAudio", "audio")
+    data = {"chat_id": str(chat_id), "caption": caption, "reply_markup": json.dumps(reply_markup, ensure_ascii=False)}
+    try:
+        url = bot_api_url(method, token)
+        if file_id:
+            resp = requests.post(url, data={**data, field: file_id}, timeout=30)
+        else:
+            with open(path, "rb") as handle:
+                # имя файла — название трека в плеере; без него Telegram показал бы имя копии
+                upload = (filename or os.path.basename(path), handle)
+                resp = requests.post(url, data=data, files={field: upload}, timeout=120)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Карточка пробы в чат %s не ушла: %s", chat_id, type(exc).__name__)
+        return False
+    if resp.status_code >= 400:
+        logger.warning("Telegram отказал карточке пробы в чат %s: HTTP %s", chat_id, resp.status_code)
+        return False
+    return True
+
+
+#: каталог своего узла (`telegram-bot-api --dir`): в локальном режиме `getFile` отдаёт путь
+#: здесь, и только отсюда бот соглашается читать — путь из ответа не должен открыть
+#: произвольный файл сервера
+LOCAL_FILES_ROOT = "/var/lib/telegram-bot-api"
+
+
+def max_download_bytes() -> int:
+    """Сколько бот может скачать: облако отдаёт ботам до 20 МБ, свой узел — до 2 ГБ."""
+    return (2000 if is_local_bot_api() else 20) * 1024 * 1024
+
+
+def size_text(num_bytes: int) -> str:
+    """Предел словами для диктора: «2 ГБ», а не «2000 МБ», которые читаются как опечатка."""
+    if num_bytes >= 1000 * 1024 * 1024:
+        return f"{round(num_bytes / 1024 ** 3)} ГБ"
+    return f"{num_bytes // (1024 * 1024)} МБ"
+
+
+@contextlib.contextmanager
+def fetched_file(file_id: str):
+    """Файл, присланный боту, — открытым на чтение, потоком, а не байтами в памяти.
+
+    Свой узел отдаёт путь на своём диске. Удалить его воркер не может: tdlib создаёт
+    каталоги 0750 и файлы 0640, группа узла только читает. Убирает служба узла сама,
+    таймером (infra/telegram-bot-api). Облако — скачать по ссылке во временный файл
+    (живёт до конца `with`).
+    """
+    # Свой узел отвечает на getFile, только скачав файл целиком из Telegram: гигабайтная
+    # проба идёт минутами, и прежние 15 секунд оборвали бы именно её.
+    timeout = (10, 1800) if is_local_bot_api() else 15
+    resp = requests.get(bot_api_url("getFile"), params={"file_id": file_id}, timeout=timeout)
+    resp.raise_for_status()
+    file_path = str((resp.json().get("result") or {}).get("file_path") or "")
+    if not file_path:
+        raise ValueError("no_file_path")
+    if is_local_bot_api():
+        root = os.path.realpath(LOCAL_FILES_ROOT)
+        real = os.path.realpath(file_path)
+        if os.path.commonpath([root, real]) != root:
+            raise ValueError("outside_local_root")
+        with open(real, "rb") as handle:
+            yield handle
+        return
+    token = (settings.telegram_bot_token or "").strip()
+    resp = requests.get(f"{api_base()}/file/bot{token}/{file_path}", timeout=120, stream=True)
+    resp.raise_for_status()
+    with tempfile.TemporaryFile() as handle:
+        for chunk in resp.iter_content(chunk_size=1024 * 1024):
+            handle.write(chunk)
+        handle.seek(0)
+        yield handle

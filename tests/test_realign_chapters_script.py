@@ -137,3 +137,37 @@ def test_apply_notify_sends_letters_only_after_the_commit(db, monkeypatch):
 
     assert events == ["commit", ("send", 1)]
     assert report["notified"] == 1
+
+
+def _owner_alert_setup(db, monkeypatch):
+    from app.models import ScriptChapter
+    from app.services import released_alerts
+    from app.time_utils import utcnow_naive
+    from tests.asr_studio import add_take, make_chapter, move_line
+
+    owner = []
+    monkeypatch.setattr(released_alerts, "send_owner_alert", lambda db, text: owner.append(text) or True)
+    chapter = make_chapter(db, LINES, {"Сяхах": "Примерццдцгдтцв Примеродбнщлжкб", "Химес": "Иванов Пётр"})
+    db.get(ScriptChapter, chapter).released_at = utcnow_naive()
+    add_take(db, chapter, role="Сяхах", actor="Примерццдцгдтцв Примеродбнщлжкб",
+             said=["Мы пойдём на север через перевал.", "Я знаю короткую дорогу к реке."])
+    add_take(db, chapter, role="Химес", actor="Иванов Пётр", said=["Там нас давно ждут старые друзья."])
+    move_line(db, chapter, 2, "Химес")
+    db.commit()
+    return chapter, owner
+
+
+def test_a_dry_run_never_alerts_the_owner(db, monkeypatch):
+    from scripts.realign_chapters import run
+
+    chapter, owner = _owner_alert_setup(db, monkeypatch)
+    run(db, [chapter], apply=False, notify=True)
+    assert owner == []
+
+
+def test_apply_alerts_the_owner_after_the_commit(db, monkeypatch):
+    from scripts.realign_chapters import run
+
+    chapter, owner = _owner_alert_setup(db, monkeypatch)
+    run(db, [chapter], apply=True, notify=False)
+    assert len(owner) == 1

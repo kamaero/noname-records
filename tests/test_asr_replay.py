@@ -278,6 +278,46 @@ class TestRealignChapterAfterAMove:
 
         assert report["new_missing"] == {"Гамук": ["Я знаю короткую дорогу к реке."]} and letters == []
 
+    def test_notify_false_on_a_released_chapter_sends_no_owner_alert_but_returns_it(self, db, letters, monkeypatch):
+        """Тревога владельцу — такое же письмо, как диктору: до коммита вызывающего не уходит."""
+        from app.models import ScriptChapter
+        from app.services import released_alerts
+        from app.services.asr_replay import realign_chapter
+        from tests.asr_studio import add_take, make_chapter, move_line
+
+        owner = []
+        monkeypatch.setattr(released_alerts, "_default_send", lambda db: lambda text: owner.append(text))
+        chapter = make_chapter(db, self.LINES, {"Сяхах": "Примерццдцгдтцв Примеродбнщлжкб", "Химес": "Иванов Пётр"})
+        db.get(ScriptChapter, chapter).released_at = utcnow_naive()
+        add_take(db, chapter, role="Сяхах", actor="Примерццдцгдтцв Примеродбнщлжкб",
+                 said=["Мы пойдём на север через перевал.", "Я знаю короткую дорогу к реке."])
+        add_take(db, chapter, role="Химес", actor="Иванов Пётр", said=["Там нас давно ждут старые друзья."])
+        move_line(db, chapter, 2, "Химес")
+
+        report = realign_chapter(db, chapter, notify=False)
+
+        assert owner == []
+        assert "Я знаю короткую дорогу к реке." in report["pending_owner_alert"]
+
+    def test_notify_true_sends_the_owner_alert(self, db, letters, monkeypatch):
+        from app.models import ScriptChapter
+        from app.services import released_alerts
+        from app.services.asr_replay import realign_chapter
+        from tests.asr_studio import add_take, make_chapter, move_line
+
+        owner = []
+        monkeypatch.setattr(released_alerts, "_default_send", lambda db: lambda text: owner.append(text))
+        chapter = make_chapter(db, self.LINES, {"Сяхах": "Примерццдцгдтцв Примеродбнщлжкб", "Химес": "Иванов Пётр"})
+        db.get(ScriptChapter, chapter).released_at = utcnow_naive()
+        add_take(db, chapter, role="Сяхах", actor="Примерццдцгдтцв Примеродбнщлжкб",
+                 said=["Мы пойдём на север через перевал.", "Я знаю короткую дорогу к реке."])
+        add_take(db, chapter, role="Химес", actor="Иванов Пётр", said=["Там нас давно ждут старые друзья."])
+        move_line(db, chapter, 2, "Химес")
+
+        realign_chapter(db, chapter)
+
+        assert len(owner) == 1
+
     def test_notify_false_returns_the_letters_and_the_helper_sends_them(self, db, letters):
         from tests.asr_studio import add_take, make_chapter, move_line
         from app.services.asr_replay import realign_chapter, send_moved_letters
@@ -390,7 +430,10 @@ class TestRealignTaskSendsAfterTheCommit:
         monkeypatch.setattr(asr_replay, "realign_chapter",
                             lambda db, chapter_id, notify=True: box.append(("realign", notify)) or {
                                 "borrowed": 0, "new_missing": {"Гамук": letter["texts"]}, "notified": [],
-                                "pending_letters": [letter]})
+                                "pending_letters": [letter], "pending_owner_alert": "тревога"})
+        from app.services import released_alerts
+        monkeypatch.setattr(released_alerts, "send_owner_alert",
+                            lambda db, text: box.append(("owner", text)) or True)
         monkeypatch.setattr(asr_replay, "send_moved_letters",
                             lambda db, pending: box.append(("send", len(pending))) or [])
         return box
@@ -400,7 +443,7 @@ class TestRealignTaskSendsAfterTheCommit:
 
         perform_realign_chapter_task("ch-11", run_id="r1")
 
-        assert events == [("realign", False), "commit", ("send", 1)]
+        assert events == [("realign", False), "commit", ("send", 1), ("owner", "тревога")]
 
     def test_a_failed_commit_sends_nothing(self, events):
         from app.worker_tasks import perform_realign_chapter_task

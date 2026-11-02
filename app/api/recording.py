@@ -10,13 +10,16 @@ from fastapi.responses import JSONResponse
 
 from types import SimpleNamespace
 
+from app.models import ScriptBook
 from app.services import audio_mirror
 from app.services.asr_run import enqueue_asr_for_chapter, find_chapter_for_take
 from app.services.audio_deletion import AudioDeleteError, delete_audio_file
 from app.services.audio_integrity import chapter_needs_verification, enqueue_verify_for_chapter
-from app.services.audio_uploads import chapter_label_number
+from app.services.audio_uploads import book_code_matches_title, chapter_label_number, derive_book_code
+from app.services.audition_card import enqueue_card
 from app.services.recording import notify_author_about_auditions, upload_notice
-from app.services.upload_kind import classify_upload_kind
+from app.services.upload_kind import classify_upload_kind, role_taken_by_other, role_taken_text
+from app.services.upload_role_chapter import refusal_text, role_not_in_chapter
 
 #: Диск переполнен — это не баг, а исчерпание места: диктору нужен внятный отказ,
 #: а не 500. 507 (Insufficient Storage) точнее прочих кодов называет причину.
@@ -54,6 +57,8 @@ BATCH_ERROR_TEXT: dict[str, str] = {
     "role_required": "не указана роль",
     "duplicate_in_batch": "в пачке два одинаковых файла",
     "duplicate_in_storage": "этот же файл уже загружен в эту роль и главу",
+    "role_not_in_chapter": "роль не говорит в этой главе",
+    "role_taken": "роль уже утверждена за другим",
 }
 
 
@@ -64,6 +69,14 @@ def _validation_item_text(item: dict) -> str:
             f"в имени файла глава {item.get('filename_chapter')}, "
             f"а выбрана глава {item.get('chosen_chapter')}"
         )
+    if error == "role_not_in_chapter":
+        return refusal_text(
+            str(item.get("role") or ""),
+            int(item.get("chosen_chapter") or 0),
+            list(item.get("speaks_in") or []),
+        )
+    if error == "role_taken":
+        return role_taken_text(str(item.get("role") or ""))
     return BATCH_ERROR_TEXT.get(error, error)
 
 
@@ -109,6 +122,23 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
     require_recording_access = deps["require_recording_access"]
     parse_batch_audio_filename = deps["parse_batch_audio_filename"]
 
+    def voiced_upload_refusal(db, request, book_codes):
+        """409, если среди кодов книг есть озвученная, а загружает не владелец.
+
+        Код книги в записи выводится из названия (`derive_book_code`), поэтому сверяем по
+        нему же: id книги в метаданных загрузки нет.
+        """
+        if has_any_role(request, {"admin"}):
+            return None
+        voiced_titles = [str(title or "") for (title,) in
+                         db.query(ScriptBook.title).filter(ScriptBook.voiced_at.isnot(None))]
+        if any(book_code_matches_title(title, code) for title in voiced_titles for code in book_codes):
+            return JSONResponse(
+                {"ok": False, "error": "book_voiced", "message": "Книга озвучена — загрузка закрыта."},
+                status_code=status.HTTP_409_CONFLICT,
+            )
+        return None
+
     def actor_for(request, wanted: str) -> str:
         """Чьим именем подписать запись.
 
@@ -150,6 +180,9 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
         # разборе multipart-формы.
         await file.seek(0)
         with session_local() as db:
+            refusal = voiced_upload_refusal(db, request, [book_code])
+            if refusal is not None:
+                return refusal
             try:
                 item = store_audio_file(
                     db,
@@ -202,17 +235,30 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
         validation_errors: list[dict] = []
         prepared: list[dict] = []
         with session_local() as db:
+            refusal = voiced_upload_refusal(
+                db, request,
+                [str((meta or {}).get("book_code") or "").strip() or "BOOK" for meta in meta_items],
+            )
+            if refusal is not None:
+                return refusal
             for idx, up in enumerate(files):
                 meta = meta_items[idx] if idx < len(meta_items) else {}
                 role = str((meta or {}).get("role") or "").strip()
                 actor_name = actor_for(request, str((meta or {}).get("actor_name") or ""))
                 book_code = str((meta or {}).get("book_code") or "").strip() or "BOOK"
-                kind = classify_upload_kind(db, role=role, actor_name=actor_name)
+                kind = classify_upload_kind(db, role=role, actor_name=actor_name, book_code=book_code)
                 chapter = str((meta or {}).get("chapter") or "").strip()
                 if not chapter and kind != "audition":
                     validation_errors.append({"index": idx, "file": up.filename or "", "error": "chapter_required"})
                 if not role:
                     validation_errors.append({"index": idx, "file": up.filename or "", "error": "role_required"})
+                # Проба на роль, утверждённую за другим, — отказ (решение владельца 05.10).
+                # Владелец и автор решают каст сами и грузят записи, присланные мимо
+                # системы (например, под рекаст), — им правило не мешает.
+                if (kind == "audition" and role and not has_any_role(request, {"admin", "author"})
+                        and not is_agent(request)
+                        and role_taken_by_other(db, book_code=book_code, role=role, actor_name=actor_name)):
+                    validation_errors.append({"index": idx, "file": up.filename or "", "error": "role_taken", "role": role})
                 # Форма выбирает главу, имя файла — только подсказка. Расхождение молчало,
                 # и файл ложился в чужую главу, где роль не говорит ни слова: опись
                 # показывала «Ничья роль», а распознавание было оплачено впустую
@@ -232,6 +278,16 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
                         "index": idx, "file": up.filename or "", "error": "chapter_mismatch",
                         "filename_chapter": filename_chapter, "chosen_chapter": chosen_chapter,
                     })
+                # Совпавшие подсказки ещё не значат, что глава та: файл может быть назван
+                # Ch01 и выбрана глава 1, а роль говорит только в главе 32. Отказ жёсткий,
+                # `confirm_chapter` его не снимает — если разметка ошиблась, сначала правят её.
+                if kind != "audition" and chapter and role:
+                    speaks_in = role_not_in_chapter(db, book_code=book_code, chapter_label=chapter, role=role)
+                    if speaks_in is not None:
+                        validation_errors.append({
+                            "index": idx, "file": up.filename or "", "error": "role_not_in_chapter",
+                            "role": role, "chosen_chapter": chosen_chapter, "speaks_in": speaks_in,
+                        })
                 prepared.append(
                     {
                         "index": idx,
@@ -391,20 +447,40 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
                         confirmed_chapters=confirmed_chapters,
                     ),
                 )
-                # Автору — отдельным письмом и только о пробах: чей голос подходит его
-                # героям, решает он. Ход записи его не касается и уходит владельцу выше.
-                # Своим `try` — как и отчёт по главе ниже: файлы уже приняты и
-                # закоммичены, и неудача уведомления не должна превращать успешную
-                # загрузку в ошибку для диктора.
+                # Карточка пробы в бот автору/владельцу — только для проб. Своим `try`:
+                # файлы уже приняты и закоммичены, и неудача уведомления не должна
+                # превращать успешную загрузку в ошибку для диктора.
+                auditions = [item for item in saved if str(item.get("kind") or "take") == "audition"]
+                takes = [item for item in saved if str(item.get("kind") or "take") == "take"]
+                queued: list[str | None] = []
                 try:
-                    notify_author_about_auditions(
-                        db,
-                        saved,
-                        user_name=str(payload.get("display_name") or ""),
-                        login=str(payload.get("sub") or ""),
-                    )
+                    if auditions:
+                        queued = [enqueue_card(item["id"]) for item in auditions]
                 except Exception:
-                    logger.exception("Не удалось сообщить автору о пробах")
+                    logger.exception("Не удалось поставить карточку пробы в очередь")
+                    queued = [None]
+                # Если воркер недоступен — падаем обратно на текстовое уведомление автору.
+                if auditions and not all(queued):
+                    try:
+                        notify_author_about_auditions(
+                            db,
+                            auditions,
+                            user_name=str(payload.get("display_name") or ""),
+                            login=str(payload.get("sub") or ""),
+                        )
+                    except Exception:
+                        logger.exception("Не удалось сообщить автору о пробах")
+                # Дубль в уже сданную главу меняет принятое владельцем — одно письмо на пачку.
+                # Своим `try`: файлы приняты, и сбой письма не должен делать загрузку ошибкой.
+                try:
+                    from app.services.released_alerts import notify_takes_in_released
+
+                    if takes:
+                        rows = db.query(audio_file_model).filter(
+                            audio_file_model.id.in_([item["id"] for item in takes])).all()
+                        notify_takes_in_released(db, rows)
+                except Exception:
+                    logger.exception("Не удалось сообщить о дубле в сданной главе")
             # Главы, которых коснулась эта пачка: распознавание идёт следом за загрузкой,
             # чтобы диктор узнал о пропусках, пока он ещё у микрофона. Только по тому,
             # что реально сохранилось — файлу, упёршемуся в переполненный диск, ставить
@@ -473,7 +549,8 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
             return JSONResponse({"ok": True, "filename": "", "kind": "take"})
         actor_name = str(params.get("actor_name") or "").strip()
         with session_local() as db:
-            kind = classify_upload_kind(db, role=role, actor_name=actor_name)
+            kind = classify_upload_kind(db, role=role, actor_name=actor_name,
+                                        book_code=str(params.get("book_code") or ""))
         return JSONResponse({
             "ok": True,
             "kind": kind,
@@ -504,6 +581,7 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
                 chapter_id=(request.query_params.get("chapter_id") or "").strip(),
                 user_id=user_id or uid,
                 user_name=user_name,
+                include_voiced=has_any_role(request, {"admin"}),
             ))
 
     async def recording_delete_audio(request: Request, audio_id: str):

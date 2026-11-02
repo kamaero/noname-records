@@ -60,6 +60,12 @@ class SessionClip:
 class SessionTrack:
     name: str
     clips: list[SessionClip] = field(default_factory=list)
+    #: цвет дорожки — оттенок в градусах (`trackHue`); -1 — цвет Audition по умолчанию
+    hue: float = -1.0
+    #: цепочка эффектов из шаблона владельца (`<effectsRack>` целиком, см. `session_template`)
+    effects_rack: str = ""
+    #: тип канала: у дорожки с цепочкой — как в шаблоне, эффекты настроены под него
+    channel_type: str = "mono"
 
 
 @dataclass
@@ -126,14 +132,19 @@ def _clip_xml(clip: SessionClip, *, clip_id: int, file_id: int, z_order: int, ra
 def _track_xml(track: SessionTrack, *, track_id: int, index: int, rate: int, file_ids: dict[str, int], clip_ids) -> list[str]:
     lines = [
         f'      <audioTrack automationLaneOpenState="false" id="{track_id}" index="{index}" select="false" visible="true">',
-        '        <trackParameters trackHeight="90" trackHue="-1" trackMinimized="false">',
+        f'        <trackParameters trackHeight="90" trackHue="{float(track.hue):g}" trackMinimized="false">',
         f"          <name>{escape(str(track.name or ''))}</name>",
         "        </trackParameters>",
-        '        <trackAudioParameters audioChannelType="mono" automationMode="1" monitoring="false" recordArmed="false" solo="false" soloSafe="false">',
+        f'        <trackAudioParameters audioChannelType={quoteattr(track.channel_type or "mono")} automationMode="1" monitoring="false" recordArmed="false" solo="false" soloSafe="false">',
         f'          <trackOutput outputID="{MASTER_TRACK_ID}" type="trackID" />',
         '          <trackInput inputID="-1" />',
         _component("Audition.Fader", "trackFader", "volume"),
         "        </trackAudioParameters>",
+    ]
+    if track.effects_rack:
+        # там же, где её пишет сам Audition: после параметров дорожки, до клипов
+        lines.append("        " + track.effects_rack)
+    lines += [
         '        <editParameter parameterIndex="0" slotIndex="4294967280" />',
     ]
     for order, clip in enumerate(track.clips):

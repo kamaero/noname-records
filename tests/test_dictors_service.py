@@ -281,3 +281,32 @@ def test_an_id_from_the_env_whitelist_cannot_be_deleted_here(db, monkeypatch):
     with pytest.raises(DictorError) as env:
         dictors.delete_dictor(db, "u1", actor_user_id="admin")
     assert env.value.code == "env_whitelist" and db.get(User, "u1") is not None
+
+
+def test_add_demo_keeps_source(db, tmp_path, monkeypatch):
+    _user(db, "u1", "Ветрова Ольга")
+    source = tmp_path / "demo.ogg"
+    source.write_bytes(b"raw")
+    sums = iter(["a", "b"])
+
+    def fake_mp3(src, target):
+        with open(target, "wb") as handle:
+            handle.write(b"converted")
+        return {"duration_seconds": 42.0, "size_bytes": 9, "md5": next(sums), "trimmed": False}
+    monkeypatch.setattr("app.services.demo_audio.to_demo_mp3", fake_mp3)
+
+    from_bot = dictors.add_demo(db, "u1", str(source), "голосовое", source="telegram")
+    plain = dictors.add_demo(db, "u1", str(source), "сказка")
+    assert db.get(DictorDemo, from_bot["id"]).source == "telegram"
+    assert db.get(DictorDemo, plain["id"]).source == "upload"
+
+
+def test_namesake_gets_next_number(db):
+    _user(db, "u1", "Иванова Ольга")
+    with pytest.raises(DictorError) as taken:
+        dictors.create_dictor(db, "Ольга Иванова")
+    assert taken.value.code == "name_taken"
+    second = dictors.create_dictor(db, "Иванова Ольга", namesake=True)
+    third = dictors.create_dictor(db, "Иванова Ольга", namesake=True)
+    assert db.get(User, second["user_id"]).display_name == "Иванова Ольга 2"
+    assert db.get(User, third["user_id"]).display_name == "Иванова Ольга 3"

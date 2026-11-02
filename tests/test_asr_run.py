@@ -669,3 +669,48 @@ class TestChapterUploadBorrowsBeforeWriting:
             run_asr_for_chapter(db, chapter, transcribe=lambda path: said[path](path))
 
         assert letters == []
+
+
+class TestABusyServiceIsAskedAgain:
+    """«Карта», гл. 1 (23.10): дубль юмкуби получил 503 и так и остался «failed» — сессия
+    положила его целым куском в начало главы. Четыре таких дубля висели неделями.
+    Занятый сервис (429/502/503/504) спрашивают ещё раз; таймаут — нет: он мог быть оплачен."""
+
+    def _flaky(self, *errors):
+        from app.services.asr_transcribe import AsrError
+
+        calls = []
+
+        def transcribe(source):
+            calls.append(source)
+            if len(calls) <= len(errors):
+                raise AsrError(errors[len(calls) - 1])
+            return _fake_transcribe(source)
+
+        return transcribe, calls
+
+    def _run(self, db, monkeypatch, transcribe):
+        from app.services import asr_run
+
+        waits = []
+        monkeypatch.setattr(asr_run, "_sleep", waits.append)
+        _say(db, "ch-1", 0, "Юмкуба")
+        _recognizable_take(db, "Глава 1", "Юмкуба", "f1")
+        db.flush()
+        return asr_run.run_asr_for_take(db, "f1", transcribe=transcribe, notify=False), waits
+
+    def test_a_503_is_retried_and_the_take_is_heard(self, db, monkeypatch):
+        transcribe, calls = self._flaky("asr_http_503")
+        job, waits = self._run(db, monkeypatch, transcribe)
+        assert job.status == "done" and len(calls) == 2 and waits == [30]
+
+    def test_a_service_still_down_gives_up_after_three_tries(self, db, monkeypatch):
+        transcribe, calls = self._flaky("asr_http_503", "asr_http_502", "asr_http_503")
+        job, waits = self._run(db, monkeypatch, transcribe)
+        assert job.status == "failed" and job.error_message == "asr_http_503" and len(calls) == 3
+        assert waits == [30, 120]
+
+    def test_a_refusal_that_is_not_busyness_is_not_retried(self, db, monkeypatch):
+        transcribe, calls = self._flaky("asr_http_401")
+        job, waits = self._run(db, monkeypatch, transcribe)
+        assert job.status == "failed" and len(calls) == 1 and waits == []

@@ -144,6 +144,7 @@ def _tracks(factory):
         return rows
 
 
+@pytest.mark.usefixtures("no_breath")
 class TestSceneSpans:
     def test_spans_follow_the_scene_marker_rules(self, factory):
         from app.services.chapter_delivery import scene_spans

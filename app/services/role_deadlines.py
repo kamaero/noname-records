@@ -11,15 +11,18 @@
 """
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta
 
 from app.models import AudioFile, Character, RoleDeadline, ScriptBook, ScriptChapter
+from app.services import bot_out, studio
 from app.services.audio_uploads import derive_book_code
 from app.services.shared_runtime import is_narrator_name
 from app.services.telegram import names_match
 from app.time_utils import utcnow_naive
 from app.v2.cast_ops import parse_actor_name
-from app.services import studio
+
+logger = logging.getLogger(__name__)
 
 AUDITION_HOURS = 48
 #: закрытые так сроки не открываются заново для того же актёра того же вида
@@ -67,11 +70,27 @@ def _latest(db, character_id: str) -> RoleDeadline | None:
             .order_by(RoleDeadline.created_at.desc(), RoleDeadline.id.desc()).first())
 
 
+def appears_in_chapters(character) -> set[int]:
+    """Номера глав из графы `appears_in` — запасной ответ для книги без разметки."""
+    return {int(part) for part in str(getattr(character, "appears_in", "") or "").replace(";", ",").split(",")
+            if part.strip().isdigit()}
+
+
+def wanted_chapters(db, character) -> set[int]:
+    """Главы, где роль говорит: по текущей разметке, а без разметки — по `appears_in`
+    (почему не наоборот — см. `role_chapter_map`)."""
+    from app.v2.cast_ops import role_chapter_map
+
+    marked = role_chapter_map(db, str(character.book_id or ""))
+    if marked is None:
+        return appears_in_chapters(character)
+    return set(marked.get(str(getattr(character, "id", "") or ""), set()))
+
+
 def role_chapters(db, character: Character) -> dict[int, str]:
     """Номер главы → её название (по нему дубль привязан к главе). Глав, которых нет в
     книге, здесь нет: иначе роль нельзя было бы сдать никогда."""
-    wanted = {int(part) for part in str(character.appears_in or "").replace(";", ",").split(",")
-              if part.strip().isdigit()}
+    wanted = wanted_chapters(db, character)
     if not wanted:
         return {}
     from app.services.chapter_delivery import _chapter_label
@@ -117,6 +136,16 @@ def sync_book(db, book_id: str, *, now: datetime | None = None) -> dict:
     """Привести сроки книги в соответствие с кастом. Повторный вызов ничего не меняет."""
     now = now or utcnow_naive()
     opened = closed = 0
+
+    book = db.get(ScriptBook, book_id)
+    if book is not None and book.voiced_at is not None:
+        # В озвученной книге сроки не открываем: ролям записывать больше нечего.
+        return {"opened": 0, "closed": 0}
+    # «Не смогу» держит пробу закрытой, только пока каст не менялся (ревью пакета B): сняли
+    # человека или отдали роль другому — отказ гаснет, и новое приглашение того же человека
+    # (ошибся кнопкой, передумал) откроет новый срок.
+    declined = {row.character_id: row for row in db.query(RoleDeadline).filter(
+        RoleDeadline.book_id == book_id, RoleDeadline.close_reason == "declined")}
     for ch in db.query(Character).filter(Character.book_id == book_id).all():
         if is_narrator_name(str(ch.name or "")):
             continue
@@ -134,6 +163,15 @@ def sync_book(db, book_id: str, *, now: datetime | None = None) -> dict:
                 reason = "replaced"
             _close(current, reason, now)
             closed += 1
+            if reason == "replaced":
+                # Роль ушла другому актёру: если она говорит в сданных главах, владелец
+                # должен знать. Сбой письма не должен ломать сверку сроков.
+                try:
+                    from app.services.released_alerts import notify_recast_in_released
+
+                    notify_recast_in_released(db, ch, old_actor=current.actor_name, new_actor=name)
+                except Exception:
+                    logger.exception("Не удалось сообщить о рекасте в сданной главе")
         if not name:
             continue
         if current is not None and current.kind == "role" and kind == "audition" \
@@ -184,7 +222,20 @@ def _done(db, row: RoleDeadline, character: Character) -> bool:
             ).all()
         )
     done, total = role_progress(db, character, row.actor_name)
-    return bool(total) and done >= total
+    if not total:
+        # По разметке у роли реплик не осталось (их перенесли другим ролям) — записывать
+        # нечего, а открытый срок прислал бы «срок истёк». Книга без разметки сюда не
+        # попадает: там глав не знаем вовсе, и сдать роль нельзя, как и раньше.
+        from app.v2.cast_ops import role_chapter_map
+
+        return role_chapter_map(db, str(character.book_id or "")) is not None
+    return done >= total
+
+
+def done_notice(*, actor: str, role: str, book_title: str, done: int, total: int) -> str:
+    """Владельцу: роль записана целиком, пора платить остаток гонорара. Род по имени не
+    угадываем — фраза безличная."""
+    return f"Роль «{role}» («{book_title}») записана полностью — {actor}, {done} из {total} гл. Надо рассчитать."
 
 
 def chat_for(db, actor: str) -> str:
@@ -212,20 +263,29 @@ def _reminder(row: RoleDeadline, *, role: str, book_title: str, progress: tuple[
     return "\n".join(lines)
 
 
-def run_pass(db, *, now: datetime | None = None, send) -> dict:
+def run_pass(db, *, now: datetime | None = None, send, send_buttons=None) -> dict:
     """Один проход: закрыть сданное, письма о рекасте, напоминания, утренняя сводка.
 
-    `send(chat_id, text) -> bool`. Каждое письмо — один раз: отметка ставится и тогда,
-    когда адресата нет или Telegram не принял — повторы по таймеру были бы спамом.
+    `send(chat_id, text) -> bool`. `send_buttons(chat_id, text, markup) -> bool` — для
+    напоминаний, где нужна кнопка «Нужно больше времени». Каждое письмо — один раз:
+    отметка ставится и тогда, когда адресата нет или Telegram не принял — повторы по
+    таймеру были бы спамом.
     """
     from app.config import settings
     from app.services.studio_settings import studio_settings
 
     now = now or utcnow_naive()
-    stats = {"done": 0, "recast": 0, "before": 0, "overdue": 0, "digest": 0}
+    stats = {"done": 0, "done_notified": 0, "recast": 0, "before": 0, "overdue": 0, "digest": 0}
     titles = {book.id: str(book.title or "") for book in db.query(ScriptBook).all()}
 
+    voiced = {book.id for book in db.query(ScriptBook).filter(ScriptBook.voiced_at.isnot(None))}
+    finished: list[str] = []  # письма владельцу о целиком записанных ролях
     for row in db.query(RoleDeadline).filter(RoleDeadline.closed_at.is_(None)).all():
+        if row.book_id in voiced:
+            # Книгу озвучили, а срок остался открытым (voice_book закрывает их сам, но
+            # книга могла стать озвученной и иначе): закрываем молча, без письма.
+            _close(row, "voiced", now)
+            continue
         character = db.get(Character, row.character_id)
         if character is None:
             _close(row, "gone", now)
@@ -233,8 +293,20 @@ def run_pass(db, *, now: datetime | None = None, send) -> dict:
         if _done(db, row, character):
             _close(row, "done", now)
             stats["done"] += 1
+            if row.kind == "role":
+                done, total = role_progress(db, character, row.actor_name)
+                if total:  # роль без реплик закрылась не записью — рассчитывать не за что
+                    finished.append(done_notice(actor=row.actor_name, role=str(character.name or ""),
+                                                book_title=titles.get(row.book_id, ""), done=done, total=total))
 
     db.commit()  # закрытое сданным — до писем
+    owner = str(settings.owner_telegram_id or "").strip()
+    if owner:
+        # Отметка — сам закрытый срок, он уже в базе: письмо уходит один раз, а повторно
+        # роль закроется, только если срок откроют снова (добавились главы).
+        for text in finished:
+            send(owner, text)
+            stats["done_notified"] += 1
     for row in db.query(RoleDeadline).filter(RoleDeadline.kind == "role",
                                              RoleDeadline.recast_notified_at.is_(None),
                                              RoleDeadline.close_reason.in_(["replaced", "removed"]),
@@ -255,6 +327,15 @@ def run_pass(db, *, now: datetime | None = None, send) -> dict:
             send(chat, recast_notice(role=str(character.name or ""), book_title=titles.get(row.book_id, "")))
             stats["recast"] += 1
 
+    def _push_reminder(row, text):
+        chat = chat_for(db, row.actor_name)
+        if not chat:
+            return
+        if send_buttons is not None and row.character_id:
+            send_buttons(chat, text, bot_out.time_markup(row.character_id))
+        else:
+            send(chat, text)
+
     open_rows = db.query(RoleDeadline).filter(RoleDeadline.closed_at.is_(None)).all()
     for row in open_rows:
         character = db.get(Character, row.character_id)
@@ -263,21 +344,16 @@ def run_pass(db, *, now: datetime | None = None, send) -> dict:
             row.reminded_overdue_at = now
             row.reminded_before_at = row.reminded_before_at or now
             db.commit()
-            chat = chat_for(db, row.actor_name)
-            if chat:
-                send(chat, _reminder(row, role=role, book_title=book_title, progress=(0, 0), overdue=True))
-                stats["overdue"] += 1
+            _push_reminder(row, _reminder(row, role=role, book_title=book_title, progress=(0, 0), overdue=True))
+            stats["overdue"] += 1
         elif row.due_at - timedelta(hours=24) <= now < row.due_at and row.reminded_before_at is None:
             row.reminded_before_at = now
             db.commit()
-            chat = chat_for(db, row.actor_name)
-            if chat:
-                progress = role_progress(db, character, row.actor_name) if character is not None else (0, 0)
-                send(chat, _reminder(row, role=role, book_title=book_title, progress=progress, overdue=False))
-                stats["before"] += 1
+            progress = role_progress(db, character, row.actor_name) if character is not None else (0, 0)
+            _push_reminder(row, _reminder(row, role=role, book_title=book_title, progress=progress, overdue=False))
+            stats["before"] += 1
 
     local = now + MSK
-    owner = str(settings.owner_telegram_id or "").strip()
     row_settings = studio_settings(db)
     today = local.strftime("%Y-%m-%d")  # день по Москве, не время из базы
     if owner and local.hour == DIGEST_HOUR_MSK and str(row_settings.deadline_digest_day or "") != today:
@@ -364,6 +440,8 @@ def extend(db, deadline_id: str, *, days: int | None = None, until: str = "", by
     row.reminded_before_at = None
     row.reminded_overdue_at = None
     row.extended_by = str(by or "")[:120]
+    row.extend_request_days = None
+    row.extend_request_at = None
     db.flush()
     return row
 

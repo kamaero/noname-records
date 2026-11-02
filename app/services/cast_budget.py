@@ -1,8 +1,27 @@
 from __future__ import annotations
 
+import math
 import re
 
 DEFAULT_ACTOR_RATE_RUB_PER_MIN = 1000
+
+#: Шаг гонорара: расчётная сумма маленькой роли округляется вверх до целой тысячи.
+FEE_STEP_RUB = 1000
+#: С этой суммы роль — крупная, и её гонорар остаётся как посчитан.
+LARGE_ROLE_RUB = 10000
+#: Рассказчик во всех книгах — фикс (решение владельца 05.10).
+DEFAULT_NARRATOR_FEE_RUB = 100000
+
+
+def round_fee_up(rubles: int) -> int:
+    """Гонорар маленькой роли по ставке — вверх до целой тысячи, в пользу диктора.
+    Крупные роли — от 10 000 ₽ — остаются как посчитаны. Ноль остаётся нулём."""
+    value = int(rubles or 0)
+    if value <= 0:
+        return 0
+    if value >= LARGE_ROLE_RUB:
+        return value
+    return int(math.ceil(value / FEE_STEP_RUB) * FEE_STEP_RUB)
 
 
 def estimate_seconds_by_words(words: int) -> int:
@@ -47,7 +66,7 @@ def calc_character_total(lines_count: int, approx_seconds: int, character, snaps
     if character.manual_fixed_rub and character.manual_fixed_rub > 0:
         return int(character.manual_fixed_rub)
     if character.manual_rate_rub_per_min and character.manual_rate_rub_per_min > 0:
-        return int(round(character.manual_rate_rub_per_min * (approx_seconds / 60.0)))
+        return round_fee_up(round(character.manual_rate_rub_per_min * (approx_seconds / 60.0)))
     if snapshot and snapshot.total_rub > 0:
         return int(snapshot.total_rub)
-    return int(round(DEFAULT_ACTOR_RATE_RUB_PER_MIN * (max(0, approx_seconds) / 60.0)))
+    return round_fee_up(round(DEFAULT_ACTOR_RATE_RUB_PER_MIN * (max(0, approx_seconds) / 60.0)))

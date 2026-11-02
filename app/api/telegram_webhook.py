@@ -15,6 +15,11 @@ from app.db import SessionLocal
 from app.services.bot_dialog import handle_update
 from app.services.bot_broadcast import deliver as deliver_broadcast
 from app.services.bot_intro import enqueue_intro_followup
+from app.services.bot_reminder import deliver as deliver_reminder
+from app.services.bot_demos import enqueue_store_demo
+from app.services.bot_takes import enqueue_take
+from app.services.bot_uploads import enqueue_store
+from app.services.session_template import enqueue_store_template
 from app.services.telegram import call_bot_api
 from app.time_utils import utcnow_naive
 
@@ -37,6 +42,66 @@ def _broadcast(payload: dict) -> None:
     call_bot_api("sendMessage", {"chat_id": payload["admin_chat"], "text": summary})
 
 
+def _remind(payload: dict) -> None:
+    """«⏰ Напомнить» — та же доставка, что у рассылки: по письму каждому, итог админу."""
+    def send(chat_id, text) -> bool:
+        return call_bot_api("sendMessage", {"chat_id": chat_id, "text": text, "disable_web_page_preview": True})
+
+    try:
+        with SessionLocal() as db:
+            summary = deliver_reminder(db, payload["id"], send=send)
+            db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Бот: напоминание %s не прошло: %s", payload.get("id"), type(exc).__name__)
+        summary = "Напоминание прервалось — посмотрите журнал сервера."
+    call_bot_api("sendMessage", {"chat_id": payload["admin_chat"], "text": summary})
+
+
+def _upload_not_queued(upload_id: str) -> None:
+    """Очередь не приняла задачу — строка не должна висеть «queued» молча: диктору честно."""
+    from app.models import BotUpload
+    from app.services.bot_uploads import _site_link
+
+    with SessionLocal() as db:
+        row = db.get(BotUpload, upload_id)
+        if row is None:
+            return
+        row.state = "failed"
+        db.commit()
+        call_bot_api("sendMessage", {"chat_id": row.telegram_user_id,
+                                     "text": "Не получилось сохранить пробу — попробуйте ещё раз или загрузите на "
+                                             f"сайте: {_site_link()}"})
+
+
+def _demo_not_queued(item_id: str) -> None:
+    """Очередь не приняла демо — позиция не должна висеть «queued», а владелец ждать ответа."""
+    from app.models import BotDemoItem
+
+    with SessionLocal() as db:
+        row = db.get(BotDemoItem, item_id)
+        if row is None:
+            return
+        row.state = "failed"
+        db.commit()
+    call_bot_api("sendMessage", {"chat_id": str(settings.owner_telegram_id),
+                                 "text": "Не получилось поставить демо в работу — перешлите его ещё раз."})
+
+
+def _take_not_queued(upload_id: str) -> None:
+    """Очередь не приняла дубль — строка не должна висеть «queued»: иначе повтор того же файла
+    бот отклонит как «уже принят», а отчёт не придёт никогда."""
+    from app.models import BotUpload
+
+    with SessionLocal() as db:
+        row = db.get(BotUpload, upload_id)
+        if row is None:
+            return
+        row.state = "failed"
+        db.commit()
+        call_bot_api("sendMessage", {"chat_id": row.telegram_user_id,
+                                     "text": "Не получилось взять файл в работу — пришлите его ещё раз."})
+
+
 def process_update(update: dict) -> None:
     """База и Bot API — синхронные, поэтому отдельным потоком: повисший Telegram не должен
     держать цикл событий, а с ним и весь сайт."""
@@ -51,6 +116,50 @@ def process_update(update: dict) -> None:
     for item in outgoing:
         if item.method == "broadcast":
             _broadcast(item.payload)
+            continue
+        if item.method == "reminder":
+            _remind(item.payload)
+            continue
+        if item.method == "enqueue_bot_upload":
+            upload_id = item.payload["id"]
+            try:
+                job_id = enqueue_store(upload_id)
+            except Exception as exc:  # noqa: BLE001
+                job_id = None
+                logger.warning("Бот: проба %s не поставлена: %s", upload_id, type(exc).__name__)
+            if not job_id:
+                _upload_not_queued(upload_id)
+            continue
+        if item.method == "enqueue_bot_take":
+            upload_id = item.payload["id"]
+            try:
+                job_id = enqueue_take(upload_id)
+            except Exception as exc:  # noqa: BLE001
+                job_id = None
+                logger.warning("Бот: дубль %s не поставлен: %s", upload_id, type(exc).__name__)
+            if not job_id:
+                _take_not_queued(upload_id)
+            continue
+        if item.method == "enqueue_bot_demo":
+            item_id = item.payload["id"]
+            try:
+                job_id = enqueue_store_demo(item_id)
+            except Exception as exc:  # noqa: BLE001
+                job_id = None
+                logger.warning("Бот: демо %s не поставлено: %s", item_id, type(exc).__name__)
+            if not job_id:
+                _demo_not_queued(item_id)
+            continue
+        if item.method == "enqueue_session_template":
+            file_id, chat_id = item.payload["file_id"], item.payload["chat_id"]
+            try:
+                job_id = enqueue_store_template(file_id, chat_id)
+            except Exception as exc:  # noqa: BLE001
+                job_id = None
+                logger.warning("Бот: шаблон сессии не поставлен: %s", type(exc).__name__)
+            if not job_id:
+                call_bot_api("sendMessage", {"chat_id": str(chat_id),
+                                             "text": "Не получилось взять шаблон в работу — пришлите его ещё раз."})
             continue
         if item.method == "enqueue_intro":
             tid = item.payload["telegram_user_id"]

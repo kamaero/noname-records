@@ -13,3 +13,4 @@ export { Dialog } from "./Dialog";
 export { Field } from "./Field";
 export { StepDots, V2_STEP_LABELS } from "./StepDots";
 export type { StepDot, StepState } from "./StepDots";
+export { ScoreScale } from "./ScoreScale";

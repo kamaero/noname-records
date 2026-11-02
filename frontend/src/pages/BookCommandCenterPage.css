@@ -314,3 +314,14 @@
 }
 
 .hub-chapter-get:hover { background: var(--surface-2); }
+
+.hub-voiced { font-size: 12px; color: var(--accent); white-space: nowrap; }
+
+.thanks-body { display: flex; flex-direction: column; gap: 8px; }
+.thanks-label { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+.thanks-text { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 13px; line-height: 1.45; padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.thanks-hint { margin: 0; font-size: 12px; color: var(--text-faint); }
+.thanks-preview { margin: 0; padding: 8px 10px; white-space: pre-wrap; font: inherit; font-size: 13px; line-height: 1.45; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+.thanks-list { margin: 0; padding-left: 18px; font-size: 13px; color: var(--text); }
+.thanks-list span { color: var(--text-faint); }
+.thanks-summary p { margin: 0 0 6px; font-size: 13px; color: var(--text); }

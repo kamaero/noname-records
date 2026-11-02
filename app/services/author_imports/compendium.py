@@ -28,6 +28,27 @@ def _title_of(section) -> str:
     return " ".join("".join(p.itertext()).strip() for p in title.findall(".//p"))
 
 
+def _name_and_rest(p) -> tuple[str, str]:
+    """Имя записи и текст после него.
+
+    Подряд идущие выделения склеиваются: энциклопедия иногда делит одно имя на две части.
+    Описание берётся после последнего выделения, чтобы номер записи не съедал его начало.
+    """
+    children = list(p)
+    first = next((child for child in children if child.tag == "strong"), None)
+    if first is None or not (first.text or "").strip():
+        return "", ""
+    index = children.index(first)
+    parts = [first]
+    while index + 1 < len(children) and children[index + 1].tag == "strong" and not (parts[-1].tail or "").strip():
+        index += 1
+        parts.append(children[index])
+    name = "".join(part.text or "" for part in parts).strip().rstrip(".").strip()
+    rest = (parts[-1].tail or "") + "".join("".join(child.itertext()) + (child.tail or "")
+                                            for child in children[index + 1:])
+    return name, rest.lstrip(" .—-").strip()
+
+
 def parse_compendium_fb2(raw: bytes, allowlist: set[str] | None = None) -> list[dict]:
     allow = allowlist if allowlist is not None else DEFAULT_PERSON_TOPICS
     root = _xml_fromstring(_strip_fb2(raw))
@@ -40,17 +61,14 @@ def parse_compendium_fb2(raw: bytes, allowlist: set[str] | None = None) -> list[
         if allow is not None and topic not in allow:
             continue
         for p in section.findall("p"):
-            strong = p.find("strong")
-            if strong is None or not (strong.text or "").strip():
+            name, rest = _name_and_rest(p)
+            if not name:
                 continue
-            name = strong.text.strip().rstrip(".").strip()
             # Strip a leading list-number prefix ("1. ", "10) ") from numbered topics
             # (e.g. "Имена Мардука"), which is markup, not part of the name.
             name = re.sub(r"^\d+[.)]\s*", "", name).strip()
             if not (2 <= len(name) <= 60):
                 continue
-            full = "".join(p.itertext()).strip()
-            rest = full[len(strong.text):].lstrip(" .—-").strip()
             aliases: list[str] = []
             m = _ALIAS_RE.match(rest)
             if m:

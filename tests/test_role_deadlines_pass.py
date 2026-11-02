@@ -25,7 +25,7 @@ def db(monkeypatch):
                                has_chapters="true", status="processing"))
         session.add(ScriptChapter(id="ch1", book_id="b1", chapter_index=1, chapter_title="Глава 1"))
         session.add(ScriptChapter(id="ch2", book_id="b1", chapter_index=2, chapter_title="Глава 2"))
-        session.add(Character(id="c1", book_id="b1", name="Куйбу", aliases="", character_color="", appears_in="1,2",
+        session.add(Character(id="c1", book_id="b1", name="Ныкфо", aliases="", character_color="", appears_in="1,2",
                               actor_name="Ветрова Ольга"))
         session.add(User(id="u1", login="olga", password_hash="x", display_name="Ветрова Ольга", is_active="true"))
         session.add(UserRole(user_id="u1", role="dictor"))
@@ -44,7 +44,7 @@ def _deadline(db, kind="role", due=NOW + timedelta(days=30), actor="Ветров
 
 def _file(db, chapter, kind="take", when=NOW):
     db.add(AudioFile(book_code=derive_book_code("Карта"), original_filename="t.wav", stored_key=f"k/{chapter}{kind}",
-                     mime_type="audio/wav", size_bytes=1, chapter=chapter, role="Куйбу", actor_name="Ветрова Ольга",
+                     mime_type="audio/wav", size_bytes=1, chapter=chapter, role="Ныкфо", actor_name="Ветрова Ольга",
                      kind=kind, canonical_filename=f"{chapter}{kind}.wav", uploaded_at=when))
     db.commit()
 
@@ -79,7 +79,7 @@ def test_a_recast_letter_goes_once(db):
     row.closed_at, row.close_reason = NOW - timedelta(hours=1), "replaced"
     db.commit()
     sent, _ = _run(db)
-    assert [chat for chat, _ in sent] == ["42"] and "рекаст" in sent[0][1] and "Куйбу" in sent[0][1]
+    assert [chat for chat, _ in sent] == ["42"] and "рекаст" in sent[0][1] and "Ныкфо" in sent[0][1]
     again, _ = _run(db)
     assert again == []
 
@@ -169,3 +169,22 @@ def test_a_role_with_untitled_chapters_counts_them_by_number(db):
     assert role_deadlines.role_progress(db, db.get(Character, "c1"), "Ветрова Ольга") == (1, 2)
     _file(db, "Глава 2")
     assert role_deadlines.role_progress(db, db.get(Character, "c1"), "Ветрова Ольга") == (2, 2)
+
+
+def test_the_owner_hears_once_when_a_role_is_fully_recorded(db):
+    _deadline(db)
+    _file(db, "Глава 1")
+    assert [c for c, _ in _run(db)[0] if c == "900000100"] == []  # одна глава из двух — рано
+    _file(db, "Глава 2")
+    sent, stats = _run(db)
+    owner = [text for chat, text in sent if chat == "900000100"]
+    assert owner == ["Роль «Ныкфо» («Карта») записана полностью — Ветрова Ольга, 2 из 2 гл. Надо рассчитать."]
+    assert stats["done_notified"] == 1
+    assert _run(db)[0] == []  # срок закрыт — второго письма нет
+
+
+def test_no_role_notice_for_an_audition_or_a_role_left_without_lines(db):
+    _deadline(db, kind="audition", due=NOW + timedelta(hours=40))
+    _file(db, "Глава 1", kind="audition")
+    sent, _ = _run(db)
+    assert [c for c, _ in sent if c == "900000100"] == []

@@ -5,6 +5,7 @@ from typing import Any, Callable
 from fastapi import Request
 
 from app.api._helpers import unauthorized_response
+from app.time_utils import iso_utc
 
 
 def build_books_list_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., Any]]:
@@ -39,6 +40,10 @@ def build_books_list_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., A
             for book in books:
                 row = serialize_book_summary(book, progress_map.get(book.id))
                 row["character_count"] = int(character_counts.get(book.id, 0))
+                # «Каст» в навбаре открывает книгу, чью карту автор проверил последней:
+                # это книга, над которой студия работает сейчас (10.10).
+                row["cast_checked_at"] = iso_utc(book.cast_checked_at) or ""
+                row["voiced_at"] = iso_utc(book.voiced_at) or ""
                 items.append(row)
             return {"items": items}
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 from app.services.asr_azure import transcribe_file_azure
 from app.services.asr_transcribe import OPENAI_BASE_URL, compress_for_asr, transcribe_file
@@ -67,6 +68,17 @@ def _role_pieces(db, chapter_id: str, role: str) -> "tuple[bool, list[str]]":
     Общий обход для `expected_lines` и `narration_only_lines`: обе функции смотрят
     на одни и те же куски, различаясь только тем, что делают с разбором каждого.
     """
+    narrator, pieces = _role_pieces_in_segments(db, chapter_id, role)
+    return narrator, [text for text, _ in pieces]
+
+
+def _role_pieces_in_segments(db, chapter_id: str, role: str) -> "tuple[bool, list[tuple[str, str]]]":
+    """То же, что `_role_pieces`, но каждый кусок — с id своего абзаца (сегмента).
+
+    Реплика — абзац, а сверка идёт по кускам: слова автора режут реплику на два-три
+    куска. Кто показывает диктору «сколько реплик», должен сложить куски обратно в
+    абзацы (`expected_line_segments`), иначе его числа разойдутся с Читалкой.
+    """
     wanted = normalize_name(str(role or "").strip())
     if not wanted:
         return False, []
@@ -76,7 +88,7 @@ def _role_pieces(db, chapter_id: str, role: str) -> "tuple[bool, list[str]]":
         return narrator, []
     rows_by_segment = effective_attributions(db, [segment.id for segment in segments])
 
-    pieces: list[str] = []
+    pieces: list[tuple[str, str]] = []
     for segment in segments:
         for row in rows_by_segment.get(segment.id, []):
             speaker = str(row.speaker or "").strip()
@@ -85,8 +97,20 @@ def _role_pieces(db, chapter_id: str, role: str) -> "tuple[bool, list[str]]":
                 continue
             text = str(segment.text or "")[int(row.span_start or 0):int(row.span_end or 0)].strip()
             if text:
-                pieces.append(text)
+                pieces.append((text, str(segment.id)))
     return narrator, pieces
+
+
+def expected_line_segments(db, chapter_id: str, role: str) -> list[str]:
+    """Абзац (id сегмента) каждой строки `expected_lines` — тем же отбором, в том же порядке.
+
+    По нему куски сверки складываются в реплики-абзацы: абзац найден, только если
+    найдены все его куски (сторож — `tests/test_v2_line_count_is_paragraphs.py`).
+    """
+    narrator, pieces = _role_pieces_in_segments(db, chapter_id, role)
+    if narrator:
+        return [segment_id for _, segment_id in pieces]
+    return [segment_id for text, segment_id in pieces if speech_and_narration(text)[0]]
 
 
 def expected_lines(db, chapter_id: str, role: str) -> list[str]:
@@ -128,6 +152,29 @@ def narration_only_lines(db, chapter_id: str, role: str) -> list[str]:
         if not speech:
             lines.append(text)
     return lines
+
+
+#: Ответы «сервис занят»: такой запрос не исполнен, и спросить ещё раз — бесплатно.
+#: Таймаута здесь нет нарочно: ответ мог не дойти, а распознавание — пройти и списаться.
+RETRY_ERRORS = frozenset({"asr_http_429", "asr_http_502", "asr_http_503", "asr_http_504"})
+#: паузы перед второй и третьей попыткой, секунды
+RETRY_DELAYS = (30, 120)
+#: подменяется в тестах — ждать по-настоящему им незачем
+_sleep = time.sleep
+
+
+def _transcribe_retrying(call):
+    """Вызвать распознавание, переждав «сервис занят». До 23.10 одного 503 хватало, чтобы
+    дубль навсегда остался «failed»: сессия клала его целым куском в начало главы."""
+    for delay in (*RETRY_DELAYS, None):
+        try:
+            return call()
+        except Exception as exc:  # noqa: BLE001 — решаем по коду, остальное летит дальше
+            if delay is None or str(exc) not in RETRY_ERRORS:
+                raise
+            logger.warning("Распознавание ответило %s — повтор через %s с", exc, delay)
+            _sleep(delay)
+    raise AssertionError("unreachable")
 
 
 class AsrRunError(RuntimeError):
@@ -318,10 +365,12 @@ def run_asr_for_take(db, audio_file_id: str, *, transcribe=None, notify: bool = 
             if not nas_health.reachable_now():
                 raise AsrRunError("storage_unavailable: запись на NAS, а он не отвечает")
         source = audio_storage.resolve_path(str(audio.stored_key or ""), location=location)
-        heard = (
-            transcribe(source) if transcribe
-            else _transcribe_with_service(source, phrases=book_phrases(db, str(chapter.book_id)),
-                                          provider=job.provider, model=job.model)
+        phrases = None if transcribe else book_phrases(db, str(chapter.book_id))
+        heard = _transcribe_retrying(
+            (lambda: transcribe(source)) if transcribe
+            else (lambda: _transcribe_with_service(
+                source, phrases=phrases, provider=job.provider, model=job.model,
+            ))
         )
         if not transcribe:
             from app.services import spend
@@ -470,24 +519,52 @@ def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = F
             done_jobs.append(job)
         else:
             failed += 1
-    # Поиск у соседних ролей — до писем: реплику, перенесённую к другой роли того же
-    # актёра, он найдёт в соседнем файле, и письма о ней не будет.
-    #
-    # Собственный `try`: распознавание уже сделано и не должно откатиться, если сам
-    # поиск бросит исключение — тем же приёмом, что отчёт владельцу ниже.
+    # Письма диктору — после поиска у соседних ролей (он внутри `after_new_takes`):
+    # реплику, перенесённую к другой роли того же актёра, он найдёт в соседнем файле,
+    # и письма о ней не будет.
+    after_new_takes(
+        db, chapter, take_ids=[str(take.id) for take in takes], lost_takes=lost_takes,
+        outdated=bool(done_jobs),
+    )
+    for job in done_jobs:
+        try:
+            notify_take_missing(db, job)
+        except Exception:
+            logger.exception("Не удалось написать диктору о пропусках, джоба %s", job.id)
+    return {
+        "chapter_id": str(chapter.id), "takes": len(takes),
+        "done": done, "realigned": realigned, "failed": failed,
+    }
+
+
+def after_new_takes(db, chapter, *, take_ids, lost_takes=None, outdated: bool = True) -> None:
+    """Всё, что глава делает, когда в ней появились распознанные дубли, — кроме писем диктору.
+
+    Общая часть для прогона главы (`run_asr_for_chapter`) и для дубля из бота
+    (`bot_takes.process`): поиск реплик у соседних ролей, пометка сессии устаревшей,
+    отчёт владельцу, если глава собралась. Письма о пропусках сюда не входят нарочно:
+    прогон главы пишет их сам, а бот заменяет их одним общим отчётом по файлу —
+    иначе диктор колбасы на 14 глав получил бы 14 писем.
+
+    `take_ids` — состав главы, который разобран (см. `_report_chapter_if_assembled`),
+    `outdated` — появилось ли в главе новое услышанное: пересчёт без новых джоб сессию
+    не меняет.
+
+    Каждый шаг — в своём `try`: распознавание уже сделано и оплачено и не должно
+    откатиться, если второстепенный шаг бросит исключение. Единственный `db.commit()`
+    живёт у вызывающего (`perform_asr_chapter_task` в `app/worker_tasks.py`, `process`
+    в боте) — упавший здесь `build_chapter_report`, `render_chapter_report` или
+    `send_telegram_message` долетел бы туда и откатил бы все распознанные дубли главы,
+    а задание ушло бы в упавшие с ложной причиной.
+    """
     try:
         from app.services.asr_borrow import borrow_across_roles
 
         borrow_across_roles(db, str(chapter.id))
     except Exception:
         logger.exception("Не удалось поискать реплики у соседних ролей, глава %s", chapter.id)
-    for job in done_jobs:
-        try:
-            notify_take_missing(db, job)
-        except Exception:
-            logger.exception("Не удалось написать диктору о пропусках, джоба %s", job.id)
     # Новый дубль в архивной главе — сессия могла поменяться; решит отпечаток.
-    if done_jobs:
+    if outdated:
         try:
             from app.services.chapter_delivery import mark_session_outdated
 
@@ -495,29 +572,11 @@ def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = F
         except Exception:
             logger.exception("Не удалось пометить сессию главы устаревшей, глава %s", chapter.id)
     # Отчёт владельцу — здесь, а не в ручке приёма: там распознавание ещё не
-    # начиналось, и отчитываться было бы не о чем. Здесь дубли главы уже
-    # разобраны, и всё, что нужно, лежит в `AsrJob`.
-    #
-    # Собственный `try`, не завязанный на успех цикла выше: распознавание уже
-    # сделано и должно уцелеть при любом исходе отчёта. Единственный `db.commit()`
-    # на весь прогон по главе живёт выше, в `perform_asr_chapter_task`
-    # (`app/worker_tasks.py`) — упавший здесь `build_chapter_report`,
-    # `render_chapter_report` или `send_telegram_message` долетел бы туда и откатил
-    # его, стерев все уже распознанные дубли главы; задание при этом ушло бы в
-    # упавшие с ложной причиной — как будто не распозналось, хотя распозналось.
-    # Тот же приём — в ручке приёма файлов (`app/api/recording.py`) вокруг
-    # постановки заданий в очередь: неудача второстепенного шага — запись в
-    # журнал, а не потеря уже сделанной работы.
+    # начиналось, и отчитываться было бы не о чем.
     try:
-        _report_chapter_if_assembled(
-            db, chapter, take_ids=[str(take.id) for take in takes], lost_takes=lost_takes,
-        )
+        _report_chapter_if_assembled(db, chapter, take_ids=take_ids, lost_takes=lost_takes)
     except Exception:
         logger.exception("Не удалось отправить отчёт по главе %s", chapter.id)
-    return {
-        "chapter_id": str(chapter.id), "takes": len(takes),
-        "done": done, "realigned": realigned, "failed": failed,
-    }
 
 
 def _report_chapter_if_assembled(db, chapter, *, take_ids, lost_takes=None) -> bool:

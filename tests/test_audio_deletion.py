@@ -558,16 +558,22 @@ def test_сбой_между_коммитами_не_рвёт_согласова
         assert check.query(PendingMirrorDeletion).filter_by(stored_key=own_audio.stored_key).count() == 0
 
 
-def test_удалённая_проба_уносит_свой_дизлайк_и_отменяет_отказ(db, storage):
-    """Иначе 👎 удалённой пробы держал бы отказ, и письмо ушло бы про пробу, которой нет."""
-    from app.models import AuditionReaction, AuditionRejection
-    from app.services.audition_reactions import set_reaction
+def test_удалённая_последняя_проба_уносит_оценки_и_отменяет_отказ(db, storage):
+    """Иначе отказ ждал бы письма про пробу, которой нет."""
+    from app.models import AuditionRejection, AuditionScore, ScriptBook
+    from app.services.audio_deletion import _find_book_for_audio
 
     audio = _add_audio(db, role="Вукьрадух", actor_name="Роман Сомов", days_old=0, kind="audition", chapter="")
     db.commit()
-    set_reaction(db, audio.id, voter_uid="author-1", voter_name="Автор", value=-1)
+    book = _find_book_for_audio(db, audio)
+    assert isinstance(book, ScriptBook)
+    db.add(AuditionScore(book_id=book.id, role="Вукьрадух", actor_name="Роман Сомов", lane="author",
+                         voter_uid="author-1", voter_name="Автор", score=2))
+    db.add(AuditionRejection(book_id=book.id, book_code=str(audio.book_code), role="Вукьрадух",
+                             actor_name="Роман Сомов", due_at=audio.uploaded_at, status="pending"))
+    db.commit()
 
     delete_audio_file(db, audio.id, actor_uid="owner", actor_name="Владелец", privileged=True)
 
-    assert db.query(AuditionReaction).count() == 0
+    assert db.query(AuditionScore).count() == 0
     assert db.query(AuditionRejection).one().status == "cancelled"

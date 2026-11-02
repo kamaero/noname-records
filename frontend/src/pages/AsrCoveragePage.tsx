@@ -11,7 +11,7 @@
  * первое.
  */
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiGet, apiPostJson, describeApiError } from "../api/client";
 import { useToast } from "../components/ToastProvider";
@@ -29,6 +29,13 @@ const PUBLISHED_BOOK = new Set(["published", "published_to_dictor", "ready_for_m
 function percent(chapter: BookRecordingChapter): number {
   if (!chapter.total_roles) return 0;
   return Math.round((chapter.recorded_roles / chapter.total_roles) * 100);
+}
+
+/** ISO → «дд.мм»; пустое или кривое значение не должно ломать строку. */
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 /** Нажатие на кнопку внутри строки — только её собственное дело.
@@ -52,6 +59,7 @@ export function AsrCoveragePage() {
      — обычное дело, и закрывать предыдущую за человека было бы самоуправством. */
   const [openChapters, setOpenChapters] = useState<Set<string>>(() => new Set());
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { pushToast } = useToast();
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiGet<MeResponse>("/api/me") });
@@ -59,6 +67,9 @@ export function AsrCoveragePage() {
      только предсказание для интерфейса. Суточное право диктора на свой дубль живёт на
      экране записи — в описи главы стирает тот, кто отвечает за книгу целиком. */
   const canDeleteTakes = (meQuery.data?.roles ?? []).some((role) => role === "admin" || role === "author");
+
+  // Отметку «Глава сдана» ставит только администратор (сервер отвечает 403 остальным).
+  const isAdmin = (meQuery.data?.roles ?? []).includes("admin");
 
   const booksQuery = useQuery({ queryKey: ["books"], queryFn: () => apiGet<BooksResponse>("/api/books") });
   const books = useMemo(
@@ -94,6 +105,31 @@ export function AsrCoveragePage() {
       pushToast({ tone: "error", title: "Не запустилось", detail: describeApiError(error, "сервер не ответил") }),
   });
 
+  /* «Сдана» = сведена, прослушана и выложена; её ставит человек, а не скачивание архива.
+     Когда сдана последняя опубликованная глава, спрашиваем про «Озвучена»: сервер сам
+     книгу не закрывает — это решение владельца, с письмами и закрытием сроков. */
+  const release = useMutation({
+    mutationFn: (chapter: BookRecordingChapter) =>
+      apiPostJson<{ ok: boolean; all_released: boolean; voiced: boolean }>(
+        `/api/v2/chapters/${encodeURIComponent(chapter.chapter_id)}/released`,
+        { released: !chapter.released_at },
+      ),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
+      if (result.all_released && !result.voiced && window.confirm("Все главы сданы. Перевести книгу в «Озвучена»?")) {
+        try {
+          await apiPostJson(`/api/v2/books/${encodeURIComponent(bookId)}/voiced`, { voiced: true });
+          await queryClient.invalidateQueries({ queryKey: ["books"] });
+          navigate(`/books/${encodeURIComponent(bookId)}?thanks=1`);
+        } catch (error) {
+          pushToast({ tone: "error", title: "Книга не переведена", detail: describeApiError(error, "сервер не ответил") });
+        }
+      }
+    },
+    onError: (error) =>
+      pushToast({ tone: "error", title: "Отметка не сохранилась", detail: describeApiError(error, "сервер не ответил") }),
+  });
+
   const verify = useMutation({
     mutationFn: (chapter: BookRecordingChapter) =>
       apiPostJson<{ ok: boolean; job_id?: string }>(`/api/v2/chapters/${encodeURIComponent(chapter.chapter_id)}/verify`, {}),
@@ -116,27 +152,8 @@ export function AsrCoveragePage() {
     },
   });
 
-  // Файл проекта фон кладёт сам, как только глава готова: кнопка — на случай, когда
-  // владелец хочет получить .sesx раньше следующего круга зеркалирования.
-  const archiveSession = useMutation({
-    mutationFn: (chapter: BookRecordingChapter) =>
-      apiPostJson<{ ok: boolean; unchanged?: boolean; replaced?: string }>(
-        `/api/v2/chapters/${encodeURIComponent(chapter.chapter_id)}/session-archive`,
-        {},
-      ),
-    onSuccess: async (result, chapter) => {
-      if (result.unchanged) {
-        pushToast({ tone: "success", title: "Проект уже актуален" });
-      } else if (result.replaced) {
-        const fileName = result.replaced.slice(result.replaced.lastIndexOf("/") + 1);
-        pushToast({ tone: "success", title: "Проект пересобран", detail: `Прежний сохранён как ${fileName}` });
-      } else {
-        pushToast({ tone: "success", title: "Проект на NAS", detail: `Глава ${chapter.chapter_index}: файл сессии положен в папку главы.` });
-      }
-      await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
-    },
-    onError: (error) => pushToast({ tone: "error", title: "Не вышло", detail: describeApiError(error, "сервер не ответил") }),
-  });
+  // Кнопки «проект» (положить .sesx на NAS раньше круга) и ссылки «сессия» нет с 24.10:
+  // скачивание главы — одна ссылка, архив с сессией внутри. На NAS проект фон кладёт сам.
 
   // Сначала смета (сколько треков и минут — её считает раскладка по таймлайну, в строке
   // её нет), потом подтверждение: каждый трек списывается из квоты ElevenLabs.
@@ -293,7 +310,8 @@ export function AsrCoveragePage() {
                 мишень рядом с общей только сбивала бы с толку. */}
             <span className="asr-caret" aria-hidden="true">{openChapters.has(row.chapter_id) ? "▾" : "▸"}</span>
             {row.chapter_title || "Без названия"}
-            {row.delivered_at ? <span className="asr-done" title="Забрана в сведение"> · сдана</span> : null}
+            {row.released_at ? <span className="asr-done" title="Сведена, прослушана, выложена"> · Сдана · {shortDate(row.released_at)}</span> : null}
+            {row.delivered_at && !row.released_at ? <span className="asr-done" title="Архив скачан целиком — сведение началось"> · всё записано</span> : null}
           </span>
         ),
       },
@@ -463,45 +481,43 @@ export function AsrCoveragePage() {
         align: "right",
         className: "asr-col-get",
         nowrap: true,
-        render: (row) =>
-          row.recorded_roles && canDownload ? (
+        render: (row) => (
+          <>
+          {isAdmin && (row.released_at || row.delivered_at || row.ready) ? (
+            <button
+              type="button"
+              className="asr-get asr-release"
+              disabled={release.isPending}
+              onClick={stopRow(() => release.mutate(row))}
+              title={row.released_at ? "Убрать отметку «Сдана»" : "Глава сведена, прослушана и выложена"}
+            >
+              {row.released_at ? "Снять отметку" : "Глава сдана"}
+            </button>
+          ) : null}
+          {row.recorded_roles && canDownload ? (
             <>
               <span className="asr-links">
-                <a
-                  className="asr-get"
-                  href={`/api/v2/chapters/${encodeURIComponent(row.chapter_id)}/session.sesx`}
-                  onClick={stopRow()}
-                  title="Сессия Audition: треки по ролям, клипы по репликам. Файл маленький — в нём ссылки на аудио, а не само аудио"
-                >
-                  сессия
-                </a>
+                {/* Голый `.sesx` отдельной ссылкой убран 24.10: в нём пути сервера, и на
+                    своём компьютере Audition искал файлы вручную. Сессия едет в архиве,
+                    рядом с дублями, и зовёт их по имени. */}
                 <a
                   className="asr-get"
                   href={`/api/v2/chapters/${encodeURIComponent(row.chapter_id)}/archive.zip`}
                   onClick={stopRow()}
-                  title={row.ready ? "Скачать дубли главы одним архивом" : "Скачать то, что уже записано"}
+                  title={`${row.ready ? "Дубли главы" : "То, что уже записано"}, эмбиент и сессия Audition одним архивом. Распакуйте и откройте сессия.sesx — файлы найдутся сами`}
                 >
-                  {row.ready ? "архив" : "архив частью"}
+                  {row.ready ? "архив с сессией" : "архив частью"}
                 </a>
-                {!row.session_archived && canDownload ? (
-                  <button
-                    type="button"
-                    className="asr-run"
-                    disabled={archiveSession.isPending}
-                    onClick={stopRow(() => archiveSession.mutate(row))}
-                    title="Положить файл проекта на NAS, в папку главы"
-                  >
-                    проект
-                  </button>
-                ) : null}
                 {ambientControl(row)}
               </span>
               {ambientNote(row)}
             </>
-          ) : null,
+          ) : null}
+          </>
+        ),
       },
     ],
-    [canDownload, recognise, verify, archiveSession, ambient, stopAmbient, openChapters],
+    [canDownload, isAdmin, release, recognise, verify, ambient, stopAmbient, openChapters],
   );
 
   const toggleChapter = useCallback((row: BookRecordingChapter) => {
@@ -523,7 +539,8 @@ export function AsrCoveragePage() {
   /* Прогресс книги — по собранным главам: все роли записаны и проект .sesx лежит на
      NAS. Сумма «роль × глава» (сотни при касте в семьдесят) читалась как число ролей
      и сбивала с толку. Устаревший проект не в счёт — его ещё пересоберут.
-     «Собрана», а не «сдана»: «сдана» в таблице — уже забрана в сведение. */
+     «Собрана», а не «сдана»: «сдана» в таблице — отмечена человеком (сведена и выложена),
+     а «всё записано» — архив уже забран в сведение. */
   const assembled = chapters.filter((chapter) => chapter.ready && chapter.session_archived && !chapter.session_outdated).length;
   const bookPercent = chapters.length ? Math.round((assembled / chapters.length) * 100) : 0;
 
@@ -532,6 +549,7 @@ export function AsrCoveragePage() {
   const total = coverage.data?.total_chapters ?? 0;
   const missingLines = coverage.data?.missing_lines ?? 0;
   const delivered = coverage.data?.delivered_chapters ?? 0;
+  const released = chapters.filter((chapter) => chapter.released_at).length;
 
   return (
     <div className="asr">
@@ -541,7 +559,7 @@ export function AsrCoveragePage() {
           coverage.isLoading
             ? "Считаю покрытие…"
             : total
-              ? `Глав: ${total} · в работе ${started} · готовы ${ready} · сданы ${delivered}${missingLines ? ` · не найдено реплик ${missingLines}` : ""}`
+              ? `Глав: ${total} · в работе ${started} · готовы ${ready} · всё записано ${delivered} · сданы ${released}${missingLines ? ` · не найдено реплик ${missingLines}` : ""}`
               : "Ни одной главы"
         }
         actions={
@@ -602,6 +620,7 @@ export function AsrCoveragePage() {
           rows={rows}
           rowKey={(row) => row.chapter_id}
           onRowClick={toggleChapter}
+          rowClassName={(row) => (row.released_at ? "asr-row-released" : undefined)}
           rowLabel={(row) => `Опись главы ${row.chapter_index}. ${row.chapter_title}`}
           renderDetail={renderDetail}
           loading={coverage.isLoading || booksQuery.isLoading}
@@ -616,7 +635,7 @@ export function AsrCoveragePage() {
                     ? "У книги нет глав, открытых для записи."
                     : "Ни одна книга ещё не опубликована для дикторов."
               }
-              action={<LinkButton to="/recording">Открыть запись</LinkButton>}
+              action={<LinkButton to="/recording">Открыть сценарий</LinkButton>}
             />
           }
         />

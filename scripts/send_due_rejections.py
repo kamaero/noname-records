@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0, ".")
 
 from app.db import SessionLocal  # noqa: E402
-from app.services.audition_reactions import send_due_rejections  # noqa: E402
+from app.services.audition_rejections import send_due_rejections  # noqa: E402
 
 
 def main() -> int:

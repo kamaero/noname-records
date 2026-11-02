@@ -18,6 +18,8 @@ type DataTableProps<Row> = {
   onRowClick?: (row: Row) => void;
   /** accessible name for a clickable row */
   rowLabel?: (row: Row) => string;
+  /** extra class for a row's `tr` (e.g. to mute finished rows) */
+  rowClassName?: (row: Row) => string | undefined;
   selectedKey?: string | null;
   /** shown inside the table body when rows are empty and not loading */
   empty?: ReactNode;
@@ -44,6 +46,7 @@ export function DataTable<Row>({
   rowKey,
   onRowClick,
   rowLabel,
+  rowClassName,
   selectedKey,
   empty,
   loading,
@@ -99,7 +102,7 @@ export function DataTable<Row>({
                 return (
                   <Fragment key={key}>
                     <tr
-                      className={[clickable ? "is-clickable" : "", selected ? "is-selected" : ""].filter(Boolean).join(" ") || undefined}
+                      className={[clickable ? "is-clickable" : "", selected ? "is-selected" : "", rowClassName?.(row) ?? ""].filter(Boolean).join(" ") || undefined}
                       onClick={clickable ? () => onRowClick?.(row) : undefined}
                       onKeyDown={clickable ? onKey(row) : undefined}
                       tabIndex={clickable ? 0 : undefined}

@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, describeApiError } from "../../../api/client";
 import { LinkButton } from "../../../ui";
-import type { BookRecordingResponse } from "../../../types";
-import { hubKeys } from "./hubApi";
+import type { BookRecordingResponse, MeResponse } from "../../../types";
+import { hubKeys, useRecordingBook } from "./hubApi";
 
 /**
  * Готовность записи по главам — и ссылка на архив готовой главы.
@@ -27,12 +27,17 @@ export function RecordingCard({ bookId }: { bookId: string }) {
   // Начатые главы — то, что сейчас в работе; законченные среди них видно по кнопке.
   const live = chapters.filter((chapter) => chapter.recorded_roles > 0);
   const shown = live.slice(0, SHOWN);
+  // Переключатель — решение владельца: от него зависит, чьи дубли примет бот.
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiGet<MeResponse>("/api/me"), staleTime: 60_000 });
+  const me = meQuery.data;
+  const isAdmin = Boolean(me && (me.roles.includes("admin")));
+  const recordingBook = useRecordingBook();
   const recordingTo = `/recording?book_id=${encodeURIComponent(bookId)}`;
 
   return (
     <section className="panel hub-card" aria-labelledby="hub-rec-title">
       <header className="hub-card-head">
-        <h2 id="hub-rec-title" className="hub-card-title">Запись</h2>
+        <h2 id="hub-rec-title" className="hub-card-title">В процессе</h2>
         {data?.total_chapters ? (
           <span className="hub-dim num">
             {data.ready_chapters} из {data.total_chapters}
@@ -75,8 +80,23 @@ export function RecordingCard({ bookId }: { bookId: string }) {
         <p className="hub-dim hub-text">Записей пока нет. Дикторы получат сценарий после публикации.</p>
       )}
 
+      {isAdmin ? (
+        <div className="hub-recording-now">
+          <label className="ui-check">
+            <input
+              type="checkbox"
+              checked={recordingBook.activeBookId === bookId}
+              disabled={recordingBook.loading || recordingBook.switching}
+              onChange={(event) => recordingBook.set(event.target.checked ? bookId : null)}
+            />
+            <span>Сейчас записывается</span>
+          </label>
+          <p className="hub-dim hub-text">Бот принимает дубли этой книги</p>
+        </div>
+      ) : null}
+
       <div className="hub-card-actions">
-        <LinkButton to={recordingTo} size="sm" variant="secondary">Открыть запись</LinkButton>
+        <LinkButton to={recordingTo} size="sm" variant="secondary">Открыть сценарий</LinkButton>
       </div>
     </section>
   );

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { DataTable, type Column } from "../../ui";
 import { Icon } from "../Icon";
@@ -11,19 +11,12 @@ import { RoleDetailRow } from "./RoleDetailRow";
 import { DeadlineChip } from "../DeadlineChip";
 import { ActorPicker, type PickerDictor } from "./ActorPicker";
 
-/* The window is arithmetic over a row height, so the height has to be true: spacers of
-   `count × ROW_H` under rows that are actually taller make the table shorter than its
-   content, and every scroll re-renders a different window with a different real height.
-   That oscillation is the shaking, and the bottom of the list is never reachable.
-   This is a fallback only — the real height is measured from a rendered row below. */
-const ROW_H_FALLBACK = 40;
-const OVERSCAN = 40;
-/** below this many rows everything is rendered; windowing only pays off on long casts */
-const WINDOW_FROM = 120;
-
 const NARRATOR_HINT = "Рассказчик остаётся в нейтральной подаче";
 
-type TableItem = { kind: "row"; row: CastRow } | { kind: "spacer"; key: string; height: number };
+/* Строки рисуются все, без окна прокрутки. Окно считало строки одной высоты и потому
+   резало описание персонажа в одну строку; характеристика и заметка о голосе не
+   влезали (10.10). Самый большой каст на проде — 200 ролей, это браузеру по силам.
+   Если касты вырастут на порядок, окно нужно с замером каждой строки, а не одной. */
 
 export type CastSort = { key: CastSortKey; dir: CastSortDir } | null;
 
@@ -68,10 +61,12 @@ type CastTableProps = {
   defaultRate: number;
   /** the book, so a role's line count can lead to the lines themselves */
   bookId: string;
-  /** сколько проб пришло на роль; пусто — проб не присылали */
+  /** сколько претендентов (актёров с пробами) на роль — не файлов: четыре пробы
+      одного актёра — один претендент; пусто — проб не присылали */
   auditionCounts: ReadonlyMap<string, number>;
-  /** 👍/👎 автора на пробах роли — видны только тому, кому видны сами реакции */
-  auditionVotes: ReadonlyMap<string, { up: number; down: number }>;
+  /** лучшая оценка автора (1–10) среди претендентов роли; пусто — оценок нет или
+      смотрящему они не видны (дикторам и агентам оценки не приходят) */
+  auditionBest: ReadonlyMap<string, number | null>;
   onAuditions: (role: string) => void;
   /** пересечения ролей одного актёра, разложенные по имени роли */
   intersectionsByRole: Map<string, RoleIntersectionForRole[]>;
@@ -112,7 +107,7 @@ export function CastTable({
   actorPicker,
   bookId,
   auditionCounts,
-  auditionVotes,
+  auditionBest,
   onAuditions,
   intersectionsByRole,
   openDetail,
@@ -135,9 +130,6 @@ export function CastTable({
   empty,
   maxHeight,
 }: CastTableProps) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const frame = useRef<number | null>(null);
-  const [viewport, setViewport] = useState({ top: 0, height: 800 });
   const [openAliases, setOpenAliases] = useState<ReadonlySet<string>>(() => new Set());
   const toggleAliases = useCallback((id: string) => {
     setOpenAliases((current) => {
@@ -148,95 +140,32 @@ export function CastTable({
     });
   }, []);
 
-  const windowed = rows.length > WINDOW_FROM;
-  /* Measured from a row on screen rather than assumed: a column added later (the
-     «Персонаж» one, three lines tall) silently broke the arithmetic before. */
-  const [rowHeight, setRowHeight] = useState(ROW_H_FALLBACK);
-
-  const measure = useCallback((el: HTMLElement) => {
-    const top = el.scrollTop;
-    const height = el.clientHeight || 800;
-    setViewport((current) => {
-      // re-render only when the window moved by a handful of rows
-      if (Math.abs(current.top - top) < rowHeight * 8 && current.height === height) return current;
-      return { top, height };
-    });
-  }, [rowHeight]);
-
-  useEffect(() => {
-    const wrap = hostRef.current?.querySelector<HTMLElement>(".ui-table-wrap");
-    if (wrap) measure(wrap);
-  }, [measure, rows.length, loading]);
-
-  // one real row decides the arithmetic for all of them
-  useEffect(() => {
-    // a spacer is a `tr` too, and it is thousands of pixels tall — measure a real one
-    const row = [...(hostRef.current?.querySelectorAll<HTMLElement>("tbody tr") ?? [])].find(
-      (candidate) => !candidate.querySelector(".cast-spacer"),
-    );
-    const height = Math.round(row?.getBoundingClientRect().height || 0);
-    if (height > 8 && height !== rowHeight) setRowHeight(height);
-  }, [rows.length, loading, rowHeight]);
-
-  const onScrollCapture = (event: UIEvent<HTMLDivElement>) => {
-    if (!windowed) return;
-    const target = event.target as HTMLElement;
-    if (!target.classList.contains("ui-table-wrap")) return;
-    if (frame.current != null) return;
-    frame.current = window.requestAnimationFrame(() => {
-      frame.current = null;
-      measure(target);
-    });
-  };
-
-  useEffect(() => () => {
-    if (frame.current != null) window.cancelAnimationFrame(frame.current);
-  }, []);
-
-  const items = useMemo<TableItem[]>(() => {
-    if (!windowed) return rows.map((row) => ({ kind: "row", row }));
-    const first = Math.max(0, Math.floor(viewport.top / rowHeight) - OVERSCAN);
-    const last = Math.min(rows.length, Math.ceil((viewport.top + viewport.height) / rowHeight) + OVERSCAN);
-    const out: TableItem[] = [];
-    if (first > 0) out.push({ kind: "spacer", key: "spacer-top", height: first * rowHeight });
-    for (let index = first; index < last; index += 1) out.push({ kind: "row", row: rows[index] });
-    if (last < rows.length) out.push({ kind: "spacer", key: "spacer-bottom", height: (rows.length - last) * rowHeight });
-    return out;
-  }, [rows, windowed, viewport, rowHeight]);
-
-  const columns = useMemo<Column<TableItem>[]>(() => {
-    const cell = (render: (row: CastRow) => ReactNode, spacer?: boolean) => (item: TableItem) => {
-      if (item.kind === "spacer") return spacer ? <div className="cast-spacer" style={{ height: item.height }} aria-hidden="true" /> : null;
-      return render(item.row);
-    };
+  const columns = useMemo<Column<CastRow>[]>(() => {
     return [
       {
         key: "swatch",
         header: <span className="cast-sr">Цвет</span>,
         className: "cast-col-swatch",
         nowrap: true,
-        render: cell(
-          (row) => (
-            <button
-              type="button"
-              className="cast-swatch"
-              style={characterSwatchStyle(row)}
-              disabled={row.is_narrator}
-              title={row.is_narrator ? NARRATOR_HINT : `Изменить цвет роли ${row.name}`}
-              aria-label={row.is_narrator ? NARRATOR_HINT : `Изменить цвет роли ${row.name}`}
-              onClick={() => !row.is_narrator && onSwatchClick(row)}
-            >
-              <span aria-hidden="true">{row.is_narrator ? "Р" : row.name.slice(0, 1).toUpperCase()}</span>
-            </button>
-          ),
-          true,
+        render: (row) => (
+          <button
+            type="button"
+            className="cast-swatch"
+            style={characterSwatchStyle(row)}
+            disabled={row.is_narrator}
+            title={row.is_narrator ? NARRATOR_HINT : `Изменить цвет роли ${row.name}`}
+            aria-label={row.is_narrator ? NARRATOR_HINT : `Изменить цвет роли ${row.name}`}
+            onClick={() => !row.is_narrator && onSwatchClick(row)}
+          >
+            <span aria-hidden="true">{row.is_narrator ? "Р" : row.name.slice(0, 1).toUpperCase()}</span>
+          </button>
         ),
       },
       {
         key: "role",
         header: <SortHeader label="Роль" column="role" sort={sort} onSort={onSort} />,
         className: "cast-col-role",
-        render: cell((row) => (
+        render: (row) => (
           <span className="cast-role-cell">
             <button
               type="button"
@@ -255,13 +184,13 @@ export function CastTable({
               onRename={onRename}
             />
           </span>
-        )),
+        ),
       },
       {
         key: "actor",
         header: <SortHeader label="Актёр" column="actor" sort={sort} onSort={onSort} />,
         className: "cast-col-actor",
-        render: cell((row) =>
+        render: (row) =>
           <>
             {canAssignActor && !canAssignActor(row) ? (
               <span className="cast-actor-static">{row.actor_name || "—"}</span>
@@ -292,13 +221,13 @@ export function CastTable({
             )}
             <DeadlineChip deadline={row.deadline} />
           </>
-        ),
+        ,
       },
       {
         key: "who",
         header: "Персонаж",
         className: "cast-col-who",
-        render: cell((row) => (
+        render: (row) => (
           <span className="cast-who">
             {/* what the pipeline guessed is a draft: all three lines edit in place */}
             <InlineCell
@@ -326,7 +255,7 @@ export function CastTable({
               onCommit={(next) => onSaveAbout(row, { note: next })}
             />
           </span>
-        )),
+        ),
       },
       {
         key: "lines",
@@ -334,19 +263,20 @@ export function CastTable({
         align: "right",
         className: "cast-col-lines",
         nowrap: true,
-        render: cell((row) =>
+        render: (row) =>
           row.lines_count > 0 && bookId ? (
             <Link
               className="cast-lines num"
-              to={`/reader/role/${encodeURIComponent(bookId)}?role=${encodeURIComponent(row.name)}`}
-              title={`Все реплики роли «${row.name}» по всей книге, с контекстом`}
+              to={`/reader/role/${encodeURIComponent(bookId)}?role=${encodeURIComponent(row.name)}&print=1`}
+              target="_blank"
+              rel="noopener"
+              title={`PDF со всеми репликами роли «${row.name}», с контекстом — откроется в новой вкладке`}
             >
               {row.lines_count.toLocaleString("ru-RU")}
             </Link>
           ) : (
             <span className="num">{row.lines_count.toLocaleString("ru-RU")}</span>
           ),
-        ),
       },
       {
         key: "auditions",
@@ -354,7 +284,7 @@ export function CastTable({
         align: "right",
         className: "cast-col-auditions",
         nowrap: true,
-        render: cell((row) => {
+        render: (row) => {
           const count = auditionCounts.get(row.name) || 0;
           if (!count) return <span className="cast-muted">—</span>;
           return (
@@ -366,17 +296,17 @@ export function CastTable({
             >
               {count}
               {(() => {
-                const votes = auditionVotes.get(row.name);
-                if (!votes || (!votes.up && !votes.down)) return null;
+                const best = auditionBest.get(row.name);
+                if (!best) return null;
                 return (
-                  <span className="cast-aud-votes" aria-label={`Автор: подходит ${votes.up}, не подходит ${votes.down}`}>
-                    {votes.up ? `👍${votes.up}` : ""}{votes.up && votes.down ? " " : ""}{votes.down ? `👎${votes.down}` : ""}
+                  <span className="cast-aud-best" aria-label={`Лучшая оценка автора: ${best} из 10`} title="Лучшая оценка автора среди проб">
+                    {best}/10
                   </span>
                 );
               })()}
             </button>
           );
-        }),
+        },
       },
       {
         key: "chapters",
@@ -384,7 +314,7 @@ export function CastTable({
         align: "right",
         className: "cast-col-chapters",
         nowrap: true,
-        render: cell((row) => {
+        render: (row) => {
           const got = (row.appears_in_chapters || []).length;
           // Янтарь — только когда извлечение сделало заявку: пустой `claimed_chapters`
           // значит «про роль не говорили», а не «назвали ноль глав» (см. `chapterMismatch`).
@@ -398,14 +328,14 @@ export function CastTable({
               {got}<span className="cast-chapters-claimed">/{mismatch.claimed}</span>
             </span>
           );
-        }),
+        },
       },
       {
         key: "intersections",
         header: "Пересечения",
         className: "cast-col-cross",
         nowrap: true,
-        render: cell((row) => {
+        render: (row) => {
           const pending = (intersectionsByRole.get(row.name) || []).filter((item) => !item.acknowledged);
           if (!pending.length) return <span className="cast-muted">—</span>;
           // Порядок задаёт сервер: `role_intersections` сортирует непризнанные пары
@@ -426,17 +356,15 @@ export function CastTable({
               {label}{pending.length > 1 ? ` +${pending.length - 1}` : ""}
             </button>
           );
-        }),
+        },
       },
     ];
-  }, [sort, onSort, onSwatchClick, onSaveActor, canAssignActor, onRename, savingIds, actorNames, openAliases, toggleAliases, auditionCounts, auditionVotes, onAuditions, bookId, onSaveAbout, intersectionsByRole, onToggleDetail, openDetail]);
+  }, [sort, onSort, onSwatchClick, onSaveActor, canAssignActor, onRename, savingIds, actorNames, openAliases, toggleAliases, auditionCounts, auditionBest, onAuditions, bookId, onSaveAbout, intersectionsByRole, onToggleDetail, openDetail]);
 
   // The disclosure triangle in the role column drives this: a row not in
   // `openDetail` costs nothing (it renders as `null`, which `DataTable` skips).
   const renderDetail = useCallback(
-    (item: TableItem) => {
-      if (item.kind !== "row") return null;
-      const row = item.row;
+    (row: CastRow) => {
       if (!openDetail.has(row.character_id)) return null;
       const intersections = (intersectionsByRole.get(row.name) || []).filter((entry) => !entry.acknowledged);
       return (
@@ -457,12 +385,12 @@ export function CastTable({
   );
 
   return (
-    <div ref={hostRef} className="cast-table" onScrollCapture={onScrollCapture}>
+    <div className="cast-table">
       <DataTable
         aria-label="Каст книги"
         columns={columns}
-        rows={items}
-        rowKey={(item) => (item.kind === "spacer" ? item.key : item.row.character_id)}
+        rows={rows}
+        rowKey={(row) => row.character_id}
         loading={loading}
         skeletonRows={8}
         empty={empty}
