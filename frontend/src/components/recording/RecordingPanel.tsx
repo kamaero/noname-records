@@ -1,7 +1,8 @@
 /**
- * The right-hand «Запись» panel: which book, which role, which chapter — then the
- * batch drop zone and the chapter's last files. The reader on the left is the
- * main object; this panel only names what the uploads get filed under.
+ * The «Загрузка» form: which book, which role, which chapter, what the file becomes —
+ * then the batch drop zone and the chapter's last files. Until 29.10 it was a narrow
+ * sticky panel beside the script; on its own page it gets two columns: the choice on
+ * the left, the files on the right.
  */
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -14,7 +15,7 @@ import "./recording.css";
 
 export type PanelBook = { id: string; title: string };
 export type PanelRole = { name: string; lines: number; actor?: string };
-export type PanelChapter = { id: string; index: number; title: string };
+export type PanelChapter = { id: string; index: number; title: string; released?: boolean };
 
 const CUSTOM = "\u0000custom";
 
@@ -209,211 +210,229 @@ export function RecordingPanel(props: RecordingPanelProps) {
         : undefined;
 
   return (
-    <aside className="rec-panel panel" aria-label="Запись">
-      <div className="rec-panel-head">
-        <h2 className="rec-panel-title">Запись</h2>
+    <div className="rec-panel panel">
+      <div className="rec-col rec-col--choose">
         {!canUploadForOthers ? (
-          <span className="rec-panel-actor muted" title="Имя актёра для файлов">{actorName || "—"}</span>
+          <p className="rec-book-line">
+            <span className="rec-label">Записал</span>
+            <strong title="Имя актёра для файлов">{actorName || "—"}</strong>
+          </p>
         ) : null}
-      </div>
 
-      {/* Имя актёра решает, чья это запись: по нему считается покрытие, уходят
-          уведомления и складывается смета. Менять его вправе только те, к кому
-          попадают записи, присланные мимо системы. */}
-      {canUploadForOthers && onActorName ? (
-        <Field label="Записал" hint="Чьё имя встанет на файлы. Оставьте своё, если запись ваша.">
-          {(field) => (
-            <>
-              <input
-                {...field}
-                className="ui-input"
-                type="text"
-                list="rec-actor-names"
-                value={actorName}
-                placeholder="Имя актёра как в касте"
-                onChange={(event) => onActorName(event.target.value)}
-              />
-              <datalist id="rec-actor-names">
-                {(actorNames || []).map((name) => (
-                  <option key={name} value={name} />
+        {/* Имя актёра решает, чья это запись: по нему считается покрытие, уходят
+            уведомления и складывается смета. Менять его вправе только те, к кому
+            попадают записи, присланные мимо системы. */}
+        {canUploadForOthers && onActorName ? (
+          <Field label="Записал" hint="Чьё имя встанет на файлы. Оставьте своё, если запись ваша.">
+            {(field) => (
+              <>
+                <input
+                  {...field}
+                  className="ui-input"
+                  type="text"
+                  list="rec-actor-names"
+                  value={actorName}
+                  placeholder="Имя актёра как в касте"
+                  onChange={(event) => onActorName(event.target.value)}
+                />
+                <datalist id="rec-actor-names">
+                  {(actorNames || []).map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </>
+            )}
+          </Field>
+        ) : null}
+
+        {notice ? <p className="ui-note ui-note--info rec-note">{notice}</p> : null}
+
+        {books.length > 1 ? (
+          <Field label="Книга">
+            {(field) => (
+              <select {...field} className="ui-input rec-select" value={bookId} onChange={(event) => onBook(event.target.value)}>
+                {books.map((book) => (
+                  <option key={book.id} value={book.id}>
+                    {book.title}
+                  </option>
                 ))}
-              </datalist>
-            </>
-          )}
-        </Field>
-      ) : null}
+              </select>
+            )}
+          </Field>
+        ) : books.length === 1 ? (
+          <p className="rec-book-line">
+            <span className="rec-label">Книга</span>
+            <strong>{books[0].title}</strong>
+          </p>
+        ) : null}
 
-      {notice ? <p className="ui-note ui-note--info rec-note">{notice}</p> : null}
-
-      {books.length > 1 ? (
-        <Field label="Книга">
+        <Field label="Роль" hint={roleHint}>
           {(field) => (
-            <select {...field} className="ui-input rec-select" value={bookId} onChange={(event) => onBook(event.target.value)}>
-              {books.map((book) => (
-                <option key={book.id} value={book.id}>
-                  {book.title}
-                </option>
-              ))}
-            </select>
+            <div className="rec-role">
+              <select
+                {...field}
+                className="ui-input rec-select"
+                value={selectValue}
+                disabled={loading}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === CUSTOM) {
+                    setCustom(true);
+                    onRole("");
+                    return;
+                  }
+                  setCustom(false);
+                  onRole(value);
+                }}
+              >
+                <option value="">— выберите роль —</option>
+                {offered.map((item) => {
+                  // Роль утверждена за другим (имя без «?») — пробу на неё не примут (решение
+                  // владельца 05.10); показываем, но выбрать нельзя, чтобы не писать впустую.
+                  const holder = (item.actor || "").trim();
+                  // Свои роли сервер узнаёт нестрогим сравнением имён (`myRoles`) — «Фхыфосов
+                  // Сергей» в касте и «Примерцосезбсдв Примерлаяюмнфшв» в учётке; строгое сравнение здесь
+                  // заперло бы человеку его же роль.
+                  const mine = sameActor(holder, actorName) || myRoles.some((own) => own.name === item.name);
+                  const taken = Boolean(holder) && !holder.endsWith("?") && !mine;
+                  return (
+                    <option key={item.name} value={item.name} disabled={taken}>
+                      {item.name} · {item.lines}{taken ? " · утверждена" : ""}
+                    </option>
+                  );
+                })}
+                <option value={CUSTOM}>Другая роль…</option>
+              </select>
+              {custom ? (
+                <input
+                  className="ui-input"
+                  type="text"
+                  value={role}
+                  placeholder="Имя роли как в касте"
+                  aria-label="Имя роли"
+                  onChange={(event) => onRole(event.target.value)}
+                />
+              ) : null}
+              {role && bookId ? (
+                <Link
+                  className="rec-role-all"
+                  to={roleScriptHref(bookId, role, "/recording/role", roleScriptSearch)}
+                  title="Все реплики этой роли по всей книге, с контекстом"
+                >
+                  Все реплики роли в книге →
+                </Link>
+              ) : null}
+            </div>
           )}
         </Field>
-      ) : books.length === 1 ? (
-        <p className="rec-book-line">
-          <span className="rec-label">Книга</span>
-          <strong>{books[0].title}</strong>
-        </p>
-      ) : null}
 
-      <Field label="Роль" hint={roleHint}>
-        {(field) => (
-          <div className="rec-role">
+        {/* У пробы главу не требуют — назвать можно, но роль ещё не назначена. Именно
+            требование главы и загоняло слово «пробы» внутрь имени файла. */}
+        <Field label={chapterOptional ? "Глава, из которой читали" : "Глава"}>
+          {(field) => (
             <select
               {...field}
               className="ui-input rec-select"
-              value={selectValue}
-              disabled={loading}
-              onChange={(event) => {
-                const value = event.target.value;
-                if (value === CUSTOM) {
-                  setCustom(true);
-                  onRole("");
-                  return;
-                }
-                setCustom(false);
-                onRole(value);
-              }}
+              value={chapterId}
+              disabled={loading || !chapters.length}
+              onChange={(event) => onChapter(event.target.value)}
             >
-              <option value="">— выберите роль —</option>
-              {offered.map((item) => (
-                <option key={item.name} value={item.name}>
-                  {item.name} · {item.lines}
+              {chapterOptional ? <option value="">— не указана —</option> : null}
+              {!chapters.length && !chapterOptional ? <option value="">— нет опубликованных глав —</option> : null}
+              {chapters.map((chapter) => (
+                <option key={chapter.id} value={chapter.id}>
+                  {chapter.index}. {chapter.title || "Без названия"}{chapter.released ? " · сдана" : ""}
                 </option>
               ))}
-              <option value={CUSTOM}>Другая роль…</option>
             </select>
-            {custom ? (
-              <input
-                className="ui-input"
-                type="text"
-                value={role}
-                placeholder="Имя роли как в касте"
-                aria-label="Имя роли"
-                onChange={(event) => onRole(event.target.value)}
-              />
-            ) : null}
-            {role && bookId ? (
-              <Link
-                className="rec-role-all"
-                to={roleScriptHref(bookId, role, "/recording/role", roleScriptSearch)}
-                title="Все реплики этой роли по всей книге, с контекстом"
+          )}
+        </Field>
+
+        <section className="rec-section" aria-label={audition ? "Проба" : "Дубль"}>
+          {/* Диктора не спрашивают, проба это или дубль: он не обязан помнить, на что
+              утверждён, — а система обязана. Ему показывают, что из этого вышло. */}
+          <div className={audition ? "rec-kind-badge is-audition" : "rec-kind-badge"}>
+            <strong>
+              {audition ? (takenByOther ? `Проба — а роль за «${roleOwner}»` : "Проба на роль") : "Дубль утверждённой роли"}
+            </strong>
+            <span>
+              {!audition
+                ? `Роль за «${actorName}» — файл встанет в запись главы.`
+                : takenByOther
+                  ? `Файл уйдёт в пробы «${actorName}». Если это запись «${roleOwner}» — впишите его в поле «Записал» выше.`
+                  : "Роль пока ничья — файл уйдёт в пробы. Главу можно не указывать, попыток может быть несколько."}
+            </span>
+          </div>
+
+          {/* Не образец, а именно то имя, которого ждут от этого файла. */}
+          {expectedFilename ? (
+            <div className="rec-naming">
+              <span className="rec-naming-label">Назовите файл так:</span>
+              <code className="rec-naming-name mono">{expectedFilename}</code>
+              <button
+                type="button"
+                className="rec-naming-copy"
+                title="Скопировать имя"
+                onClick={() => void navigator.clipboard?.writeText(expectedFilename)}
               >
-                Все реплики роли в книге →
-              </Link>
-            ) : null}
-          </div>
-        )}
-      </Field>
-
-      {/* У пробы главу не требуют — назвать можно, но роль ещё не назначена. Именно
-          требование главы и загоняло слово «пробы» внутрь имени файла. */}
-      <Field label={chapterOptional ? "Глава, из которой читали" : "Глава"}>
-        {(field) => (
-          <select
-            {...field}
-            className="ui-input rec-select"
-            value={chapterId}
-            disabled={loading || !chapters.length}
-            onChange={(event) => onChapter(event.target.value)}
-          >
-            {chapterOptional ? <option value="">— не указана —</option> : null}
-            {!chapters.length && !chapterOptional ? <option value="">— нет опубликованных глав —</option> : null}
-            {chapters.map((chapter) => (
-              <option key={chapter.id} value={chapter.id}>
-                {chapter.index}. {chapter.title || "Без названия"}
-              </option>
-            ))}
-          </select>
-        )}
-      </Field>
-
-      <section className="rec-section" aria-label={audition ? "Пробы" : "Дубли"}>
-        {/* Диктора не спрашивают, проба это или дубль: он не обязан помнить, на что
-            утверждён, — а система обязана. Ему показывают, что из этого вышло. */}
-        <div className={audition ? "rec-kind-badge is-audition" : "rec-kind-badge"}>
-          <strong>
-            {audition ? (takenByOther ? `Проба — а роль за «${roleOwner}»` : "Проба на роль") : "Дубль утверждённой роли"}
-          </strong>
-          <span>
-            {!audition
-              ? `Роль за «${actorName}» — файл встанет в запись главы.`
-              : takenByOther
-                ? `Файл уйдёт в пробы «${actorName}». Если это запись «${roleOwner}» — впишите его в поле «Записал» выше.`
-                : "Роль пока ничья — файл уйдёт в пробы. Главу можно не указывать, попыток может быть несколько."}
-          </span>
-        </div>
-
-        {/* Не образец, а именно то имя, которого ждут от этого файла. */}
-        {expectedFilename ? (
-          <div className="rec-naming">
-            <span className="rec-naming-label">Назовите файл так:</span>
-            <code className="rec-naming-name mono">{expectedFilename}</code>
-            <button
-              type="button"
-              className="rec-naming-copy"
-              title="Скопировать имя"
-              onClick={() => void navigator.clipboard?.writeText(expectedFilename)}
-            >
-              Скопировать
-            </button>
-          </div>
-        ) : (
-          <p className="rec-naming-empty muted">
-            Выберите роль — и здесь появится точное имя, которым назвать файл.
+                Скопировать
+              </button>
+            </div>
+          ) : (
+            <p className="rec-naming-empty muted">
+              Выберите роль — и здесь появится точное имя, которым назвать файл.
+            </p>
+          )}
+          <p className="rec-naming-rule muted">
+            Утверждённая роль — <code className="mono">KP_Ch01_Dgarnin_Zotov.wav</code>, проба —{" "}
+            <code className="mono">KP_Ch01_Osniva_NataliGolubeva_proba.wav</code>. Книга, глава, роль, актёр — в этом порядке.{" "}
+            <code className="mono">Ch01</code> — номер главы: <code className="mono">Ch01</code> — первая, <code className="mono">Ch34</code> — тридцать
+            четвёртая. Глава берётся из выбора выше, а не из имени файла; если они разойдутся, система не примет файл.
           </p>
-        )}
-        <p className="rec-naming-rule muted">
-          Утверждённая роль — <code className="mono">KP_Ch01_Dgarnin_Zotov.wav</code>, проба —{" "}
-          <code className="mono">KP_Ch01_Osniva_NataliGolubeva_proba.wav</code>. Книга, глава, роль, актёр — в этом порядке.{" "}
-          <code className="mono">Ch01</code> — номер главы: <code className="mono">Ch01</code> — первая, <code className="mono">Ch34</code> — тридцать
-          четвёртая. Глава берётся из выбора выше, а не из имени файла; если они разойдутся, система не примет файл.
-        </p>
-        {/* Правило хранения исходников: запись на сервере лежит в одном экземпляре,
-            и без копии у диктора её неоткуда восстановить, если она пропадёт. */}
-        <p className="rec-naming-rule muted">
-          Не удаляйте исходники у себя до выхода последней главы и сохраните копию в надёжном месте.
-          На сервере запись хранится в одном экземпляре — восстановить её, если она пропадёт, будет неоткуда.
-        </p>
-        <BatchUpload
-          files={upload.files}
-          preview={upload.preview}
-          status={upload.status}
-          isUploading={upload.isUploading}
-          progress={upload.progress}
-          blocked={upload.blocked}
-          disabled={Boolean(upload.disabledReason)}
-          disabledReason={upload.disabledReason}
-          confirmChapter={upload.confirmChapter}
-          chapterMismatchRefused={upload.chapterMismatchRefused}
-          onSelect={upload.onSelect}
-          onClear={upload.onClear}
-          onUpload={upload.onUpload}
-          onConfirmChapter={upload.onConfirmChapter}
-        />
-      </section>
+          {/* Правило хранения исходников: запись на сервере лежит в одном экземпляре,
+              и без копии у диктора её неоткуда восстановить, если она пропадёт. */}
+          <p className="rec-naming-rule muted">
+            Не удаляйте исходники у себя до выхода последней главы и сохраните копию в надёжном месте.
+            На сервере запись хранится в одном экземпляре — восстановить её, если она пропадёт, будет неоткуда.
+          </p>
+        </section>
+      </div>
 
-      <section className="rec-section" aria-label="Последние файлы">
-        <h3 className="rec-label">Последние файлы главы</h3>
-        <DataTable
-          className="rec-table"
-          columns={fileColumns}
-          rows={recentFiles}
-          rowKey={(row) => row.id || row.canonical_filename}
-          loading={loading}
-          skeletonRows={2}
-          empty={<p className="rec-table-empty">В этой главе пока ничего не загружено.</p>}
-          aria-label="Последние загруженные файлы"
-        />
-      </section>
-    </aside>
+      <div className="rec-col rec-col--files">
+        <section className="rec-section" aria-label="Файлы">
+          <h3 className="rec-label">Файлы</h3>
+          <BatchUpload
+            files={upload.files}
+            preview={upload.preview}
+            status={upload.status}
+            isUploading={upload.isUploading}
+            progress={upload.progress}
+            blocked={upload.blocked}
+            disabled={Boolean(upload.disabledReason)}
+            disabledReason={upload.disabledReason}
+            confirmChapter={upload.confirmChapter}
+            chapterMismatchRefused={upload.chapterMismatchRefused}
+            onSelect={upload.onSelect}
+            onClear={upload.onClear}
+            onUpload={upload.onUpload}
+            onConfirmChapter={upload.onConfirmChapter}
+          />
+        </section>
+
+        <section className="rec-section" aria-label="Последние файлы">
+          <h3 className="rec-label">Последние файлы главы</h3>
+          <DataTable
+            className="rec-table"
+            columns={fileColumns}
+            rows={recentFiles}
+            rowKey={(row) => row.id || row.canonical_filename}
+            loading={loading}
+            skeletonRows={2}
+            empty={<p className="rec-table-empty">В этой главе пока ничего не загружено.</p>}
+            aria-label="Последние загруженные файлы"
+          />
+        </section>
+      </div>
+    </div>
   );
 }

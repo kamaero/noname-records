@@ -139,9 +139,17 @@ def needs_password_setup() -> bool:
     return not settings.admin_password_hash.strip()
 
 
-def can_react_to_auditions(request: Request) -> bool:
-    """👍/👎 на пробу. Автор — с 26.09; владелец студии (admin) — с 03.10, «как у автора»:
-    реакция одна на пробу, действует последний голос, 👎 через 15 минут шлёт вежливый отказ.
-    Агент и диктор — нет: за 👎 следует письмо человеку."""
+def audition_score_lanes(request: Request) -> list[str]:
+    """Какие шкалы на пробе этот человек вправе нажимать.
+
+    Автор — верхняя дорожка, владелец студии (admin или вход владельца через Telegram) —
+    нижняя. Агент и диктор оценок не ставят и не видят: «4 из 10» человеку больнее,
+    чем отсутствие ответа.
+    """
     roles = session_roles(request)
-    return "author" in roles or "admin" in roles or is_owner_telegram(request)
+    lanes = []
+    if "author" in roles:
+        lanes.append("author")
+    if "admin" in roles or is_owner_telegram(request):
+        lanes.append("studio")
+    return lanes

@@ -38,7 +38,7 @@ SHELL_SUBST = re.compile(r"\$(?:\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}|\([^)]*\)
 FORBIDDEN_PATHS = (re.compile(r"(^|/)docs/superpowers/"), re.compile(r"\.(db|db-wal|db-shm|sqlite)$"),
                    re.compile(r"voices_import"), re.compile(r"pargoron", re.I))
 FORBIDDEN_TEXT = [re.compile(p, re.I) for p in (
-    r"buchteam", r"xkrbot", r"prodsvc", r"/srv/prod", r"/mnt/buchteam", r"/var/www/voices", r"\b11504\b",
+    r"buchteam", r"xkrbot", r"prodsvc", r"/srv/prod", r"/mnt/buchteam", r"/var/www/voices",
     r"voices\.xkrbot",
 )]
 

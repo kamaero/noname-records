@@ -28,6 +28,7 @@ def _tracks_of(factory, relative=False):
         return ambient_session_tracks(db, "c1", starts, end, relative=relative)
 
 
+@pytest.mark.usefixtures("no_breath")
 class TestAmbientTracksInTheSession:
     def test_scenes_alternate_between_two_tracks_from_the_scene_start(self, factory):
         _scenes(factory)

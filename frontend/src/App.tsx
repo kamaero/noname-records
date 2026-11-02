@@ -8,9 +8,11 @@ import { SkeletonScreen } from "./components/Skeleton";
 import { BookCommandCenterPage } from "./pages/BookCommandCenterPage";
 import { IllustrationsPage } from "./pages/IllustrationsPage";
 import { CastPage } from "./pages/CastPage";
+import { CastEntryPage } from "./pages/CastEntryPage";
 import { CommandCenterPage } from "./pages/CommandCenterPage";
 import { HelpPage } from "./pages/HelpPage";
 import { RecordingPage } from "./pages/RecordingPage";
+import { TakesPage } from "./pages/TakesPage";
 import { AsrCoveragePage } from "./pages/AsrCoveragePage";
 import { RoleScriptPage } from "./v2/RoleScriptPage";
 import { LogPage } from "./pages/LogPage";
@@ -52,6 +54,7 @@ function Layout() {
         <Route path="/books/:bookId/roles" element={<BookSubpageRedirect sub="cast" />} />
         <Route path="/books/:bookId/illustrations" element={<IllustrationsPage />} />
         <Route path="/recording" element={<RecordingPage />} />
+        <Route path="/takes" element={<TakesPage />} />
         <Route path="/asr" element={<AsrCoveragePage />} />
         <Route path="/reader" element={<PreparationRoute me={me}><ReaderEntryPage /></PreparationRoute>} />
         <Route
@@ -66,6 +69,7 @@ function Layout() {
         <Route path="/upload" element={<UploadPage />} />
         <Route path="/users" element={<UsersPage me={me} />} />
         <Route path="/dictors" element={<DictorsPage me={me} />} />
+        <Route path="/cast" element={<CastEntryPage />} />
         <Route path="/auditions" element={<AuditionsPage />} />
         <Route path="/settings" element={<SettingsPage me={me} />} />
         <Route path="/log" element={<LogPage me={me} />} />

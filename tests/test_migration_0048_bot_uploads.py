@@ -1,0 +1,28 @@
+"""Миграция 0048: файлы проб, присланные боту, ждут выбора роли (пакет C2)."""
+import importlib.util
+from pathlib import Path
+
+import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+
+MIGRATION = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0051_bot_uploads.py"
+
+
+def _run(conn, step):
+    spec = importlib.util.spec_from_file_location("m0048", MIGRATION)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    with Operations.context(MigrationContext.configure(conn)):
+        getattr(module, step)()
+
+
+def test_upgrade_twice_then_downgrade():
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as conn:
+        _run(conn, "upgrade")
+        _run(conn, "upgrade")
+        columns = {c["name"] for c in sa.inspect(conn).get_columns("bot_uploads")}
+        assert {"id", "telegram_user_id", "file_id", "kind", "character_id", "state", "audio_id"} <= columns
+        _run(conn, "downgrade")
+        assert "bot_uploads" not in sa.inspect(conn).get_table_names()

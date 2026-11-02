@@ -537,3 +537,39 @@ class TestOrdinalThousandsDoNotGainAnExtraOne:
 
     def test_a_bare_thousand_and_first_has_no_leading_one(self):
         assert ordinal_words(1001) == ["тысяча", "первый"]
+
+
+class TestAShortLineDoesNotJumpOverTheNextOne:
+    """Пропущенная короткая реплика не должна смещать курсор за прочитанную соседку."""
+
+    EXPECTED = [
+        "Посланник пришёл.",
+        "Нет,",
+        "Я очень устала и потому попрошу вас подождать до завтрашнего утра.",
+        "Я приготовила письмо, господин Вейрон,",
+        "Мы отправимся в путь, но сначала не забудем забрать карту и фонарь.",
+    ]
+    SPOKEN = _spoken(
+        ("Посланник пришёл.", 1.0),
+        ("Я приготовила письмо, господин Фейрон.", 3.0),
+        ("Мы отправимся в путь, но сначала не забудем забрать карту и фонарь.", 5.0),
+    )
+
+    def test_the_lines_that_were_read_are_found(self):
+        result = align_transcript(self.EXPECTED, self.SPOKEN)
+
+        assert [line["matched"] for line in result["lines"]] == [True, False, False, True, True]
+
+    def test_a_short_line_right_where_the_reading_is_still_counts(self):
+        expected = ["Посланник пришёл.", "Нет,", "Я приготовила письмо, господин Вейрон,"]
+        spoken = _spoken(("Посланник пришёл.", 1.0), ("Нет.", 0.5), ("Я приготовила письмо, господин Фейрон.", 3.0))
+
+        assert [line["matched"] for line in align_transcript(expected, spoken)["lines"]] == [True, True, True]
+
+    def test_a_short_neighbour_does_not_count_as_jumped_over(self):
+        """Замер по проду: «А?..» находится в любом куске, где есть слово «а», и без
+        условия о длине соседки правило теряло точные совпадения вроде «Что это?»."""
+        expected = ["Что это?", "А?..", "Спит дракон под горой,"]
+        spoken = _spoken(("а ну-ка", 1.0), ("Что это?", 1.0), ("Спит дракон под горой.", 2.0))
+
+        assert align_transcript(expected, spoken)["lines"][0]["matched"] is True

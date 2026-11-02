@@ -827,6 +827,7 @@ class TestTheSessionInsideTheArchive:
         assert relative in names, "сессия зовёт файл ровно тем именем, под которым он лежит рядом"
 
 
+@pytest.mark.usefixtures("no_breath")
 class TestTheSessionReadsTopToBottom:
     """Клипы стоят в порядке главы, а не в порядке файла своего актёра.
 
@@ -960,6 +961,7 @@ class TestTheSessionReadsTopToBottom:
         assert clips[1][0] > clips[0][1], "между ними осталось место под пропущенную"
 
 
+@pytest.mark.usefixtures("no_breath")
 class TestWhenTheRoleWasReadSeveralTimes:
     """Все подходы попадают на дорожку роли, а глава от этого не разъезжается.
 
@@ -1101,6 +1103,7 @@ class TestWhenTheRoleWasReadSeveralTimes:
         )
 
 
+@pytest.mark.usefixtures("no_breath")
 class TestSessionsBuiltBeforeTakesExisted:
     """Главы, распознанные до появления подходов, хранят одно вхождение и ключа `takes`
     не имеют вовсе. Перераспознавать их ради сессии — минута машинного времени на файл,
@@ -1314,6 +1317,7 @@ class TestCoverageCountsTheWholeChapter:
         assert row["asr_coverage"] == pytest.approx(0.8)
 
 
+@pytest.mark.usefixtures("no_breath")
 class TestABorrowedLineIsCutFromTheDonorFile:
     def test_the_clip_comes_from_the_donor_and_lies_on_the_line_role_track(self, monkeypatch, tmp_path):
         from types import SimpleNamespace
@@ -1358,6 +1362,7 @@ class TestABorrowedLineIsCutFromTheDonorFile:
         assert placed == []
 
 
+@pytest.mark.usefixtures("no_breath")
 class TestTheLatestUploadedFileWins:
     """Реплика бывает в нескольких файлах роли: общий файл и фикс, старый и присланный
     заново. Звучит последний присланный — его прислали, чтобы поправить именно эту
@@ -1402,6 +1407,7 @@ class TestTheLatestUploadedFileWins:
         assert (placed[1][1].source_in, placed[1][1].source_out) == (2.0, 3.0)
 
 
+@pytest.mark.usefixtures("no_breath")
 class TestStartsRemembersTheEarliestClipOfAParagraph:
     """`starts[segment_id]` — начало САМОГО РАННЕГО клипа абзаца, а не первого обработанного:
     когда одна роль уже занята подходами предыдущей реплики, её офсет обгоняет общие часы,
@@ -1440,3 +1446,320 @@ class TestStartsRemembersTheEarliestClipOfAParagraph:
                          files_by_id={"a-A": role_a, "a-B": role_b}, starts=starts)
 
         assert starts["s0"] == pytest.approx(3.7), "роль B встала раньше, чем продолжение роли A"
+
+
+class TestCoverageCountsParagraphsNotPieces:
+    """«Карта», глава 1 (24.10): 112% — 219 найденных из 195 реплик.
+
+    Реплика — абзац, а сверка считает куски роли: слова автора режут реплику Хдыбдяра
+    на два-три куска (27 абзацев — 37 кусков). Найденные куски, делённые на абзацы,
+    перевалили за сто процентов и сказали бы «готово» даже при пропуске.
+    """
+
+    def _job(self, db, audio_id, *, pieces, missing=()):
+        import json
+
+        from app.models import AsrJob
+
+        db.add(AsrJob(audio_file_id=audio_id, status="done", coverage=(pieces - len(missing)) / pieces,
+                      alignment_json=json.dumps({"missing": list(missing), "total": pieces, "lines": []})))
+        db.flush()
+
+    def _book(self, monkeypatch, chapter, counts):
+        monkeypatch.setattr("app.services.chapter_delivery.book_role_counts_by_chapter",
+                            lambda db, book_id: {chapter.id: counts})
+        _roles(monkeypatch, counts)
+
+    def test_a_role_read_whole_is_exactly_its_paragraphs(self, studio, monkeypatch):
+        from app.services.chapter_delivery import book_recording_status
+
+        db, book, chapter = studio
+        self._book(monkeypatch, chapter, {"Хдыбдяр": 27})
+        self._job(db, _take(db, chapter, role="Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв").id, pieces=37)
+
+        row = book_recording_status(db, book.id)["chapters"][0]
+
+        assert (row["matched_lines"], row["total_lines"]) == (27, 27)
+        assert row["asr_coverage"] == pytest.approx(1.0)
+
+    def test_a_missing_piece_costs_its_paragraph(self, studio, monkeypatch):
+        """Пропущенный кусок портит не больше одного абзаца — считаем худшее: каждый в своём."""
+        from app.services.chapter_delivery import book_recording_status
+
+        db, book, chapter = studio
+        self._book(monkeypatch, chapter, {"Хдыбдяр": 10})
+        self._job(db, _take(db, chapter, role="Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв").id, pieces=15, missing=[3, 9])
+
+        row = book_recording_status(db, book.id)["chapters"][0]
+
+        assert row["matched_lines"] == 8 and row["asr_coverage"] == pytest.approx(0.8)
+        assert row["missing_lines"] == 2
+
+    def test_a_take_of_a_role_gone_from_the_chapter_adds_nothing(self, studio, monkeypatch):
+        """Роль переименовали или слили: её дубль остался, но её реплик в главе больше нет."""
+        from app.services.chapter_delivery import book_recording_status
+
+        db, book, chapter = studio
+        self._book(monkeypatch, chapter, {"Хдыбдяр": 10})
+        self._job(db, _take(db, chapter, role="Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв").id, pieces=10)
+        self._job(db, _take(db, chapter, role="Хдыбдярл", actor="Примерцосезбсдв Примерлаяюмнфшв").id, pieces=10)
+
+        assert book_recording_status(db, book.id)["chapters"][0]["matched_lines"] == 10
+
+    def test_the_chapter_listing_counts_the_same_way(self, studio, monkeypatch):
+        db, _, chapter = studio
+        self._book(monkeypatch, chapter, {"Хдыбдяр": 27})
+        self._job(db, _take(db, chapter, role="Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв").id, pieces=37, missing=[5])
+
+        status = chapter_recording_status(db, chapter.id)
+
+        assert status["roles"][0]["matched_lines"] == 26
+        assert status["asr_coverage"] == pytest.approx(26 / 27)
+
+
+class TestTrackColours:
+    """Владелец 25.10: дорожки разного цвета — Рассказчик салатовый, эмбиент оранжевый.
+
+    Оттенки — из палитры Audition (шаг 14,4°): только их он показывает своими цветами.
+    """
+
+    def _hues(self, *names):
+        from app.services.audition_session import SessionTrack
+        from app.services.chapter_delivery import colour_tracks
+
+        tracks = [SessionTrack(name=name) for name in names]
+        colour_tracks(tracks)
+        return {track.name: track.hue for track in tracks}
+
+    def test_the_narrator_is_lime_and_ambience_orange(self):
+        hues = self._hues("Рассказчик", "Хдыбдяр", "Ambient 1", "Ambient 2")
+        assert hues["Рассказчик"] == pytest.approx(100.8)
+        assert hues["Ambient 1"] == hues["Ambient 2"] == pytest.approx(28.8)
+
+    def test_characters_differ_from_each_other_and_from_the_fixed_colours(self):
+        names = [f"Роль {n}" for n in range(12)]
+        hues = self._hues("Рассказчик", *names, "Ambient 1", "Саундтрек 1", "Интершум 1")
+        fixed = {hues["Рассказчик"], hues["Ambient 1"], hues["Саундтрек 1"], hues["Интершум 1"]}
+        characters = [hues[name] for name in names]
+        assert len(set(characters)) == len(characters)
+        assert not set(characters) & fixed
+
+    def test_a_role_keeps_its_colour_from_chapter_to_chapter(self):
+        assert self._hues("Хдыбдяр", "Химес")["Хдыбдяр"] == self._hues("Хоркон", "Хдыбдяр")["Хдыбдяр"]
+
+    def test_every_hue_is_on_the_audition_palette(self):
+        hues = self._hues("Рассказчик", "Хдыбдяр", "Химес", "Ambient 1", "Саундтрек 2", "Интершум 2")
+        assert all(abs(hue / 14.4 - round(hue / 14.4)) < 1e-9 for hue in hues.values())
+
+    def test_the_chapter_session_comes_coloured(self, studio, monkeypatch):
+        import xml.etree.ElementTree as ET
+
+        from app.services.chapter_delivery import build_chapter_session
+
+        db, _, chapter = studio
+        _roles(monkeypatch, {"Рассказчик": 3, "Химес": 1})
+        monkeypatch.setattr("app.services.chapter_delivery.chapter_replicas", lambda db, chapter_id: [])
+
+        root = ET.fromstring(build_chapter_session(db, chapter.id).lstrip("﻿"))
+        hue = {t.find("trackParameters/name").text: t.find("trackParameters").get("trackHue")
+               for t in root.findall("session/tracks/audioTrack")}
+        assert hue["Рассказчик"] == "100.8" and hue["Химес"] != "-1"
+
+
+class TestTheOwnersPresets:
+    """Шаблон владельца (25.10): пресеты ролей ложатся на их дорожки в сессии главы."""
+
+    def test_the_narrator_track_carries_the_template_chain(self, studio, monkeypatch):
+        import xml.etree.ElementTree as ET
+
+        from app.services import session_template
+        from app.services.chapter_delivery import build_chapter_session
+        from tests.test_session_template import VO, _slot, _template, _track
+
+        db, _, chapter = studio
+        session_template.save_template(_template(_track("Рассказчик", [VO(0), _slot(1, "Pitch Shifter")])).encode())
+        _roles(monkeypatch, {"Рассказчик": 3, "Химес": 1})
+        monkeypatch.setattr("app.services.chapter_delivery.chapter_replicas", lambda db, chapter_id: [])
+
+        root = ET.fromstring(build_chapter_session(db, chapter.id).lstrip("﻿"))
+        chains = {t.find("trackParameters/name").text: [c.get("name") for c in t.findall("effectsRack/slot/component")]
+                  for t in root.findall("session/tracks/audioTrack")}
+        assert chains["Рассказчик"] == ["Single-band Compressor", "Pitch Shifter"]
+        assert chains["Химес"] == ["Single-band Compressor"]
+        assert chains["Саундтрек 1"] == []
+
+
+class TestAClipKeepsSilenceAroundTheWords:
+    """Граница подхода — начало первого и конец последнего слова по распознаванию.
+    Клип, вырезанный ровно по ним, начинается с удара по согласной и обрывает
+    затухание (владелец, 25.10). Клип берёт тишину с обеих сторон, но не залезает
+    в соседнюю реплику того же файла и не выходит за края файла."""
+
+    @staticmethod
+    def _place(heard, files, replicas):
+        from app.services.chapter_delivery import _place_by_script
+
+        by_role: dict[str, list] = {}
+        for item in files:
+            by_role.setdefault(item.role, []).append(item)
+        return _place_by_script(replicas, by_role, heard, relative=True,
+                                files_by_id={item.id: item for item in files})
+
+    @staticmethod
+    def _file(name, duration=0.0, role="Химес"):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(id=f"a-{name}", stored_key=f"k/{name}.wav", location="local",
+                               canonical_filename=f"{name}.wav", role=role, duration_seconds=duration)
+
+    def test_the_clip_starts_before_the_first_word_and_ends_after_the_last(self, monkeypatch, tmp_path):
+        from app.services import audio_storage
+        from app.services.chapter_delivery import BREATH_AFTER, BREATH_BEFORE
+
+        monkeypatch.setattr(audio_storage.settings, "audio_storage_path", str(tmp_path))
+        takil = self._file("takil", duration=20.0)
+        heard = {"a-takil": [{"index": 0, "matched": True, "takes": [{"start": 5.0, "end": 6.5}]}]}
+
+        (_role, clip), = self._place(heard, [takil], [{"role": "Химес", "role_index": 0, "text": "Там ждут."}])
+
+        assert clip.source_in == pytest.approx(5.0 - BREATH_BEFORE)
+        assert clip.source_out == pytest.approx(6.5 + BREATH_AFTER)
+        assert BREATH_BEFORE > 0 and BREATH_AFTER > 0
+
+    def test_the_head_holds_a_deep_breath(self):
+        """Глубокий вдох Рассказчика перед фразой длится около полусекунды; 0,3 с резали
+        его посередине в первой выпущенной главе «Карты» (владелец, 28.10)."""
+        from app.services.chapter_delivery import BREATH_AFTER, BREATH_BEFORE
+
+        assert BREATH_BEFORE >= 0.6
+        assert BREATH_AFTER > 0
+
+    def test_the_silence_stops_at_the_edges_of_the_file(self, monkeypatch, tmp_path):
+        from app.services import audio_storage
+
+        monkeypatch.setattr(audio_storage.settings, "audio_storage_path", str(tmp_path))
+        takil = self._file("takil", duration=3.05)
+        heard = {"a-takil": [{"index": 0, "matched": True, "takes": [{"start": 0.05, "end": 3.0}]}]}
+
+        (_role, clip), = self._place(heard, [takil], [{"role": "Химес", "role_index": 0, "text": "Там ждут."}])
+
+        assert (clip.source_in, clip.source_out) == pytest.approx((0.0, 3.05))
+
+    def test_an_unknown_length_does_not_stop_the_tail(self, monkeypatch, tmp_path):
+        """У старых записей длительность не снята (0) — тогда хвост не режем по ней."""
+        from app.services import audio_storage
+        from app.services.chapter_delivery import BREATH_AFTER
+
+        monkeypatch.setattr(audio_storage.settings, "audio_storage_path", str(tmp_path))
+        takil = self._file("takil", duration=0.0)
+        heard = {"a-takil": [{"index": 0, "matched": True, "takes": [{"start": 1.0, "end": 2.0}]}]}
+
+        (_role, clip), = self._place(heard, [takil], [{"role": "Химес", "role_index": 0, "text": "Там ждут."}])
+
+        assert clip.source_out == pytest.approx(2.0 + BREATH_AFTER)
+
+    def test_two_lines_read_close_together_split_the_pause_between_them(self, monkeypatch, tmp_path):
+        from app.services import audio_storage
+
+        monkeypatch.setattr(audio_storage.settings, "audio_storage_path", str(tmp_path))
+        takil = self._file("takil", duration=20.0)
+        heard = {"a-takil": [
+            {"index": 0, "matched": True, "takes": [{"start": 5.0, "end": 6.5}]},
+            {"index": 1, "matched": True, "takes": [{"start": 6.6, "end": 8.0}]},
+        ]}
+
+        placed = self._place(heard, [takil], [{"role": "Химес", "role_index": 0, "text": "Там ждут."},
+                                              {"role": "Химес", "role_index": 1, "text": "Я знаю дорогу."}])
+
+        first, second = placed[0][1], placed[1][1]
+        assert first.source_out == pytest.approx(6.55)
+        assert second.source_in == pytest.approx(6.55)
+
+    def test_a_line_borrowed_from_a_neighbour_file_respects_that_file_lines(self, monkeypatch, tmp_path):
+        """Соседи считаются по файлу, из которого режется звук, а не по роли реплики."""
+        from app.services import audio_storage
+
+        monkeypatch.setattr(audio_storage.settings, "audio_storage_path", str(tmp_path))
+        takil = self._file("takil", duration=20.0)
+        rokil = self._file("rokil", duration=20.0, role="Сяхах")
+        heard = {
+            "a-rokil": [{"index": 0, "matched": True, "takes": [{"start": 4.0, "end": 4.9}]}],
+            "a-takil": [{"index": 0, "matched": True, "takes": [{"start": 5.0, "end": 6.5}],
+                         "source_audio_file_id": "a-rokil"}],
+        }
+
+        placed = self._place(heard, [takil, rokil], [{"role": "Химес", "role_index": 0, "text": "Там ждут."}])
+
+        assert placed[0][1].source_in == pytest.approx(4.95)
+
+    def test_the_next_line_waits_for_the_whole_clip_with_its_silence(self, monkeypatch, tmp_path):
+        from app.services import audio_storage
+        from app.services.chapter_delivery import GAP_SECONDS
+
+        monkeypatch.setattr(audio_storage.settings, "audio_storage_path", str(tmp_path))
+        takil = self._file("takil", duration=20.0)
+        rokil = self._file("rokil", duration=20.0, role="Сяхах")
+        heard = {
+            "a-takil": [{"index": 0, "matched": True, "takes": [{"start": 5.0, "end": 6.5}]}],
+            "a-rokil": [{"index": 0, "matched": True, "takes": [{"start": 2.0, "end": 3.0}]}],
+        }
+
+        placed = self._place(heard, [takil, rokil], [{"role": "Химес", "role_index": 0, "text": "Там ждут."},
+                                                     {"role": "Сяхах", "role_index": 0, "text": "Идём."}])
+
+        first, second = placed[0][1], placed[1][1]
+        assert second.start == pytest.approx(first.start + first.length + GAP_SECONDS)
+
+
+class TestTheSessionRateFollowsTheVoices:
+    """Частота сессии — та, в которой записано большинство голосов главы. Сессия в
+    44,1 кГц при голосах в 48 кГц заставляла Audition пересчитывать почти каждый файл
+    в «Conformed Files»; пересохранённая после этого сессия ссылалась уже на копии
+    и при следующем открытии не находила ни одного файла (владелец, 27.10)."""
+
+    @staticmethod
+    def _rate(db, chapter):
+        import xml.etree.ElementTree as ET
+
+        from app.services.chapter_delivery import build_chapter_session
+
+        root = ET.fromstring(build_chapter_session(db, chapter.id).lstrip("﻿"))
+        return int(root.find("session").get("sampleRate"))
+
+    def test_most_voices_in_48k_make_a_48k_session(self, studio, monkeypatch):
+        db, _, chapter = studio
+        _roles(monkeypatch, {"Хдыбдяр": 40, "Сылядир": 12, "Рассказчик": 100})
+        for role, actor, rate in (("Хдыбдяр", "Примерцосезбсдв Примерлаяюмнфшв", 48000), ("Сылядир", "Примеронгялюцз Примерчюнгнчэлв", 48000),
+                                  ("Рассказчик", "Примерубщркгюд Примервсммчпфиб", 44100)):
+            _take(db, chapter, role=role, actor=actor).sample_rate = rate
+        db.flush()
+
+        assert self._rate(db, chapter) == 48000
+
+    def test_most_voices_in_44k_keep_a_44k_session(self, studio, monkeypatch):
+        db, _, chapter = studio
+        _roles(monkeypatch, {"Хдыбдяр": 40, "Сылядир": 12, "Рассказчик": 100})
+        for role, actor, rate in (("Хдыбдяр", "Примерцосезбсдв Примерлаяюмнфшв", 44100), ("Сылядир", "Примеронгялюцз Примерчюнгнчэлв", 48000),
+                                  ("Рассказчик", "Примерубщркгюд Примервсммчпфиб", 44100)):
+            _take(db, chapter, role=role, actor=actor).sample_rate = rate
+        db.flush()
+
+        assert self._rate(db, chapter) == 44100
+
+    def test_a_tie_takes_the_higher_rate(self, studio, monkeypatch):
+        """Понижать частоту — терять верх; повышать — ничего не терять."""
+        db, _, chapter = studio
+        _roles(monkeypatch, {"Хдыбдяр": 40, "Сылядир": 12})
+        _take(db, chapter, role="Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв").sample_rate = 44100
+        _take(db, chapter, role="Сылядир", actor="Примеронгялюцз Примерчюнгнчэлв").sample_rate = 48000
+        db.flush()
+
+        assert self._rate(db, chapter) == 48000
+
+    def test_unknown_rates_fall_back_to_44k(self, studio, monkeypatch):
+        db, _, chapter = studio
+        _roles(monkeypatch, {"Хдыбдяр": 40})
+        _take(db, chapter, role="Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв")
+        db.flush()
+
+        assert self._rate(db, chapter) == 44100

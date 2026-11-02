@@ -5,14 +5,18 @@
 сообщает диктору о пропусках, пока тот ещё у микрофона. Пересчёт не делает ничего из
 этого: он берёт уже услышанное и применяет к нему текущие правила сверки.
 
-Уведомлений здесь нет намеренно. Пересчёт — не событие записи: диктор неделю назад
+Диктору здесь не пишем намеренно (владельцу — пишем: о новых пропусках в сданной
+главе, см. `released_alerts`). Пересчёт — не событие записи: диктор неделю назад
 прислал дубль и получил своё письмо тогда же, и второе письмо о тех же пропусках — от
 того, что МЫ поменяли правила, — сказало бы ему неправду о его работе.
 """
 import json
+import logging
 
 from app.services.asr_align import align_transcript
 from app.services.asr_run import expected_lines, store_alignment
+
+logger = logging.getLogger(__name__)
 
 
 def _shape(alignment: dict) -> dict:
@@ -67,8 +71,9 @@ def realign_job(db, job_id: str, *, write: bool = True) -> dict | None:
 def realign_chapter(db, chapter_id: str, *, notify: bool = True) -> dict:
     """Пересчитать сверку всей главы после правки разметки — и сказать актёру о новом.
 
-    `notify=False` — писем не отправлять, а вернуть их в `pending_letters`: вызывающий,
-    который коммитит сам (фон, скрипт), шлёт их `send_moved_letters` ПОСЛЕ коммита.
+    `notify=False` — писем не отправлять, а вернуть их в `pending_letters` (дикторам) и
+    `pending_owner_alert` (владельцу, если глава сдана): вызывающий, который коммитит сам
+    (фон, скрипт), шлёт их ПОСЛЕ коммита — `send_moved_letters` и `send_owner_alert`.
 
     Порядок важен: сначала чистая сверка всех файлов (она стирает прежние заимствования),
     затем поиск у соседних ролей, и только потом сравнение «до/после». Письмо — только о
@@ -96,6 +101,17 @@ def realign_chapter(db, chapter_id: str, *, notify: bool = True) -> dict:
         if fresh:
             new_missing[role] = fresh
 
+    # Сданная глава: новые пропуски владельцу, а не только диктору. Текст готовим здесь,
+    # а шлём как и письма дикторам: при notify=False — после коммита вызывающего.
+    pending_owner_alert = ""
+    if new_missing:
+        try:
+            from app.services.released_alerts import missing_alert_text
+
+            pending_owner_alert = missing_alert_text(db, chapter_id, new_missing)
+        except Exception:
+            logger.exception("Не удалось собрать тревогу о пропусках в сданной главе %s", chapter_id)
+
     pending_letters = []
     if new_missing:
         chapter = db.get(ScriptChapter, chapter_id)
@@ -111,6 +127,10 @@ def realign_chapter(db, chapter_id: str, *, notify: bool = True) -> dict:
                 "book_id": str(getattr(chapter, "book_id", "") or ""), "texts": texts,
             })
     notified = send_moved_letters(db, pending_letters) if notify else []
+    if notify and pending_owner_alert:
+        from app.services.released_alerts import send_owner_alert
+
+        send_owner_alert(db, pending_owner_alert)  # не роняет пересчёт: сбой только в журнал
     if changed:
         from app.services.chapter_delivery import mark_session_outdated
 
@@ -118,7 +138,8 @@ def realign_chapter(db, chapter_id: str, *, notify: bool = True) -> dict:
     db.flush()
     return {"chapter_id": chapter_id, "jobs": len(jobs), "changed": changed, "borrowed": borrowed,
             "skipped": skipped, "new_missing": new_missing, "notified": notified,
-            "pending_letters": [] if notify else pending_letters}
+            "pending_letters": [] if notify else pending_letters,
+            "pending_owner_alert": "" if notify else pending_owner_alert}
 
 
 def send_moved_letters(db, pending_letters) -> list[dict]:

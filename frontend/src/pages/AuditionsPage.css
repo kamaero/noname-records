@@ -49,8 +49,30 @@
 .aufeed-react button[aria-pressed="true"] { filter: none; opacity: 1; border-color: var(--accent-line); background: var(--accent-soft); }
 .aufeed-react button:hover { opacity: 1; }
 .aufeed-reaction { font-size: 12.5px; color: var(--text-dim); }
+.aufeed-expand:hover { color: var(--accent); border-color: var(--accent-line); }
+.aufeed-main { cursor: default; }
+.aufeed-recommended { font-size: 11.5px; padding: 0 7px; border-radius: 999px; color: var(--accent); background: var(--accent-soft); }
+.aufeed-busy { font-size: 11.5px; color: var(--amber); }
+.aufeed-scores { display: flex; flex-direction: column; gap: 4px; padding-left: 46px; }
+/* Сетка, а не флекс с переносом: длинный комментарий автора идёт своей строкой под шкалой
+   и не сталкивает число оценки на телефоне. Одна ссылка «комментарий» — в конце строки. */
+.aufeed-lane { display: grid; grid-template-columns: 84px auto 18px minmax(0, 1fr); align-items: center; column-gap: 10px; row-gap: 2px; }
+.aufeed-lane > .reason-note { grid-column: 2 / -1; }
+.aufeed-lane > .reason-note:has(> .reason-ask:only-child) { grid-column: auto; }
+.aufeed-lane-name { width: 84px; flex: none; font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aufeed-lane-value { width: 18px; flex: none; font-size: 13px; font-weight: 600; color: var(--text); }
+.aufeed-rejection { margin: 0; padding-left: 46px; font-size: 12px; color: var(--text-dim); }
+.aufeed-files { list-style: none; margin: 0; padding: 0 0 0 46px; display: flex; flex-direction: column; gap: 6px; }
+.aufeed-file { display: flex; align-items: center; gap: 10px; }
 @media (max-width: 720px) {
   .aufeed-item { flex-wrap: wrap; }
   .aufeed-actions { width: 100%; justify-content: flex-end; }
   .aufeed-search { max-width: none; }
+}
+
+/* Узкий экран: имя короче, а причина и ссылка — всегда под шкалой, иначе строка шире экрана. */
+@media (max-width: 720px) {
+  .aufeed-lane { grid-template-columns: 64px auto 18px minmax(0, 1fr); }
+  .aufeed-lane-name { width: 64px; }
+  .aufeed-lane > .reason-note, .aufeed-lane > .reason-note:has(> .reason-ask:only-child) { grid-column: 2 / -1; }
 }

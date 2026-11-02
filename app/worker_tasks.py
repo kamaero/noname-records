@@ -74,6 +74,116 @@ def perform_bot_intro_task(telegram_user_id: str, run_id: str = ""):
         raise
 
 
+def perform_audition_card_task(audio_id: str, file_id: str = "", run_id: str = ""):
+    """Карточка новой пробы владельцу и автору — аудио с оценкой и «Утвердить»."""
+    from app.services.audition_card import send_card
+    from app.services.telegram import send_audio, send_telegram_message
+
+    session_factory = SessionLocal
+    try:
+        _start_background_run(session_factory, run_id)
+        with session_factory() as db:
+            sent = send_card(db, audio_id, file_id=file_id, send_audio=send_audio,
+                             send_text=lambda chat, text: bool(send_telegram_message(db, text, chat_ids=[chat],
+                                                                                     direct=True)))
+        _finish_background_run(session_factory, BackgroundRun, run_id, "done", f"карточек {sent}")
+    except Exception as exc:
+        _fail_background_run(session_factory, run_id, exc)
+        raise
+
+
+def perform_bot_upload_task(upload_id: str, run_id: str = ""):
+    """Проба, присланная боту: скачать, сохранить, сказать диктору, карточка владельцу и автору."""
+    from app.services.bot_uploads import store
+    from app.services.telegram import fetched_file, send_audio, send_telegram_message
+
+    session_factory = SessionLocal
+    try:
+        _start_background_run(session_factory, run_id)
+        with session_factory() as db:
+            result = store(db, upload_id, fetch=fetched_file, send_audio=send_audio,
+                           send_text=lambda chat, text: bool(send_telegram_message(db, text, chat_ids=[chat],
+                                                                                   direct=True)))
+        _finish_background_run(session_factory, BackgroundRun, run_id, "done", result)
+    except Exception as exc:
+        _fail_background_run(session_factory, run_id, exc)
+        raise
+
+
+def perform_bot_take_task(upload_id: str, run_id: str = ""):
+    """Дубль, присланный боту: распознать раз, разложить по главам, отчёт диктору и владельцу."""
+    import os
+
+    from app.models import BotUpload
+    from app.services import asr_run, audio_storage
+    from app.services.bot_takes import process, takes_workdir
+    from app.services.telegram import fetched_file, send_telegram_message
+
+    session_factory = SessionLocal
+    try:
+        _start_background_run(session_factory, run_id)
+        with session_factory() as db:
+            row = db.get(BotUpload, str(upload_id or ""))
+            phrases = asr_run.book_phrases(db, row.book_id) if row is not None else []
+            # Распознавание — тот же сервис и те же подсказки, что у обычной сверки. Повтор —
+            # только на «сервис занят» (`_transcribe_retrying`): таймаут считается «возможно
+            # оплачено», и второй раз за него не платим.
+            transcribe_part = lambda path: asr_run._transcribe_retrying(  # noqa: E731
+                lambda: asr_run._transcribe_with_service(path, phrases=phrases))
+            # Каталог постоянный для строки учёта: ручной повтор найдёт в нём оплаченные части.
+            workdir = takes_workdir(str(upload_id))
+            result = process(
+                db, upload_id, fetch=fetched_file, transcribe_part=transcribe_part, workdir=workdir,
+                send_text=lambda chat, text: bool(send_telegram_message(db, text, chat_ids=[chat], direct=True)),
+                # Без `direct`: перехват `OWNER_TELEGRAM_ID` доставит сводку владельцу.
+                notify_owner=lambda text: bool(send_telegram_message(db, text)),
+            )
+        _finish_background_run(session_factory, BackgroundRun, run_id, "done", result)
+    except Exception as exc:
+        _fail_background_run(session_factory, run_id, exc)
+        raise
+
+
+def perform_bot_demo_task(item_id: str, run_id: str = ""):
+    """Демо, пересланное владельцем боту: скачать, положить в карточку диктора, сказать владельцу."""
+    from app.services.bot_demos import store_item
+    from app.services.telegram import fetched_file, send_telegram_message
+    from app.services.demo_fetch import download
+
+    session_factory = SessionLocal
+    try:
+        _start_background_run(session_factory, run_id)
+        with session_factory() as db:
+            result = store_item(db, item_id, fetch=fetched_file, download=download,
+                                send_text=lambda chat, text: bool(send_telegram_message(db, text, chat_ids=[chat],
+                                                                                        direct=True)))
+        _finish_background_run(session_factory, BackgroundRun, run_id, "done", result)
+    except Exception as exc:
+        _fail_background_run(session_factory, run_id, exc)
+        raise
+
+
+def perform_session_template_task(file_id: str, chat_id: str = "", run_id: str = ""):
+    """Шаблон сессии, присланный владельцем боту: скачать, проверить, положить, ответить."""
+    from app.services.session_template import store_from_telegram
+    from app.services.telegram import fetched_file, send_telegram_message
+
+    session_factory = SessionLocal
+    try:
+        _start_background_run(session_factory, run_id)
+        with session_factory() as db:
+            from app.models import Character
+
+            known = [str(name or "") for (name,) in db.query(Character.name).distinct().all()]
+            result = store_from_telegram(file_id, chat_id, fetch=fetched_file, known_roles=known,
+                                         send_text=lambda chat, text: bool(send_telegram_message(
+                                             db, text, chat_ids=[chat], direct=True)))
+        _finish_background_run(session_factory, BackgroundRun, run_id, "done", result)
+    except Exception as exc:
+        _fail_background_run(session_factory, run_id, exc)
+        raise
+
+
 def perform_realign_chapter_task(chapter_id: str, run_id: str = ""):
     """Пересчитать сверку главы после правки разметки. Бесплатно: из сохранённого услышанного."""
     from app.services.asr_replay import realign_chapter, send_moved_letters
@@ -90,6 +200,12 @@ def perform_realign_chapter_task(chapter_id: str, run_id: str = ""):
                 send_moved_letters(db, result["pending_letters"])
             except Exception:
                 logger.exception("Не удалось отправить письма о перенесённых репликах, глава %s", chapter_id)
+            try:
+                from app.services.released_alerts import send_owner_alert
+
+                send_owner_alert(db, result.get("pending_owner_alert") or "")
+            except Exception:
+                logger.exception("Не удалось отправить тревогу владельцу, глава %s", chapter_id)
         _finish_background_run(session_factory, BackgroundRun, run_id, "done",
                                f"найдено у соседних ролей {result['borrowed']}, новых пропусков "
                                f"{sum(len(v) for v in result['new_missing'].values())}")

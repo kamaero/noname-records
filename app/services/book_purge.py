@@ -24,8 +24,11 @@ from app.db import Base
 BY_BOOK = (
     "ambient_tracks",
     "audition_rejections",
+    "audition_scores",
     "book_budget",
     "book_illustrations",
+    "book_thanks_sent",
+    "bot_uploads",
     "character_budget_snapshot",
     "consilium_findings",
     "dictor_assignments",
@@ -52,7 +55,7 @@ BY_CHARACTER = ("role_votes",)
 CARRIERS = ("v2_segments", "characters", "script_chapters")
 
 #: переживают книгу — причины в описании модуля
-KEPT = ("asr_jobs", "audio_files", "bot_broadcasts", "llm_usage_logs", "spend_entries", "spend_holds")
+KEPT = ("asr_jobs", "audio_files", "bot_broadcasts", "fee_payments", "llm_usage_logs", "spend_entries", "spend_holds")
 
 #: прогон в работе — его строку не трогаем: воркер сам увидит, что книги нет
 ACTIVE_RUN_STATUSES = ("queued", "running")

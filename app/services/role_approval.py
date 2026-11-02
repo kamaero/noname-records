@@ -22,12 +22,16 @@
 """
 from __future__ import annotations
 
+import logging
+
 from app.config import settings
-from app.models import TelegramAuthAccount, User, UserRole
-from app.services.telegram import names_match, send_telegram_message
+
+logger = logging.getLogger(__name__)
+from app.models import Character, TelegramAuthAccount, User, UserRole
+from app.services import bot_out, studio
+from app.services.telegram import max_download_bytes, names_match, send_telegram_message, size_text
 from app.time_utils import utcnow_naive
 from app.v2.cast_ops import parse_actor_name
-from app.services import studio
 
 
 def _terms_lines(due_text: str, cost_rub: int) -> list[str]:
@@ -48,8 +52,64 @@ def _help_lines() -> list[str]:
     return lines + [f"Нужно больше времени — {studio.write_to()}."]
 
 
+def naming_block(*, book_title: str, book_code: str, chapter_index: int, chapter_label: str, role: str,
+                 actor_name: str, audition: bool) -> list[str]:
+    """Как диктору называть файлы — с примером для него самого и его роли.
+
+    Беда: дикторы присылали файлы как придётся, а бот сопоставляет запись с главой и
+    ролью по имени. Пример собирает та же функция, что даёт имя при сохранении, иначе
+    транслитерация разъехалась бы: код книги — через `book_token` («КП» кириллицей, в файле — `KP`).
+    """
+    from app.services.audio_naming import book_token, chapter_token, file_extension, latin_word
+
+    # Токены считаем теми же помощниками, что собирают имя при сохранении, а не разбираем
+    # готовое имя обратно по «_»: у главы без номера («Пролог») токена главы в имени нет,
+    # и разбор по позициям падал бы, а письмо диктору не должно зависеть от подсказки.
+    book_token_ = book_token(book_code) or "BOOK"
+    chapter_token_ = chapter_token(chapter_label) or "Ch01"
+    role_token = latin_word(role) or "Role"
+    actor_token = latin_word(actor_name) or "Unknown"
+    example = f"{book_token_}_{chapter_token_}_{role_token}_{actor_token}.{file_extension('x.wav')}"
+    chapter_number = int(chapter_token_[2:])
+    first = ("Пробу назовите так же, а роль, когда вас утвердят, записывайте по главам: один файл — одна глава."
+             if audition else "Записывайте роль по главам: один файл — одна глава.")
+    return [
+        first,
+        f"Как называть файлы: {example}",
+        f"{book_token_} — книга («{str(book_title or '').strip()}»)",
+        f"{chapter_token_} — глава {chapter_number} (Chapter)",
+        f"{role_token} — роль латиницей",
+        f"{actor_token} — фамилия и имя диктора латиницей, без пробела",
+    ]
+
+
+def _naming_for(db, *, book_id: str, book_title: str, role: str, actor_name: str, audition: bool) -> list[str]:
+    """Блок для письма: первая по номеру глава роли; нет глав — `Ch01`."""
+    from app.models import Character
+    from app.services.audio_naming import chapter_token
+    from app.services.audio_uploads import derive_book_code
+    from app.services.role_deadlines import role_chapters
+
+    character = db.query(Character).filter(Character.book_id == str(book_id or ""),
+                                           Character.name == str(role or "")).first()
+    chapters = role_chapters(db, character) if character is not None else {}
+    # Первая глава, из названия которой выходит номер: «Пролог» или «Эпилог» токена главы не
+    # дают, а пример в письме должен выглядеть как настоящее имя файла.
+    index, label = 1, "Глава 1"
+    for number in sorted(chapters):
+        if chapter_token(chapters[number]):
+            index, label = number, chapters[number]
+            break
+    try:
+        return naming_block(book_title=book_title, book_code=derive_book_code(book_title), chapter_index=index,
+                            chapter_label=label, role=role, actor_name=actor_name, audition=audition)
+    except Exception:  # noqa: BLE001 — подсказка об именах не вправе сорвать письмо и смену диктора
+        logger.exception("не собрался блок об именах файлов для роли %r", role)
+        return []
+
+
 def approval_notice(*, role: str, book_title: str, link: str = "", also_in=(), due_text: str = "",
-                    cost_rub: int = 0) -> str:
+                    cost_rub: int = 0, naming=()) -> str:
     """Что диктор прочтёт в телеграме."""
     lines = [
         f"🎬 Вы утверждены на роль «{str(role or '').strip()}»!",
@@ -60,13 +120,14 @@ def approval_notice(*, role: str, book_title: str, link: str = "", also_in=(), d
         # Роль персонажа цикла — одна на все книги (профиль автора): одно письмо, не пачка.
         lines.append(f"Также в книгах: {others}")
     lines += _terms_lines(due_text, cost_rub)
-    lines.append("Записывайте всю роль по главам.")
+    lines += list(naming) or ["Записывайте всю роль по главам."]
     if str(link or "").strip():
         lines.append(f"Все реплики роли: {link.strip()}")
     return "\n".join(lines + _help_lines())
 
 
-def audition_notice(*, role: str, book_title: str, link: str = "", due_text: str = "", cost_rub: int = 0) -> str:
+def audition_notice(*, role: str, book_title: str, link: str = "", due_text: str = "", cost_rub: int = 0,
+                    naming=()) -> str:
     """Что диктор прочтёт в телеграме, когда его лишь предлагают на роль.
 
     Отдельная фраза от `approval_notice` нарочно: «вы утверждены» и «вас зовут на
@@ -78,7 +139,11 @@ def audition_notice(*, role: str, book_title: str, link: str = "", due_text: str
         f"Книга: {str(book_title or '').strip()}",
     ]
     lines += _terms_lines(due_text, cost_rub)
-    lines.append("Запишите пробу: в разделе «Запись» выберите книгу и роль — файл уйдёт как проба, её послушает автор.")
+    # Пробу принимает и бот, и сайт. Предел зависит от выбранного узла Bot API.
+    lines.append("Запишите пробу и пришлите её сюда, в бот, — аудиофайлом или голосовым "
+                 f"(до {size_text(max_download_bytes())}). Можно и на "
+                 "сайте: раздел «Загрузка», выберите книгу и роль. Пробу послушает автор.")
+    lines += list(naming)
     if str(link or "").strip():
         lines.append(f"Все реплики роли: {link.strip()}")
     return "\n".join(lines + _help_lines())
@@ -241,16 +306,24 @@ def relay_to_owner_and_agents(db, text: str) -> bool:
     return relayed
 
 
-def _deliver(db, *, chat_id: str, actor_name: str, notice_text: str, relay_text: str, kind: str) -> dict:
+def _deliver(db, *, chat_id: str, actor_name: str, notice_text: str, relay_text: str, kind: str,
+             character_id: str = "") -> dict:
     """Общая механика отправки: адресно, если учётка нашлась однозначно, иначе — в релей.
 
     Одна и та же схема для утверждения и для приглашения на пробу — разные только
-    тексты писем, которые получились до вызова.
+    тексты писем, которые получились до вызова. Для приглашения на пробу добавляем
+    кнопки «Беру / Не смогу / Нужно больше времени».
     """
     if not chat_id:
         return {"notified": False, "reason": "no_telegram", "actor_name": actor_name, "relayed": relay_to_owner_and_agents(db, relay_text), "kind": kind}
 
-    sent = send_telegram_message(db, notice_text, chat_ids=[chat_id], direct=True)
+    if not character_id:
+        markup = None
+    elif kind == "audition":
+        markup = bot_out.invite_markup(character_id)
+    else:
+        markup = bot_out.time_markup(character_id)
+    sent = send_telegram_message(db, notice_text, chat_ids=[chat_id], direct=True, reply_markup=markup)
     if not sent:
         return {"notified": False, "reason": "not_sent", "actor_name": actor_name, "kind": kind}
     return {"notified": True, "reason": "sent", "actor_name": actor_name, "kind": kind}
@@ -323,17 +396,25 @@ def notify_role_approved(db, *, book_id: str, book_title: str, role: str, actor_
         return {"notified": False, "reason": "ambiguous", "actor_name": name, "relayed": relay_to_owner_and_agents(db, relay), "kind": kind}
 
     chat_id = candidates[0][0] if candidates else ""
+    character = db.query(Character).filter(Character.book_id == str(book_id or ""),
+                                           Character.name == str(role or "")).first()
+    character_id = str(character.id or "") if character is not None else ""
 
     due_text, cost_rub = _terms(db, book_id=book_id, role=role, kind="audition" if tentative else "role")
     if tentative:
-        notice = audition_notice(role=role, book_title=book_title, link=link, due_text=due_text, cost_rub=cost_rub)
+        naming = _naming_for(db, book_id=book_id, book_title=book_title, role=role, actor_name=name, audition=True)
+        notice = audition_notice(role=role, book_title=book_title, link=link, due_text=due_text, cost_rub=cost_rub,
+                                 naming=naming)
         relay = relay_notice(role=role, book_title=book_title, actor_name=name, link=link, header=header)
-        return _deliver(db, chat_id=chat_id, actor_name=name, notice_text=notice, relay_text=relay, kind=kind)
+        return _deliver(db, chat_id=chat_id, actor_name=name, notice_text=notice, relay_text=relay, kind=kind,
+                        character_id=character_id)
 
+    naming = _naming_for(db, book_id=book_id, book_title=book_title, role=role, actor_name=name, audition=False)
     notice = approval_notice(role=role, book_title=book_title, link=link, also_in=also_in, due_text=due_text,
-                             cost_rub=cost_rub)
+                             cost_rub=cost_rub, naming=naming)
     relay = relay_notice(role=role, book_title=book_title, actor_name=name, link=link, header=header, also_in=also_in)
-    return _deliver(db, chat_id=chat_id, actor_name=name, notice_text=notice, relay_text=relay, kind=kind)
+    return _deliver(db, chat_id=chat_id, actor_name=name, notice_text=notice, relay_text=relay, kind=kind,
+                    character_id=character_id)
 
 
 def should_notify_actor_change(previous_actor_name: str, next_actor_name: str) -> bool:

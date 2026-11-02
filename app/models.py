@@ -148,6 +148,9 @@ class ScriptBook(Base):
     #: можно ли карте верить.
     cast_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     cast_checked_by: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    #: Когда студия объявила книгу озвученной (`app.services.book_lifecycle.voice_book`).
+    #: Пусто — книга в работе. Снимается «вернуть в работу», но каст и сроки не возвращает.
+    voiced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     has_chapters: Mapped[str] = mapped_column(String(5), nullable=False, default="false")
     pipeline_mode: Mapped[str] = mapped_column(String(40), nullable=False, default="standard")
     validation_profile: Mapped[str] = mapped_column(String(40), nullable=False, default="operator_only")
@@ -200,6 +203,10 @@ class ScriptChapter(Base):
     stress_report_json: Mapped[str] = mapped_column(Text, nullable=False, default="")
     #: когда главу забрали в сведение. Пусто — ещё ждёт.
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    #: Когда студия отметила главу сданной заказчику («Глава сдана»). Это не `delivered_at`:
+    #: тот значит «всё записано и забрано в сведение», а сдача — решение человека после
+    #: сведения. Пусто — не сдана.
+    released_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     #: Когда в папку главы на NAS положен файл проекта для монтажки. Именно внутрь
     #: папки: относительные пути в сессии ссылаются на голые имена соседних файлов.
     session_archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
@@ -313,6 +320,121 @@ class BotIntro(Base):
     asked_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
 
 
+class BotUpload(Base):
+    """Файл пробы, присланный боту (пакет C2): ждёт выбора роли, потом — воркера.
+
+    `file_id` Telegram длиннее предела `callback_data`, поэтому файл живёт здесь, а кнопка
+    несёт короткий `id`."""
+
+    __tablename__ = "bot_uploads"
+    __table_args__ = (Index("ix_bot_uploads_user", "telegram_user_id"),)
+
+    id: Mapped[str] = mapped_column(String(12), primary_key=True, default=lambda: uuid.uuid4().hex[:12])
+    telegram_user_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    file_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_unique_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)  # audio | voice | document
+    mime_type: Mapped[str] = mapped_column(String(80), nullable=False, default="", server_default="")
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    duration: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    character_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
+    #: имя актёра из срока пробы на момент «Да»: задача может ждать в общей очереди час, и за
+    #: это время роль могут отдать другому — файл не должен лечь на чужое имя (ревью C2)
+    actor_name: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    #: проба: choose · queued · stored · cancelled · failed;
+    #: дубль: choose · queued · processing · done | unsorted | failed | cancelled
+    state: Mapped[str] = mapped_column(String(10), nullable=False, default="choose", server_default="choose")
+    audio_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
+    #: audition | take | agent | agentpick — дубль идёт другим воркером (резка по главам).
+    #: `agentpick` ждёт выбора «дубль/проба», `agent` — проба за подопечного; оба состояния
+    #: нужны, чтобы файл агента не стал пробой до того, как он выберет вид записи.
+    purpose: Mapped[str] = mapped_column(String(10), nullable=False, default="audition", server_default="audition")
+    #: роль дубля из каста на момент выбора: пока задача в очереди, роль могут переименовать
+    role_name: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    #: книга «сейчас записывается» на момент приёма: её могут сменить, пока файл ждёт
+    book_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
+    md5: Mapped[str] = mapped_column(String(32), nullable=False, default="", server_default="")
+    #: отчёт воркера по главам (JSON) — по нему бот пишет диктору, что легло и чего нет
+    result_json: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    stored_key: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
+
+
+class BotDemoIntake(Base):
+    """Приём демо, пересланных владельцем (проект Б): один вопрос об имени на пачку от одного
+    отправителя. Узнанному диктору приём заводится сразу решённым — у каждой позиции есть приём."""
+
+    __tablename__ = "bot_demo_intakes"
+    __table_args__ = (Index("ix_bot_demo_intakes_state", "state"),)
+
+    id: Mapped[str] = mapped_column(String(12), primary_key=True, default=lambda: uuid.uuid4().hex[:12])
+    #: tg:<id> или hidden:<имя> — у скрытого отправителя Telegram отдаёт только имя
+    sender_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    telegram_user_id: Mapped[str] = mapped_column(String(32), nullable=False, default="", server_default="")
+    tg_name: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    tg_username: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    #: ask · resolved · cancelled — срока нет: пересылка не должна пропасть по таймеру
+    state: Mapped[str] = mapped_column(String(12), nullable=False, default="ask", server_default="ask")
+    #: имя, упёршееся в «занято»: кнопка «Это другой человек» заведёт его с номером
+    pending_name: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    #: почему Telegram id не привязываем: он у чужой или выключенной учётки
+    foreign_note: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default="")
+    user_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
+
+
+class BotDemoItem(Base):
+    """Одно пересланное демо, ссылка или текст. Номер сообщения — в чате владельца с ботом:
+    повтор вебхука несёт тот же номер, и уникальный индекс не даёт второго демо."""
+
+    __tablename__ = "bot_demo_items"
+    __table_args__ = (
+        Index("uq_bot_demo_items_msg", "source_message_id", "kind", "ref", unique=True),
+        Index("ix_bot_demo_items_intake", "intake_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(12), primary_key=True, default=lambda: uuid.uuid4().hex[:12])
+    intake_id: Mapped[str] = mapped_column(String(12), nullable=False)
+    source_message_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)  # file | link | text
+    ref: Mapped[str] = mapped_column(String(1024), nullable=False, default="", server_default="")
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    mime_type: Mapped[str] = mapped_column(String(80), nullable=False, default="", server_default="")
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: waiting · queued · stored · duplicate · link_saved · failed · cancelled
+    state: Mapped[str] = mapped_column(String(12), nullable=False, default="waiting", server_default="waiting")
+    result: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
+
+
+class FeePayment(Base):
+    """Выплата диктору — журнал «Сметы» (спека 2026-10-06-payouts). Строк по роли сколько угодно:
+    аванс, окончательная выплата, зачёт аванса без роли. Сумма — на момент отметки: пересчёт
+    сметы потом выплаченное не меняет, меняется только остаток."""
+
+    __tablename__ = "fee_payments"
+    __table_args__ = (Index("ix_fee_payments_role", "book_id", "role_key", "actor_name"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    book_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
+    #: id персонажа или «narrator»; пусто — аванс без роли
+    role_key: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
+    role_name: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    actor_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    telegram_user_id: Mapped[str] = mapped_column(String(32), nullable=False, default="", server_default="")
+    #: advance · final · person_advance · offset (зачёт — не деньги)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount_rub: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    note: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default="")
+    paid_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
+    paid_by: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+
+
 class RoleVote(Base):
     """Голос за то, кому читать роль. Один голос на человека, вес — по его роли в студии."""
     __tablename__ = "role_votes"
@@ -332,20 +454,35 @@ class RoleVote(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
 
-class AuditionReaction(Base):
-    """👍/👎 автора на одну пробу. Снятая реакция — удалённая строка, а не ноль."""
-    __tablename__ = "audition_reactions"
+class AuditionScore(Base):
+    """Оценка 1–10 актёру на роль — одна на дорожку: автор и студия.
+
+    Ключ — пара «книга + роль + актёр», а не файл: оценивают голос для роли, а не
+    дубль, и у актёра бывает по четыре пробы на роль. Последнее нажатие на дорожке
+    побеждает — на случай двух учёток одной стороны. Снятая оценка — удалённая строка.
+    """
+    __tablename__ = "audition_scores"
     __table_args__ = (
-        UniqueConstraint("audio_file_id", "voter_uid", name="uq_audition_reactions_audio_voter"),
-        Index("ix_audition_reactions_audio", "audio_file_id"),
+        UniqueConstraint("book_id", "role", "actor_name", "lane", name="uq_audition_scores_pair_lane"),
+        Index("ix_audition_scores_book", "book_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    audio_file_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    book_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    role: Mapped[str] = mapped_column(String(120), nullable=False)
+    actor_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: author · studio
+    lane: Mapped[str] = mapped_column(String(10), nullable=False)
     voter_uid: Mapped[str] = mapped_column(String(36), nullable=False)
     voter_name: Mapped[str] = mapped_column(String(120), nullable=False, default="")
-    #: 1 — 👍, -1 — 👎
-    value: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: 1–10
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: что не понравилось автору при оценке ниже 7 (до 11.10 — 5 и ниже): voice · manner · all;
+    #: пусто — не сказал. Видят студия и диктор — одной фразой в вежливом отказе.
+    reason: Mapped[str] = mapped_column(String(10), nullable=False, default="", server_default="")
+    #: своими словами, каким должен звучать герой (с 11.10). Только для студии: в отказ
+    #: диктору не идёт никогда — иначе автор писал бы осторожно, а владелец не узнал бы главного.
+    comment: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
@@ -371,6 +508,8 @@ class AuditionRejection(Base):
     due_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     #: pending · sent · cancelled · no_account · ambiguous · failed
     status: Mapped[str] = mapped_column(String(12), nullable=False, default="pending")
+    #: approval · scores · manual — повод письма, см. app/services/audition_rejections.py
+    cause: Mapped[str] = mapped_column(String(12), nullable=False, default="", server_default="")
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
@@ -405,6 +544,9 @@ class Character(Base):
     manual_fixed_rub: Mapped[int] = mapped_column(Integer, nullable=True)
     author_character_id: Mapped[str] = mapped_column(String(36), nullable=False, default="")
     operator_note: Mapped[str] = mapped_column(String, nullable=False, default="")
+    #: Характеристика роли по тексту книги — черновик нейросети (миграция 0053).
+    text_profile: Mapped[str] = mapped_column(String, nullable=False, default="")
+    text_profile_by: Mapped[str] = mapped_column(String(16), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
@@ -681,6 +823,9 @@ class StudioSettings(Base):
     onboarding_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     #: когда впервые открыли каст или Читалку примера — шаг 6; на студию, а не на человека
     onboarding_result_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    #: книга, которую студия записывает сейчас; бот принимает дубли только по ней.
+    #: Пусто — бот дубли не берёт. Одна на студию, поэтому поле, а не флаг у книги.
+    recording_book_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
     updated_by: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
@@ -765,6 +910,7 @@ class ModelPrice(Base):
     price_out: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     price_unit: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="RUB")
+
     updated_by: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
@@ -1105,12 +1251,29 @@ class RoleDeadline(Base):
     due_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
-    #: done | manual | replaced | removed | changed | baseline
+    #: done | manual | replaced | removed | changed | baseline | declined | voiced
     close_reason: Mapped[str | None] = mapped_column(String(12), nullable=True, default=None)
     reminded_before_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     reminded_overdue_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     recast_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     extended_by: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    declined_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    extend_request_days: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    extend_request_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+
+
+class BotCommentWait(Base):
+    """Бот ждёт от человека комментарий к пробе: он нажал «✍️ Своими словами», и его
+    следующее сообщение — текст для студии. Одна строка на человека: новое нажатие
+    перебивает прежнее. Живёт недолго (`audition_card.COMMENT_TTL`) — иначе случайное
+    сообщение через неделю легло бы комментарием к давно забытой пробе."""
+
+    __tablename__ = "bot_comment_waits"
+
+    tid: Mapped[str] = mapped_column(String(32), primary_key=True)
+    audio_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
 
 
 class BotBroadcast(Base):
@@ -1150,3 +1313,23 @@ class BotContact(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
     reported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+
+
+class BookThanksSent(Base):
+    """Кому из дикторов уже ушло благодарственное письмо за книгу.
+
+    Уникальность `(book_id, telegram_user_id)` — защита от дубля: «озвучена» можно нажать,
+    снять и нажать снова, а письмо человеку должно уйти один раз.
+    """
+
+    __tablename__ = "book_thanks_sent"
+    __table_args__ = (UniqueConstraint("book_id", "telegram_user_id", name="uq_book_thanks_sent"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    book_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    telegram_user_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor_name: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+    # Отметка ставится до отправки (сбой не должен вести к дублю), поэтому одна sent_at не
+    # говорит, дошло ли письмо: delivered=True только после успешной отправки.
+    delivered: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")

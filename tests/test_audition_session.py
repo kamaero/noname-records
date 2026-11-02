@@ -261,3 +261,16 @@ class TestMarkersOnTheCuePointTrack:
         inner = minidom.parseString(re.sub(r"<\?xpacket[^>]*\?>", "", packet).encode("utf-8"))
 
         assert inner.getElementsByTagName("xmpDM:duration") == []
+
+
+class TestTrackColours:
+    """Цвет дорожки — `trackHue` в градусах, как пишет его сам Audition («Байка 65»)."""
+
+    def test_a_coloured_track_carries_its_hue(self):
+        root = _parse(_session(tracks=[SessionTrack(name="Рассказчик", hue=100.8)]))
+        params = root.find("session/tracks/audioTrack/trackParameters")
+        assert params.get("trackHue") == "100.8"
+
+    def test_an_uncoloured_track_keeps_the_default(self):
+        root = _parse(_session(tracks=[SessionTrack(name="Хдыбдяр")]))
+        assert root.find("session/tracks/audioTrack/trackParameters").get("trackHue") == "-1"

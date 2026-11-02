@@ -7,7 +7,8 @@ from fastapi.responses import JSONResponse
 
 from app.api._helpers import bad_request_response, forbidden_response, unauthorized_response
 from app.constants import DICTOR_ROLES
-from app.services.upload_kind import classify_upload_kind
+from app.services.upload_kind import classify_upload_kind, role_taken_by_other, role_taken_text
+from app.services.upload_role_chapter import refusal_text, role_not_in_chapter
 
 
 def build_dictor_upload_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., Any]]:
@@ -63,6 +64,7 @@ def build_dictor_upload_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
                     kinds_db,
                     role=str(override.get("role") or "").strip(),
                     actor_name=str(override.get("actor_name") or default_actor_name or "").strip(),
+                    book_code=str(override.get("book_code") or default_book_code or "").strip(),
                 )
                 if idx < len(overrides):
                     overrides[idx] = override
@@ -80,6 +82,31 @@ def build_dictor_upload_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
             parsed["index"] = idx
             parsed["size_bytes"] = max(0, size)
             parsed_items.append(parsed)
+
+        # Роль без реплик в выбранной главе — тот же отказ, что даст сама загрузка
+        # (`recording_batch`): диктор должен узнать до того, как будет ждать выгрузки.
+        # Владелец и автор решают каст сами — пробу на занятую роль им не запрещаем.
+        decides_cast = has_any_role(request, {"admin", "author"})
+        with session_local() as chapters_db:
+            for item in parsed_items:
+                if item.get("kind") == "audition" and item.get("role") and not decides_cast and role_taken_by_other(
+                    chapters_db, book_code=str(item.get("book_code") or ""), role=str(item.get("role") or ""),
+                    actor_name=str(item.get("actor_name") or ""),
+                ):
+                    item["errors"] = [*item.get("errors", []), "role_taken"]
+                    item["error_text"] = role_taken_text(str(item.get("role") or ""))
+                    continue
+                if item.get("kind") == "audition" or not item.get("chapter") or not item.get("role"):
+                    continue
+                speaks_in = role_not_in_chapter(
+                    chapters_db, book_code=str(item.get("book_code") or ""),
+                    chapter_label=str(item.get("chapter") or ""), role=str(item.get("role") or ""),
+                )
+                if speaks_in is not None:
+                    item["errors"] = [*item.get("errors", []), "role_not_in_chapter"]
+                    item["error_text"] = refusal_text(
+                        str(item.get("role") or ""), int(item.get("chapter_index") or 0), speaks_in,
+                    )
 
         # Предпросмотр видит только имя, не содержимое — «уже загружен» по имени тут
         # больше не проверяем: дозапись всей роли и короткий фикс приходят под своим

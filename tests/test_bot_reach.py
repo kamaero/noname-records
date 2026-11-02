@@ -96,3 +96,16 @@ class TestWhenItCannotAsk:
 
     def test_nobody_to_check(self):
         assert check_bot_reach([], token="t") == {"items": [], "checked": 0, "unreachable": 0, "error": ""}
+
+
+def test_the_question_goes_to_the_configured_base(monkeypatch):
+    from app.config import settings
+    from app.services import bot_reach
+
+    monkeypatch.setattr(settings, "telegram_api_base", "http://127.0.0.1:8081")
+    asked = []
+    monkeypatch.setattr(bot_reach.requests, "get", lambda url, **kw: asked.append(url) or _ok())
+
+    check_bot_reach([{"telegram_user_id": "41"}], token="T")
+
+    assert asked == ["http://127.0.0.1:8081/botT/getChat"]

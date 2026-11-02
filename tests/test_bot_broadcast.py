@@ -10,7 +10,7 @@ from app.models import (
     AuditLog, BotBroadcast, BookBudget, DictorAssignment, ScriptBook, TelegramAuthAccount, User, UserRole,
 )
 from app.services import bot_broadcast, onboarding
-from app.services.bot_dialog import BROADCAST_BUTTON, handle_update
+from app.services.bot_dialog import BROADCAST_BUTTON, REMIND_BUTTON, STUDIO_BUTTON, STATUS_BUTTON, handle_update
 
 NOW = datetime(2026, 10, 1, 12, 0, 0)
 
@@ -77,7 +77,8 @@ def _pick(out, label):
 
 def test_the_admin_has_the_broadcast_button(db):
     out = handle_update(db, _msg("/start"), now=NOW)
-    assert out[0].payload["reply_markup"]["keyboard"] == [[{"text": BROADCAST_BUTTON}]]
+    assert out[0].payload["reply_markup"]["keyboard"] == [[{"text": BROADCAST_BUTTON}, {"text": REMIND_BUTTON}],
+                                                           [{"text": STUDIO_BUTTON}, {"text": STATUS_BUTTON}]]
 
 
 def test_the_book_flow_reaches_only_approved_cast_and_narrator(db):

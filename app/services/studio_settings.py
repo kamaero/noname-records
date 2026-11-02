@@ -7,7 +7,7 @@ kept in rubles that would quietly rot.
 """
 from __future__ import annotations
 
-from app.models import StudioSettings
+from app.models import ScriptBook, StudioSettings
 
 ROW_ID = "default"
 FALLBACK_RATE_RUB_PER_MIN = 1000
@@ -50,3 +50,30 @@ def set_default_rate(db, rate: int, *, updated_by: str = "") -> int:
     row.default_rate_rub_per_min = max(1, int(rate or 0))
     row.updated_by = str(updated_by or "")[:120]
     return int(row.default_rate_rub_per_min)
+
+
+def active_book(db) -> ScriptBook | None:
+    """Книга, которую студия записывает сейчас. Удалённая книга читается как «никакой»:
+    бот не должен принимать дубли в пустоту."""
+    book_id = str(studio_settings(db).recording_book_id or "")
+    book = db.get(ScriptBook, book_id) if book_id else None
+    # Озвученная книга записи не принимает: бот не должен брать дубли в законченную книгу,
+    # даже если `recording_book_id` на неё ещё указывает (voice_book его сбрасывает, но
+    # ручная правка или гонка могли оставить). Поле читаем прямо, без book_lifecycle:
+    # тот сам импортирует этот модуль.
+    if book is not None and getattr(book, "voiced_at", None) is not None:
+        return None
+    return book
+
+
+def set_active_book(db, book_id: str | None, *, updated_by: str) -> None:
+    """Одна книга или никакой. Поле одно на студию, так что включение второй книги
+    снимает первую само, без отдельного сброса."""
+    row = studio_settings(db)
+    if book_id:
+        if db.get(ScriptBook, book_id) is None:
+            raise ValueError("book_not_found")
+        row.recording_book_id = book_id
+    else:
+        row.recording_book_id = ""
+    row.updated_by = str(updated_by or "")[:120]
