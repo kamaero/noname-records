@@ -16,6 +16,20 @@ while (($#)); do
   shift
 done
 
+# Linux — только сервер (VPS) с доменом. Дикторы и режиссёры работают в DAW на Mac и
+# Windows; «компьютер на Linux» никому из них не нужен, а сервер без домена дикторам не открыть
+# (нет HTTPS — нет входа и Telegram-бота). Проверка до --dry-run: её видно и без Docker.
+linux_needs_domain() {
+  echo "На Linux система ставится только на сервер (VPS) с доменом: ./install.sh --domain studio.example.com" >&2
+  echo "Для своего компьютера — Mac или Windows, см. README «Установка на свой компьютер»." >&2
+  exit 2
+}
+if [[ "$(uname -s)" == Linux && -z "$domain" ]]; then
+  if ((yes || dry_run)) || [[ ! -t 0 ]]; then linux_needs_domain; fi
+  read -r -p "Домен сервера (например, studio.example.com): " domain
+  [[ -n "$domain" ]] || linux_needs_domain
+fi
+
 if ((dry_run)); then
   cat <<'EOF'
 Проверка Docker и Docker Compose.
@@ -207,11 +221,6 @@ for _ in {1..90}; do
       case "$(uname -s)" in
         Darwin)
           if command -v open >/dev/null 2>&1; then open "$base_url" >/dev/null 2>&1 || true; fi
-          ;;
-        Linux)
-          if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] && command -v xdg-open >/dev/null 2>&1; then
-            xdg-open "$base_url" >/dev/null 2>&1 || true
-          fi
           ;;
       esac
     fi
