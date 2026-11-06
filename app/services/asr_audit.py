@@ -952,11 +952,24 @@ def latest_audits(db, chapter_ids: list[str]) -> "dict[str, dict]":
     for cid, row in latest.items():
         flags, confirmed = _audit_findings(row)
         try:
-            cost_complete = json.loads(row.lines_json or "{}").get("cost_complete", True)
+            metadata = json.loads(row.lines_json or "{}")
+            cost_complete = metadata.get("cost_complete", True)
         except (ValueError, AttributeError):
+            metadata = {}
             cost_complete = False
+        audit_status = str(row.status or "")
+        if audit_status == "done":
+            try:
+                saved = str(metadata.get("narrator_input_fingerprint") or "")
+                if not saved or saved != narrator_input_fingerprint(db, cid):
+                    audit_status = "stale"
+            except Exception:
+                # Нельзя выдавать прошлые находки за текущие, если сравнение входа
+                # не удалось: редактор мог изменить сценарий или исходный дубль.
+                logger.exception("Не удалось проверить актуальность аудита главы %s", cid)
+                audit_status = "stale"
         out[cid] = {
-            "status": str(row.status or ""),
+            "status": audit_status,
             "flags": len(flags),
             "confirmed": confirmed,
             "model": str(row.model or ""),

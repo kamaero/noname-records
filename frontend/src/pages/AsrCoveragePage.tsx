@@ -369,12 +369,14 @@ export function AsrCoveragePage() {
           const audit = row.audit;
           const busy = audit?.status === "queued" || audit?.status === "running" || audit?.status === "unknown";
           const label = !audit ? "—" : audit.status === "unknown" ? "исход неизвестен" : busy ? "проверяется…"
+            : audit.status === "stale" ? "устарела"
             : audit.status === "failed" ? "ошибка"
             : audit.status === "skipped" ? "пропущен"
             : audit.confirmed > 0 ? `${audit.confirmed} подтр.`
             : audit.flags > 0 ? `${audit.flags} флаг.` : "✓";
           const title = !audit ? "Аудит ещё не запускался"
             : audit.status === "unknown" ? "Исход неизвестен — повтор не выполняется. Проверьте журнал задач."
+            : audit.status === "stale" ? "Сценарий или запись изменились после проверки; соберите главу заново"
             : audit.status === "failed" ? "Прогон остановлен; причину смотрите в журнале задач"
             : audit.status === "skipped" ? (audit.error_message?.includes("narrator_input_changed_after_payment")
               ? "Состав рассказчика изменился во время проверки. Оплаченный результат сохранён; автоматический повтор запрещён."
@@ -383,7 +385,7 @@ export function AsrCoveragePage() {
           return (
             <span className="asr-links">
               <span className={audit?.confirmed ? "num asr-holes" : "cast-muted"} title={title}>{label}</span>
-              {isAdmin && row.audit_assembled && !busy ? (
+              {isAdmin && row.audit_assembled && !busy && audit?.status !== "stale" ? (
                 <button
                   type="button"
                   className="asr-run"

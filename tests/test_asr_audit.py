@@ -837,6 +837,20 @@ def test_gateway_failure_does_not_retry_a_paid_audit(db, monkeypatch):
     assert calls == [1]
 
 
+def test_latest_audit_is_not_current_after_script_changes(db):
+    chapter_id = _make_ready_chapter(db)
+    fingerprint = asr_audit.narrator_input_fingerprint(db, chapter_id)
+    db.add(AsrAudit(chapter_id=chapter_id, status="done", model="test",
+                    lines_json=json.dumps({"narrator_input_fingerprint": fingerprint}),
+                    findings_json=json.dumps({"flags": [], "confirmed": 0})))
+    db.flush()
+    assert asr_audit.latest_audits(db, [chapter_id])[chapter_id]["status"] == "done"
+    segment = db.query(V2Segment).filter(V2Segment.chapter_id == chapter_id, V2Segment.ordinal == 0).one()
+    segment.text = "Изменённое содержание первой реплики."
+    db.flush()
+    assert asr_audit.latest_audits(db, [chapter_id])[chapter_id]["status"] == "stale"
+
+
 def test_dictor_cannot_read_audit_cost(db):
     from app.services.chapter_delivery import book_recording_status
     chapter_id = _make_ready_chapter(db)
