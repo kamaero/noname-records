@@ -966,7 +966,7 @@ def latest_audits(db, chapter_ids: list[str]) -> "dict[str, dict]":
             except Exception:
                 # Нельзя выдавать прошлые находки за текущие, если сравнение входа
                 # не удалось: редактор мог изменить сценарий или исходный дубль.
-                logger.exception("Не удалось проверить актуальность аудита главы %s", cid)
+                logger.debug("Не удалось проверить актуальность аудита главы %s", cid, exc_info=True)
                 audit_status = "stale"
         out[cid] = {
             "status": audit_status,
