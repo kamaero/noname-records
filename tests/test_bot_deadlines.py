@@ -33,9 +33,9 @@ def db(monkeypatch):
                                source_filename="x", source_format="docx", total_chars=0, author_sheets_x1000=0,
                                chapter_count=1, has_chapters="true", status="processing"))
         session.add(ScriptChapter(id="b1-1", book_id="b1", chapter_index=1, chapter_title="Глава 1"))
-        people = [("u11", OWNER, "Примеряфеицшпчб Примерщюагоэсгв", "admin"), ("u41", "41", "Ветрова Ольга", "dictor"),
+        people = [("u11", OWNER, "Фернос Фарита", "admin"), ("u41", "41", "Ветрова Ольга", "dictor"),
                   ("u42", "42", "Иванов Пётр", "dictor"), ("u70", AGENT, "Инга Агент", "agent"),
-                  ("u80", "80", "Примернкяхаххчб Примервлщющючб", "author")]
+                  ("u80", "80", "Варени Вискон", "author")]
         for uid, tid, name, role in people:
             session.add(User(id=uid, login=f"tg_{tid}", password_hash="x", display_name=name, is_active="true"))
             session.add(UserRole(user_id=uid, role=role))
@@ -143,13 +143,13 @@ def test_owner_removes_the_actor_through_a_vote(db):
 
 def test_the_authors_vote_outweighs_the_owner(db):
     from app.services.role_votes import cast_role_vote
-    cast_role_vote(db, character=db.get(Character, "c1"), voter_uid="u80", voter_name="Примернкяхаххчб Примервлщющючб",
+    cast_role_vote(db, character=db.get(Character, "c1"), voter_uid="u80", voter_name="Варени Вискон",
                    weight=2, actor_name="Ветрова Ольга?")
     db.commit()
     _decline(db)
     out = handle_update(db, _press("dd:r:c1", tid=OWNER), now=NOW)
     assert db.get(Character, "c1").actor_name == "Ветрова Ольга?"
-    assert "Не снято: перевешивает голос Примернкяхаххчб Примервлщющючб" in _to(out, OWNER)[0]["text"]
+    assert "Не снято: перевешивает голос Варени Вискон" in _to(out, OWNER)[0]["text"]
 
 
 def test_remove_does_nothing_when_the_role_already_moved_on(db):
@@ -175,7 +175,7 @@ def test_owner_extends_once_and_the_dictor_hears(db):
     out = handle_update(db, _press(_dx("y"), tid=OWNER), now=NOW)
     row = db.get(RoleDeadline, "d2")
     assert row.due_at == before + timedelta(days=7) and row.extend_request_days is None
-    assert row.extended_by == "Примеряфеицшпчб Примерщюагоэсгв"
+    assert row.extended_by == "Фернос Фарита"
     assert "Срок продлён" in _to(out, "41")[0]["text"] and "Продлено до" in _to(out, OWNER)[0]["text"]
     again = handle_update(db, _press(_dx("y"), tid=OWNER), now=NOW)
     assert db.get(RoleDeadline, "d2").due_at == before + timedelta(days=7)
@@ -228,7 +228,7 @@ def test_a_site_extension_clears_the_bot_request_and_old_buttons_go_stale(db):
     from app.services import role_deadlines
     out = handle_update(db, _press("dl:e7:c2"), now=NOW)
     old_button = _data(_to(out, OWNER)[0])[0]
-    role_deadlines.extend(db, "d2", days=14, by="Примеряфеицшпчб Примерщюагоэсгв", now=NOW)
+    role_deadlines.extend(db, "d2", days=14, by="Фернос Фарита", now=NOW)
     db.commit()
     assert db.get(RoleDeadline, "d2").extend_request_days is None
     due = db.get(RoleDeadline, "d2").due_at
@@ -243,7 +243,7 @@ def test_remove_reports_who_holds_the_role_when_votes_hand_it_to_someone_else(db
     и новый исполнитель не получал письма."""
     from app.services.role_votes import cast_role_vote
     ch = db.get(Character, "c1")
-    cast_role_vote(db, character=ch, voter_uid="u80", voter_name="Примернкяхаххчб Примервлщющючб", weight=2,
+    cast_role_vote(db, character=ch, voter_uid="u80", voter_name="Варени Вискон", weight=2,
                    actor_name="Иванов Пётр?")
     db.commit()
     ch.actor_name = "Ветрова Ольга?"   # профиль автора пишет имя мимо голосов
@@ -263,7 +263,7 @@ def test_remove_reports_who_holds_the_role_when_votes_hand_it_to_someone_else(db
 
 def test_outweighed_reply_has_no_gendered_words(db):
     from app.services.role_votes import cast_role_vote
-    cast_role_vote(db, character=db.get(Character, "c1"), voter_uid="u80", voter_name="Примернкяхаххчб Примервлщющючб",
+    cast_role_vote(db, character=db.get(Character, "c1"), voter_uid="u80", voter_name="Варени Вискон",
                    weight=2, actor_name="Ветрова Ольга?")
     db.commit()
     _decline(db)

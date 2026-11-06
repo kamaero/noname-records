@@ -103,6 +103,34 @@ def missing_lines_notice(*, role: str, chapter: str, book_title: str, lines: lis
     )
 
 
+def audit_findings_notice(*, role: str, chapter: str, book_title: str, texts: list[str],
+                          link: str = "") -> str:
+    """Строгая проверка: слова/фразы, которых дословно не нашлось в записи.
+
+    Не путать с `missing_lines_notice`: та — про целые реплики боевой сверки, эта —
+    про дословность чтения по Сценарию. Формулировка говорит о проверке, а не о браке:
+    находка уже подтверждена второй моделью, но место всё равно сверяется со сценарием.
+    """
+    return _lines_letter(
+        header="🔍 Строгая проверка не нашла дословно: {count}",
+        role=role, chapter=chapter, book_title=book_title, texts=texts,
+        call_to_action="Сверьте эти места со сценарием и пришлите исправление (_fix).", link=link,
+    )
+
+
+def notify_audit_findings(db, *, actor_name: str, role: str, chapter: str, book_title: str,
+                          book_id: str, texts: list[str]) -> dict:
+    """Отправить письмо о подтверждённых находках аудита тому, кто читал роль."""
+    text = audit_findings_notice(role=role, chapter=chapter, book_title=book_title,
+                                 texts=texts, link=role_script_link(book_id, role))
+    count = len([t for t in texts or [] if str(t or "").strip()])
+    return _deliver(
+        db, actor_name=actor_name, text=text, count=count,
+        about="актёра с неоднозначным именем надо предупредить о находках строгой проверки самим",
+        role=role, chapter=chapter, book_title=book_title,
+    )
+
+
 def notify_missing_lines(
     db,
     *,

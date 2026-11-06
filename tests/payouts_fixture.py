@@ -29,7 +29,7 @@ def _book(session, bid, title, chapters):
 def build(session):
     _book(session, "b1", KP, ["Глава 1", "", "Эпилог"])    # у второй главы нет названия — метка «Глава 2»
     _book(session, "b2", SV, ["Глава 1"])
-    for uid, tid, name, role in (("u11", "11", "Примеряфеицшпчб Примерщюагоэсгв", "admin"), ("u41", "41", "Ветрова Ольга", "dictor")):
+    for uid, tid, name, role in (("u11", "11", "Фернос Фарита", "admin"), ("u41", "41", "Ветрова Ольга", "dictor")):
         session.add(User(id=uid, login=f"tg_{tid}", password_hash="x", display_name=name, is_active="true"))
         session.add(UserRole(user_id=uid, role=role))
         session.add(TelegramAuthAccount(telegram_user_id=tid, role=role, access_scope="full", display_name=name,
@@ -41,7 +41,7 @@ def build(session):
         ("c2", "b1", "m2", "Хоркон", "Ветрова Ольга", "1,2"),
         ("c3", "b1", "m3", "Дракон", "Иванов Пётр?", "1"),    # не утверждён — в «Смете» нет
         ("c4", "b1", "m4", "Без суммы", "Иванов Пётр", "1"),  # снапшота нет
-        ("cn", "b1", "m5", "Рассказчик", "Примервсммчпфиб Примерубщркгюд", ""),
+        ("cn", "b1", "m5", "Рассказчик", "Пуриса Пирхан", ""),
         ("c5", "b2", "m6", "Ныкфо", "Ольга Ветрова", "1"),    # то же лицо, иначе написано
     ]
     for cid, bid, cmap, name, actor, chapters in cast:
@@ -50,11 +50,11 @@ def build(session):
                           ("c5", "b2", 3000)):
         session.add(CharacterBudgetSnapshot(book_id=bid, character_id=cid, lines_count=3, approx_seconds=60,
                                             total_rub=rub))
-    session.add(BookBudget(book_id="b1", narrator_actor_name="Примервсммчпфиб Примерубщркгюд", narrative_cost_rub=100000))
+    session.add(BookBudget(book_id="b1", narrator_actor_name="Пуриса Пирхан", narrative_cost_rub=100000))
     code = derive_book_code(KP)
     takes = [("Убув", label, "Ветрова Ольга") for label in ("Глава 1", "Глава 2", "Эпилог")]
     takes += [("Хоркон", "Глава 1", "Ветрова Ольга")]
-    takes += [("Рассказчик", label, "Примервсммчпфиб Примерубщркгюд") for label in ("Глава 1", "Глава 2", "Эпилог")]
+    takes += [("Рассказчик", label, "Пуриса Пирхан") for label in ("Глава 1", "Глава 2", "Эпилог")]
     for i, (role, chapter, actor) in enumerate(takes):
         session.add(AudioFile(book_code=code, original_filename=f"{i}.wav", stored_key=f"k/{i}", mime_type="audio/wav",
                               size_bytes=1, chapter=chapter, role=role, actor_name=actor, kind="take", uploaded_at=NOW))

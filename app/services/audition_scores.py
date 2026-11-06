@@ -200,7 +200,7 @@ def _role_title(db, book_id: str, role: str) -> str:
 
 
 def _surname(full_name: str) -> str:
-    """«Примервлщющючб Примернкяхаххчб» → «Пяволов»: подпись дорожки короткая, иначе на телефоне
+    """«Вискон Варени» → «Варени»: подпись дорожки короткая, иначе на телефоне
     имя спорит со шкалой за строку. Порядок «Имя Фамилия» — так записаны оба человека."""
     words = str(full_name or "").split()
     return words[-1] if words else ""
@@ -216,8 +216,8 @@ def lane_labels(db, book) -> dict[str, str]:
     owner_tg = str(settings.owner_telegram_id or "").strip()
     if owner_tg:
         account = db.query(TelegramAuthAccount).filter_by(telegram_user_id=owner_tg).one_or_none()
-        # Имя учётки важнее Telegram-имени: у владельца в Telegram «Примерфчяблеяд Примербиебипге», а учётка
-        # с 30.09 называется «Примеряфеицшпчб Примерщюагоэсгв» — подпись «Aero» под шкалой никто не узнаёт.
+        # Имя учётки важнее Telegram-имени: у владельца в Telegram «Псевдоним», а учётка
+        # с 30.09 называется «Фернос Фарита» — подпись «Псевдоним» под шкалой никто не узнаёт.
         user = db.get(User, account.user_id) if account is not None and account.user_id else None
         name = (user.display_name if user is not None else "") or (account.display_name if account is not None else "")
         if _surname(name):

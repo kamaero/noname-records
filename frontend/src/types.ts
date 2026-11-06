@@ -920,6 +920,16 @@ export type SaveBookBudgetPayload = {
 };
 
 /** Готовность записи по главам: у роли есть дубль или нет. */
+export type AsrAuditState = {
+  status: string;
+  flags: number;
+  confirmed: number;
+  model: string;
+  stt_cost_rub: number | null;
+  updated_at: string;
+  error_message?: string;
+};
+
 export type BookRecordingChapter = {
   chapter_id: string;
   chapter_index: number;
@@ -959,6 +969,8 @@ export type BookRecordingChapter = {
   session_outdated: boolean;
   /** маркеры звукорежиссёра, чей абзац ещё не записан — записано архивацией, не посчитано здесь */
   session_markers_skipped: number;
+  audit: AsrAuditState | null;
+  audit_assembled: boolean;
   /** Эмбиент главы — только редактору (дикторам нули и пустое состояние).
    * `ambient_todo` — активные сцены записанной главы без готового трека, среди них
    * `ambient_skipped` — те, что прошлый прогон пропустил (нет места на таймлайне). */

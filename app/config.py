@@ -116,6 +116,11 @@ class Settings:
     asr_model: str = os.getenv("ASR_MODEL", "whisper-1")
     asr_language: str = os.getenv("ASR_LANGUAGE", "ru")
     asr_prompt: str = os.getenv("ASR_PROMPT", "")
+    # Публичная установка не должна начинать платные проверки без решения владельца.
+    asr_audit_enabled: bool = os.getenv("ASR_AUDIT_ENABLED", "0") == "1"
+    asr_audit_model: str = os.getenv("ASR_AUDIT_MODEL", "elevenlabs/scribe-v2")
+    asr_audit_confirm_model: str = os.getenv("ASR_AUDIT_CONFIRM_MODEL", "microsoft/mai-transcribe-2")
+    llm_audit_model: str = os.getenv("LLM_AUDIT_MODEL", "deepseek/deepseek-v4-pro")
     azure_speech_key: str = os.getenv("AZURE_SPEECH_KEY", "")
     azure_speech_endpoint: str = os.getenv("AZURE_SPEECH_ENDPOINT", "")
     azure_speech_locale: str = os.getenv("AZURE_SPEECH_LOCALE", "ru-RU")

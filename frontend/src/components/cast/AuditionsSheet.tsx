@@ -161,8 +161,8 @@ export function AuditionsSheet({ role, pairs, onAssign, onClose, canDeleteAny, c
     >
       <ul className="aud-list">
         {shown.map((pair) => {
-          // Признак с сервера: строгое сравнение строк не узнавало «Примерчюнгнчэлв Примеронгялюцз»
-          // в утверждённом «Примеронгялюцз Примерчюнгнчэлв» и предлагало утвердить его повторно.
+          // Признак с сервера: строгое сравнение строк не узнавало «Мелвис Моркен»
+          // в утверждённом «Моркен Мелвис» и предлагало утвердить его повторно.
           const mine = pair.approved;
           return (
             <li key={pair.key} className="aud-item">

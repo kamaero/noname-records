@@ -12,6 +12,7 @@
   удалялись никогда — это чужая работа, а перезалитая книга с тем же названием
   находит их снова;
 * их распознавание (`asr_jobs`) оплачено и переигрывается без новых трат;
+* строгая проверка рассказчика (`asr_audits`) оплачена и сохраняет свой результат;
 * журнал трат на модели (`llm_usage_logs`, `spend_entries`) — это деньги, по нему сверяют счёт.
 """
 from __future__ import annotations
@@ -55,7 +56,7 @@ BY_CHARACTER = ("role_votes",)
 CARRIERS = ("v2_segments", "characters", "script_chapters")
 
 #: переживают книгу — причины в описании модуля
-KEPT = ("asr_jobs", "audio_files", "bot_broadcasts", "fee_payments", "llm_usage_logs", "spend_entries", "spend_holds")
+KEPT = ("asr_jobs", "asr_audits", "audio_files", "bot_broadcasts", "fee_payments", "llm_usage_logs", "spend_entries", "spend_holds")
 
 #: прогон в работе — его строку не трогаем: воркер сам увидит, что книги нет
 ACTIVE_RUN_STATUSES = ("queued", "running")

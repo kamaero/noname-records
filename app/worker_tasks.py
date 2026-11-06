@@ -34,6 +34,45 @@ def _fail_background_run(session_factory, run_id: str, exc: Exception):
     )
 
 
+def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
+                           assembled_fingerprint: str = "", narrator_take_id: str = "",
+                           narrator_input_fingerprint: str = "", force: bool = False):
+    """Проверяем снимок сборки и захватываем оплачиваемую задачу ровно один раз."""
+    from app.services.asr_audit import run_asr_audit
+    from app.services.asr_audit_lifecycle import assembled_audit_snapshot, claim_audit_run, record_payment_boundary
+
+    session_factory = SessionLocal
+    try:
+        with session_factory() as db:
+            if not claim_audit_run(db, run_id):
+                return
+            expected = {"assembled_fingerprint": assembled_fingerprint, "narrator_take_id": narrator_take_id,
+                        "narrator_input_fingerprint": narrator_input_fingerprint}
+            if assembled_audit_snapshot(db, chapter_id) != expected:
+                db.rollback()
+                record_payment_boundary(db, run_id, state="not_started", skip_reason="assembly_changed_before_payment")
+                _finish_background_run(session_factory, BackgroundRun, run_id, "skipped",
+                                       "Состав главы изменился после сборки; оплаты не было")
+                return
+            record_payment_boundary(db, run_id, state="possibly_paid")
+            from app.models import ScriptChapter
+            from app.services import spend
+            chapter = db.get(ScriptChapter, chapter_id)
+            book_id = str(chapter.book_id) if chapter else ""
+            db.commit()
+            with spend.context("asr_audit", book_id=book_id, chapter_id=chapter_id, run_id=run_id):
+                audit = run_asr_audit(db, chapter_id, expected_narrator_fingerprint=narrator_input_fingerprint)
+            db.commit()
+            if audit.status == "skipped" and audit.error_message in {"narrator_input_changed", "no_narrator_take"}:
+                record_payment_boundary(db, run_id, state="not_started", skip_reason=audit.error_message)
+            audit_status, message = audit.status, audit.error_message or "без ошибок"
+        _finish_background_run(session_factory, BackgroundRun, run_id, audit_status,
+                               f"аудит {audit_status}: {message}")
+    except Exception as exc:
+        _fail_background_run(session_factory, run_id, exc)
+        raise
+
+
 def perform_asr_chapter_task(chapter_id: str, run_id: str = "", force: bool = False):
     """Распознать дубли главы. Идёт в фоне: минута на файл — не для запроса из браузера.
 

@@ -7,11 +7,13 @@
 и дальше гоняем `align_transcript` бесплатно.
 
     # одна глава: {"expected": [...], "segments": [...]}
-    python3 -m scripts.export_asr_fixture --audio KP_Ch55_Lahdzha_X.wav \
-        --chapter 55 --role Хубрхю --out tests/fixtures/asr/short_lines_43.json
+    python3 -m scripts.export_asr_fixture --audio EX_Ch55_Role_Actor.wav \
+        --chapter 55 --role Роль --out /tmp/asr-chapter.json
     # запись целой роли: {"chapters": {"1": [...], ...}, "segments": [...]}
-    python3 -m scripts.export_asr_fixture --audio KP_Ch01_Yumkuba_X.wav \
-        --whole-roles --role Юмкуба --out tests/fixtures/asr/role_six_chapters.json
+    python3 -m scripts.export_asr_fixture --audio EX_Ch01_Role_Actor.wav \
+        --whole-roles --role Роль --out /tmp/asr-role.json
+
+Выгрузка может содержать чужие тексты и имена: не добавляйте её в публичный репозиторий.
 """
 from __future__ import annotations
 

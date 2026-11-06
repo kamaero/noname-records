@@ -93,6 +93,7 @@ from app.v2.api import (
     api_v2_book_recording,
     api_v2_chapter_archive,
     api_v2_chapter_asr,
+    api_v2_chapter_audit,
     api_v2_chapter_verify,
     api_v2_chapter_session_archive,
     api_v2_chapter_recording,
@@ -365,6 +366,7 @@ app.add_api_route("/api/v2/chapters/{chapter_id}/recording", api_v2_chapter_reco
 app.add_api_route("/api/v2/chapters/{chapter_id}/archive.zip", api_v2_chapter_archive, methods=["GET"])
 register_lifecycle_routes(app)
 app.add_api_route("/api/v2/chapters/{chapter_id}/asr", api_v2_chapter_asr, methods=["POST"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/audit", api_v2_chapter_audit, methods=["POST"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/verify", api_v2_chapter_verify, methods=["POST"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/session-archive", api_v2_chapter_session_archive, methods=["POST"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/session.sesx", api_v2_chapter_session, methods=["GET"])

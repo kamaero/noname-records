@@ -287,9 +287,9 @@ class TestRealignChapterAfterAMove:
 
         owner = []
         monkeypatch.setattr(released_alerts, "_default_send", lambda db: lambda text: owner.append(text))
-        chapter = make_chapter(db, self.LINES, {"Сяхах": "Примерццдцгдтцв Примеродбнщлжкб", "Химес": "Иванов Пётр"})
+        chapter = make_chapter(db, self.LINES, {"Сяхах": "Сорен Салдер", "Химес": "Иванов Пётр"})
         db.get(ScriptChapter, chapter).released_at = utcnow_naive()
-        add_take(db, chapter, role="Сяхах", actor="Примерццдцгдтцв Примеродбнщлжкб",
+        add_take(db, chapter, role="Сяхах", actor="Сорен Салдер",
                  said=["Мы пойдём на север через перевал.", "Я знаю короткую дорогу к реке."])
         add_take(db, chapter, role="Химес", actor="Иванов Пётр", said=["Там нас давно ждут старые друзья."])
         move_line(db, chapter, 2, "Химес")
@@ -307,9 +307,9 @@ class TestRealignChapterAfterAMove:
 
         owner = []
         monkeypatch.setattr(released_alerts, "_default_send", lambda db: lambda text: owner.append(text))
-        chapter = make_chapter(db, self.LINES, {"Сяхах": "Примерццдцгдтцв Примеродбнщлжкб", "Химес": "Иванов Пётр"})
+        chapter = make_chapter(db, self.LINES, {"Сяхах": "Сорен Салдер", "Химес": "Иванов Пётр"})
         db.get(ScriptChapter, chapter).released_at = utcnow_naive()
-        add_take(db, chapter, role="Сяхах", actor="Примерццдцгдтцв Примеродбнщлжкб",
+        add_take(db, chapter, role="Сяхах", actor="Сорен Салдер",
                  said=["Мы пойдём на север через перевал.", "Я знаю короткую дорогу к реке."])
         add_take(db, chapter, role="Химес", actor="Иванов Пётр", said=["Там нас давно ждут старые друзья."])
         move_line(db, chapter, 2, "Химес")

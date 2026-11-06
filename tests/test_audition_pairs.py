@@ -30,7 +30,7 @@ def book(db):
     return book
 
 
-def _audition(db, book, *, role="Саяху", actor="Примершупядяобб Примерцвфмллрив", minutes=0):
+def _audition(db, book, *, role="Саяху", actor="Гленто Гарсин", minutes=0):
     item = AudioFile(book_code=derive_book_code(book.title), original_filename="p.wav",
                      stored_key=f"k/{role}/{actor}/{minutes}", mime_type="audio/wav", size_bytes=10, chapter="",
                      role=role, actor_name=actor, kind="audition", uploaded_at=NOW + timedelta(minutes=minutes))
@@ -50,7 +50,7 @@ def test_three_files_of_one_pair_are_one_row_newest_first(db, book):
 
     pairs = book_pairs(db, book, sees_scores=True, viewer_name="Владелец")
 
-    assert [p["actor_name"] for p in pairs] == ["Примершупядяобб Примерцвфмллрив", "Ветрова Ольга"]
+    assert [p["actor_name"] for p in pairs] == ["Гленто Гарсин", "Ветрова Ольга"]
     assert [a["id"] for a in pairs[0]["auditions"]] == [ids[1], ids[2], ids[0]]
     assert pairs[0]["uploaded_at"] == pairs[0]["auditions"][0]["uploaded_at"]
     assert pairs[0]["role_auditions"] == 2
@@ -58,30 +58,30 @@ def test_three_files_of_one_pair_are_one_row_newest_first(db, book):
 
 def test_scores_and_labels_for_those_who_see_them(db, book):
     _audition(db, book)
-    db.add(AuditionScore(book_id=book.id, role="Саяху", actor_name="Примершупядяобб Примерцвфмллрив", lane="author",
-                         voter_uid="a", voter_name="Примервлщющючб Примернкяхаххчб", score=8))
+    db.add(AuditionScore(book_id=book.id, role="Саяху", actor_name="Гленто Гарсин", lane="author",
+                         voter_uid="a", voter_name="Вискон Варени", score=8))
     db.commit()
 
     [pair] = book_pairs(db, book, sees_scores=True, viewer_name="Владелец")
 
-    assert pair["scores"] == {"author": {"score": 8, "name": "Примервлщющючб Примернкяхаххчб", "reason": "", "comment": ""}, "studio": None}
+    assert pair["scores"] == {"author": {"score": 8, "name": "Вискон Варени", "reason": "", "comment": ""}, "studio": None}
     assert set(pair["lane_labels"]) == {"author", "studio"}
 
 
 def test_a_dictor_gets_no_scores_even_on_own_pair(db, book):
     _audition(db, book)
-    db.add(AuditionScore(book_id=book.id, role="Саяху", actor_name="Примершупядяобб Примерцвфмллрив", lane="author",
-                         voter_uid="a", voter_name="Примервлщющючб Примернкяхаххчб", score=8))
+    db.add(AuditionScore(book_id=book.id, role="Саяху", actor_name="Гленто Гарсин", lane="author",
+                         voter_uid="a", voter_name="Вискон Варени", score=8))
     db.commit()
 
-    [pair] = book_pairs(db, book, sees_scores=False, viewer_name="Примершупядяобб Примерцвфмллрив")
+    [pair] = book_pairs(db, book, sees_scores=False, viewer_name="Гленто Гарсин")
 
     assert pair["scores"] is None and pair["lane_labels"] is None
 
 
 def test_busy_on_another_role_by_fuzzy_name(db, book):
     _audition(db, book)
-    _cast(db, book, "Фэдывнютд", "Примерцвфмллрив Примершупядяобб")
+    _cast(db, book, "Фэдывнютд", "Гарсин Гленто")
 
     [pair] = book_pairs(db, book, sees_scores=True, viewer_name="")
 
@@ -91,12 +91,12 @@ def test_busy_on_another_role_by_fuzzy_name(db, book):
 def test_a_tentative_name_does_not_make_busy_and_own_role_is_approved_not_busy(db, book):
     _audition(db, book)
     _audition(db, book, role="Сылядир", actor="Ветрова Ольга")
-    _cast(db, book, "Фэдывнютд", "Примершупядяобб Примерцвфмллрив?")
+    _cast(db, book, "Фэдывнютд", "Гленто Гарсин?")
     _cast(db, book, "Сылядир", "Ольга Ветрова")
 
     pairs = {p["actor_name"]: p for p in book_pairs(db, book, sees_scores=True, viewer_name="")}
 
-    assert pairs["Примершупядяобб Примерцвфмллрив"]["busy_on"] == []
+    assert pairs["Гленто Гарсин"]["busy_on"] == []
     assert (pairs["Ветрова Ольга"]["approved"], pairs["Ветрова Ольга"]["busy_on"]) == (True, [])
     assert pairs["Ветрова Ольга"]["role_actor"] == "Ольга Ветрова"
 
@@ -104,30 +104,30 @@ def test_a_tentative_name_does_not_make_busy_and_own_role_is_approved_not_busy(d
 def test_rejection_is_seen_by_the_studio_and_by_the_dictor_only_once_sent(db, book):
     _audition(db, book)
     rej = AuditionRejection(book_id=book.id, book_code=derive_book_code(book.title), role="Саяху",
-                            actor_name="Примершупядяобб Примерцвфмллрив", due_at=NOW, status="pending")
+                            actor_name="Гленто Гарсин", due_at=NOW, status="pending")
     db.add(rej)
     db.commit()
 
     assert book_pairs(db, book, sees_scores=True, viewer_name="")[0]["rejection"]["status"] == "pending"
-    assert book_pairs(db, book, sees_scores=False, viewer_name="Примершупядяобб Примерцвфмллрив")[0]["rejection"] is None
+    assert book_pairs(db, book, sees_scores=False, viewer_name="Гленто Гарсин")[0]["rejection"] is None
 
     rej.status, rej.sent_at = "sent", NOW
     db.commit()
-    assert book_pairs(db, book, sees_scores=False, viewer_name="Примерцвфмллрив Примершупядяобб")[0]["rejection"]["status"] == "sent"
+    assert book_pairs(db, book, sees_scores=False, viewer_name="Гарсин Гленто")[0]["rejection"]["status"] == "sent"
     assert book_pairs(db, book, sees_scores=False, viewer_name="Ветрова Ольга")[0]["rejection"] is None
 
 
 def test_role_is_found_in_the_cast_regardless_of_case_and_by_alias(db, book):
     """Роль пробы берётся из имени файла («тик-так»), в касте — «Тик-Так»: строка должна
     знать персонажа, иначе «Утвердить» отвечает «роли нет в касте»."""
-    _audition(db, book, role="тик-так", actor="Примергдпнкюцю Примероюбргфюу")
+    _audition(db, book, role="тик-так", actor="Келмар Корели")
     _audition(db, book, role="Отец Чудовищ", actor="Ветрова Ольга")
-    db.add(Character(id="c-tik", book_id=book.id, name="Тик-Так", actor_name="Примергдпнкюцю Примероюбргфюу"))
+    db.add(Character(id="c-tik", book_id=book.id, name="Тик-Так", actor_name="Келмар Корели"))
     db.add(Character(id="c-org", book_id=book.id, name="Убкнэляб", aliases="Отец Чудовищ", actor_name=""))
     db.commit()
 
     pairs = {p["actor_name"]: p for p in book_pairs(db, book, sees_scores=True, viewer_name="")}
 
-    assert (pairs["Примергдпнкюцю Примероюбргфюу"]["character_id"], pairs["Примергдпнкюцю Примероюбргфюу"]["approved"]) == ("c-tik", True)
-    assert pairs["Примергдпнкюцю Примероюбргфюу"]["busy_on"] == []
+    assert (pairs["Келмар Корели"]["character_id"], pairs["Келмар Корели"]["approved"]) == ("c-tik", True)
+    assert pairs["Келмар Корели"]["busy_on"] == []
     assert pairs["Ветрова Ольга"]["character_id"] == "c-org"

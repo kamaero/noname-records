@@ -341,7 +341,7 @@ def book_cast(db, book_id: str, *, only_speaking: bool = False, actor_name: str 
 
     `actor_name` is who is reading: every row it casts to him comes back with
     `mine`, so a picker can put his own parts on top. The cast and the account
-    spell a person differently — «Примернкяхаххчб Примервлщющючб» against «Примервлщющючб Примернкяхаххчб» —
+    spell a person differently — «Варени Вискон» against «Вискон Варени» —
     and `names_match` is the studio's answer to that, shared with the recording panel.
 
     A speaker in an attribution is matched to a character by name or alias with the

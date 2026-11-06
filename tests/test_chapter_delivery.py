@@ -10,6 +10,8 @@
 
 Пробы в счёт не идут: проба — заявка на роль, а не запись главы.
 """
+# XML здесь создаётся функцией приложения из синтетических тестовых данных;
+# произвольные внешние документы эти тесты в стандартный парсер не передают.
 import os
 
 import pytest
@@ -660,6 +662,7 @@ class TestTheTracksTheEditorWouldAddByHand:
     настройки перед работой."""
 
     def test_the_session_brings_music_and_ambience_tracks(self, studio, monkeypatch):
+        # Разбираем только XML, созданный локально самим тестом, без внешнего ввода.
         import xml.etree.ElementTree as ET
 
         from app.services.chapter_delivery import build_chapter_session
@@ -1475,7 +1478,7 @@ class TestCoverageCountsParagraphsNotPieces:
 
         db, book, chapter = studio
         self._book(monkeypatch, chapter, {"Хдыбдяр": 27})
-        self._job(db, _take(db, chapter, role="Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв").id, pieces=37)
+        self._job(db, _take(db, chapter, role="Хдыбдяр", actor="Моркен Мелвис").id, pieces=37)
 
         row = book_recording_status(db, book.id)["chapters"][0]
 
@@ -1488,7 +1491,7 @@ class TestCoverageCountsParagraphsNotPieces:
 
         db, book, chapter = studio
         self._book(monkeypatch, chapter, {"Хдыбдяр": 10})
-        self._job(db, _take(db, chapter, role="Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв").id, pieces=15, missing=[3, 9])
+        self._job(db, _take(db, chapter, role="Хдыбдяр", actor="Моркен Мелвис").id, pieces=15, missing=[3, 9])
 
         row = book_recording_status(db, book.id)["chapters"][0]
 
@@ -1501,15 +1504,15 @@ class TestCoverageCountsParagraphsNotPieces:
 
         db, book, chapter = studio
         self._book(monkeypatch, chapter, {"Хдыбдяр": 10})
-        self._job(db, _take(db, chapter, role="Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв").id, pieces=10)
-        self._job(db, _take(db, chapter, role="Хдыбдярл", actor="Примерцосезбсдв Примерлаяюмнфшв").id, pieces=10)
+        self._job(db, _take(db, chapter, role="Хдыбдяр", actor="Моркен Мелвис").id, pieces=10)
+        self._job(db, _take(db, chapter, role="Хдыбдярл", actor="Моркен Мелвис").id, pieces=10)
 
         assert book_recording_status(db, book.id)["chapters"][0]["matched_lines"] == 10
 
     def test_the_chapter_listing_counts_the_same_way(self, studio, monkeypatch):
         db, _, chapter = studio
         self._book(monkeypatch, chapter, {"Хдыбдяр": 27})
-        self._job(db, _take(db, chapter, role="Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв").id, pieces=37, missing=[5])
+        self._job(db, _take(db, chapter, role="Хдыбдяр", actor="Моркен Мелвис").id, pieces=37, missing=[5])
 
         status = chapter_recording_status(db, chapter.id)
 
@@ -1729,8 +1732,8 @@ class TestTheSessionRateFollowsTheVoices:
     def test_most_voices_in_48k_make_a_48k_session(self, studio, monkeypatch):
         db, _, chapter = studio
         _roles(monkeypatch, {"Хдыбдяр": 40, "Сылядир": 12, "Рассказчик": 100})
-        for role, actor, rate in (("Хдыбдяр", "Примерцосезбсдв Примерлаяюмнфшв", 48000), ("Сылядир", "Примеронгялюцз Примерчюнгнчэлв", 48000),
-                                  ("Рассказчик", "Примерубщркгюд Примервсммчпфиб", 44100)):
+        for role, actor, rate in (("Хдыбдяр", "Моркен Мелвис", 48000), ("Сылядир", "Вискон Варени", 48000),
+                                  ("Рассказчик", "Фернос Фарита", 44100)):
             _take(db, chapter, role=role, actor=actor).sample_rate = rate
         db.flush()
 
@@ -1739,8 +1742,8 @@ class TestTheSessionRateFollowsTheVoices:
     def test_most_voices_in_44k_keep_a_44k_session(self, studio, monkeypatch):
         db, _, chapter = studio
         _roles(monkeypatch, {"Хдыбдяр": 40, "Сылядир": 12, "Рассказчик": 100})
-        for role, actor, rate in (("Хдыбдяр", "Примерцосезбсдв Примерлаяюмнфшв", 44100), ("Сылядир", "Примеронгялюцз Примерчюнгнчэлв", 48000),
-                                  ("Рассказчик", "Примерубщркгюд Примервсммчпфиб", 44100)):
+        for role, actor, rate in (("Хдыбдяр", "Моркен Мелвис", 44100), ("Сылядир", "Вискон Варени", 48000),
+                                  ("Рассказчик", "Фернос Фарита", 44100)):
             _take(db, chapter, role=role, actor=actor).sample_rate = rate
         db.flush()
 
@@ -1750,8 +1753,8 @@ class TestTheSessionRateFollowsTheVoices:
         """Понижать частоту — терять верх; повышать — ничего не терять."""
         db, _, chapter = studio
         _roles(monkeypatch, {"Хдыбдяр": 40, "Сылядир": 12})
-        _take(db, chapter, role="Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв").sample_rate = 44100
-        _take(db, chapter, role="Сылядир", actor="Примеронгялюцз Примерчюнгнчэлв").sample_rate = 48000
+        _take(db, chapter, role="Хдыбдяр", actor="Моркен Мелвис").sample_rate = 44100
+        _take(db, chapter, role="Сылядир", actor="Вискон Варени").sample_rate = 48000
         db.flush()
 
         assert self._rate(db, chapter) == 48000
@@ -1759,7 +1762,7 @@ class TestTheSessionRateFollowsTheVoices:
     def test_unknown_rates_fall_back_to_44k(self, studio, monkeypatch):
         db, _, chapter = studio
         _roles(monkeypatch, {"Хдыбдяр": 40})
-        _take(db, chapter, role="Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв")
+        _take(db, chapter, role="Хдыбдяр", actor="Моркен Мелвис")
         db.flush()
 
         assert self._rate(db, chapter) == 44100

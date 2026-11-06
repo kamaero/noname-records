@@ -48,7 +48,7 @@
 }
 
 /* Как в касте: доли в процентах, ширина всегда равна экрану, скроллить вбок нечего. */
-.asr-table .ui-table { table-layout: fixed; width: 100%; min-width: 760px; }
+.asr-table .ui-table { table-layout: fixed; width: 100%; min-width: 930px; }
 .asr-table .ui-table-wrap { overflow-x: auto; }
 /* Плотность: общий ритм таблиц (40px строка, 12px поля) рассчитан на пару
    десятков строк, а тут глав бывает под сотню — видеть их разом важнее воздуха. */
@@ -57,6 +57,8 @@
 .asr-table .ui-table tbody td { height: 28px; padding: 0 8px; }
 .asr-table .ui-table tbody tr.ui-table-detail-row td { height: auto; padding: 0; }
 .asr-table .asr-col-bar { width: 23%; }
+.asr-table .asr-col-audit { width: 170px; }
+.asr-col-audit .asr-links { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 2px 6px; white-space: normal; }
 .asr-table .asr-col-backup { width: 100px; }
 .asr-table .asr-col-get { width: 300px; }
 .asr-detail-status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 14px 0 52px; background: var(--surface-2); font-size: 12px; }

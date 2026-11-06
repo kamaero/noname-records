@@ -34,12 +34,12 @@ def test_states_people_and_totals(db):
     assert states == {(KP, "Убув"): "done", (KP, "Хоркон"): "in_progress", (SV, "Ныкфо"): "in_progress"}
     assert olga["owed"] == 12500 and olga["in_work"] == 8000
     assert olga["name"] == "Ветрова Ольга" and olga["telegram_url"] == "https://t.me/olga"
-    narrator = next(p for p in data["people"] if p["name"] == "Примервсммчпфиб Примерубщркгюд")
+    narrator = next(p for p in data["people"] if p["name"] == "Пуриса Пирхан")
     assert narrator["roles"][0]["state"] == "done" and narrator["owed"] == 100000 and narrator["telegram_url"] == ""
     petr = next(p for p in data["people"] if p["name"] == "Иванов Пётр")
     assert [r["state"] for r in petr["roles"]] == ["no_fee"] and petr["owed"] == 0
     assert data["totals"]["owed"] == 112500 and data["totals"]["in_work"] == 8000
-    assert [p["name"] for p in data["people"]][:2] == ["Примервсммчпфиб Примерубщркгюд", "Ветрова Ольга"]
+    assert [p["name"] for p in data["people"]][:2] == ["Пуриса Пирхан", "Ветрова Ольга"]
 
 
 def test_collect_does_not_write_merged_budget_numbers(db):

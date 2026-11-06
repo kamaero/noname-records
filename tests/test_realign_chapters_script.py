@@ -147,9 +147,9 @@ def _owner_alert_setup(db, monkeypatch):
 
     owner = []
     monkeypatch.setattr(released_alerts, "send_owner_alert", lambda db, text: owner.append(text) or True)
-    chapter = make_chapter(db, LINES, {"Сяхах": "Примерццдцгдтцв Примеродбнщлжкб", "Химес": "Иванов Пётр"})
+    chapter = make_chapter(db, LINES, {"Сяхах": "Сорен Салдер", "Химес": "Иванов Пётр"})
     db.get(ScriptChapter, chapter).released_at = utcnow_naive()
-    add_take(db, chapter, role="Сяхах", actor="Примерццдцгдтцв Примеродбнщлжкб",
+    add_take(db, chapter, role="Сяхах", actor="Сорен Салдер",
              said=["Мы пойдём на север через перевал.", "Я знаю короткую дорогу к реке."])
     add_take(db, chapter, role="Химес", actor="Иванов Пётр", said=["Там нас давно ждут старые друзья."])
     move_line(db, chapter, 2, "Химес")

@@ -69,7 +69,10 @@ def parse_transcription(payload: dict) -> dict:
                 if start <= float(word.get("start") or 0.0) < end
             ],
         })
-    return {"text": str((payload or {}).get("text") or "").strip(), "segments": segments}
+    result = {"text": str((payload or {}).get("text") or "").strip(), "segments": segments}
+    if isinstance((payload or {}).get("usage"), dict):
+        result["usage"] = payload["usage"]
+    return result
 
 
 def transcribe_file(

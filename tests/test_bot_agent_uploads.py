@@ -47,10 +47,10 @@ def db():
                              actor_name="Иванов Пётр", weight=1, created_at=NOW, updated_at=NOW))
         session.add(RoleVote(id="v9", character_id="c9", voter_uid="owner", voter_name="Хозяин",
                              actor_name="Сидоров Олег", weight=1, created_at=NOW, updated_at=NOW))
-        session.add(User(id="u50", login="inga", password_hash="x", display_name="Примергюцяпввмб Примертбншрлжшв", is_active="true"))
+        session.add(User(id="u50", login="inga", password_hash="x", display_name="Урвена Ульвен", is_active="true"))
         session.add(UserRole(user_id="u50", role="agent"))
         session.add(TelegramAuthAccount(telegram_user_id=AGENT, role="agent", access_scope="full",
-                                        display_name="Примергюцяпввмб Примертбншрлжшв", is_active="true", user_id="u50"))
+                                        display_name="Урвена Ульвен", is_active="true", user_id="u50"))
         session.add(User(id="u41", login="tg_41", password_hash="x", display_name="Ветрова Ольга", is_active="true"))
         session.add(UserRole(user_id="u41", role="dictor"))
         session.add(TelegramAuthAccount(telegram_user_id="41", role="dictor", access_scope="full",

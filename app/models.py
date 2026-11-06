@@ -185,6 +185,43 @@ class ScriptBook(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
 
+class AsrAudit(Base):
+    """Строгая проверка рассказчика собранной главы (LLM-судья поверх свежего STT).
+
+    Живёт отдельно от `AsrJob`: боевую сверку и монтажные сессии аудит не трогает,
+    а правила строгой проверки меняются своим ходом — смешивать их в одной строке
+    значит ломать одно правкой другого. Одна глава — много прогонов (повтор по
+    кнопке), интерфейс смотрит последний. Удаление книги строки не трогает,
+    как и `asr_jobs`.
+    """
+    __tablename__ = "asr_audits"
+    __table_args__ = (
+        Index("ix_asr_audits_chapter_id", "chapter_id"),
+        Index("ix_asr_audits_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    chapter_id: Mapped[str] = mapped_column(String(36), nullable=False, default="")
+    audio_file_id: Mapped[str] = mapped_column(String(36), nullable=False, default="")
+    #: queued → running → done | failed | skipped (нет дубля рассказчика)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="queued")
+    model: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    confirm_model: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    judge_model: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    #: Услышанное аудит-STT в нашем виде (текст + сегменты со словными таймингами) —
+    #: повторный разбор находок (подтверждение) идёт по нему же.
+    transcript_json: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: Классификация строк рассказчика (required/tag/title) и мета прогона.
+    lines_json: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: Находки с таймкодами и цитатами: флаги судьи + что подтвердила вторая модель.
+    findings_json: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: Цена свежего STT из usage.cost ответа RouterAI — владелец видит цену прогона.
+    stt_cost_rub: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
+    error_message: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+
 class ScriptChapter(Base):
     __tablename__ = "script_chapters"
     __table_args__ = (
@@ -212,6 +249,9 @@ class ScriptChapter(Base):
     session_archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     #: sha256 XML, положенного в архив последним. Пусто — архивировали до отпечатков.
     session_sha256: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    audit_assembly_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    audit_assembly_take_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
+    audit_narrator_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
     #: Когда архивная сессия перестала соответствовать сверке (правка роли, дозапись).
     #: Пусто — соответствует или архива нет. Снимает её фоновый круг архива.
     session_outdated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)

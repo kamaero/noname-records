@@ -30,7 +30,7 @@ def db():
 def test_approval_votes_schedules_rejections_and_notifies(db):
     sent = []
     result = cast_assign.assign_actor(db, character=db.get(Character, "c1"), actor_name="Ветрова Ольга",
-                                      voter_uid="u11", voter_name="Примеряфеицшпчб Примерщюагоэсгв", roles={"admin"},
+                                      voter_uid="u11", voter_name="Фернос Фарита", roles={"admin"},
                                       notify=lambda db, **kw: sent.append(kw) or {"notified": True})
     assert db.get(Character, "c1").actor_name == "Ветрова Ольга"
     assert result["vote"]["changed"] and result["approval"] == {"notified": True}

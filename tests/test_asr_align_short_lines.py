@@ -1,9 +1,4 @@
-"""Короткие реплики на настоящих записях: два промаха сверки с прода.
-
-Фикстуры снял `scripts/export_asr_fixture.py` с боевой базы: что ожидалось и что
-услышал робот. Сверка тогда теряла короткие возгласы («Талон!», «Тогда подпиши!»),
-хотя диктор их читал, — и писала диктору о «пропусках», которых не было.
-"""
+"""Сверка не должна терять короткие реплики и возгласы в длинной записи."""
 from __future__ import annotations
 
 import json
@@ -26,7 +21,7 @@ def test_short_answers_survive_unclear_words():
         assert text in found
     assert result["matched"] == 41
     assert all(not line["matched"] for line in result["lines"][-2:])
-    assert len(result["lines"][8]["takes"]) == 2  # из 43; «А… о… т…» и «Тоа… атом…» могут остаться спорными
+    assert len(result["lines"][8]["takes"]) == 2
 
 
 def test_short_shouts_are_found():

@@ -559,6 +559,43 @@ def api_v2_chapter_asr(request: Request, chapter_id: str):
     return JSONResponse({"ok": True, "job_id": job_id})
 
 
+def api_v2_chapter_audit(request: Request, chapter_id: str):
+    """Только владелец явно разрешает повтор платной проверки текущей сборки."""
+    if not _is_authenticated(request):
+        return unauthorized_response()
+    if "admin" not in session_roles(request):
+        return forbidden_response()
+    from app.config import settings
+    from app.services.asr_audit import enqueue_asr_audit
+    from app.services.asr_audit_lifecycle import assembled_audit_snapshot, AuditUnavailable
+
+    if not settings.asr_audit_enabled:
+        return error_response("audit_disabled", status_code=409)
+    chapter_id = str(chapter_id or "").strip()
+    with SessionLocal() as db:
+        if db.get(ScriptChapter, chapter_id) is None:
+            return not_found_response("chapter_not_found")
+        if assembled_audit_snapshot(db, chapter_id) is None:
+            return error_response("chapter_not_assembled", status_code=409)
+    try:
+        job_id = enqueue_asr_audit(chapter_id, force=True)
+    except AuditUnavailable as exc:
+        return error_response(str(exc), status_code=409)
+    if not job_id:
+        return error_response("already_queued", status_code=409)
+    return JSONResponse({"ok": True, "job_id": job_id})
+
+
+def _enqueue_assembled_audit(chapter_id: str) -> None:
+    """Сбой второстепенной очереди не теряет уже собранный проект."""
+    try:
+        from app.services.asr_audit import enqueue_asr_audit
+
+        enqueue_asr_audit(str(chapter_id))
+    except Exception:
+        logging.getLogger(__name__).exception("Не поставлен аудит собранной главы %s", chapter_id)
+
+
 def api_v2_chapter_verify(request: Request, chapter_id: str):
     """Сверить главу по кнопке. Ответ — сразу, работа — в фоне.
 
@@ -586,11 +623,18 @@ def api_v2_chapter_session_archive(request: Request, chapter_id: str):
         return unauthorized_response()
     if not _can_edit(request):
         return forbidden_response()
+    audit_assembled = False
     with SessionLocal() as db:
         result = archive_chapter_session(db, str(chapter_id or "").strip())
         if result is None:
             return not_found_response("chapter_not_found")
+        from app.config import settings
+        if settings.asr_audit_enabled and (result["written"] or result["reason"] == "unchanged"):
+            from app.services.asr_audit_lifecycle import record_audit_assembly
+            audit_assembled = record_audit_assembly(db, str(chapter_id))
         db.commit()
+    if audit_assembled:
+        _enqueue_assembled_audit(chapter_id)
     if result["written"]:
         return JSONResponse({"ok": True, "replaced": result["replaced"]})
     # "unchanged" — не отказ: сессия уже на NAS и соответствует текущей сверке,
@@ -611,6 +655,7 @@ def api_v2_chapter_archive(request: Request, chapter_id: str):
     if not _can_edit(request):
         return forbidden_response()
     target = os.path.join(tempfile.gettempdir(), f"noname-chapter-{uuid4().hex}.zip")
+    audit_assembled = False
     with SessionLocal() as db:
         if chapter_has_broken_files(db, str(chapter_id or "").strip()):
             # Клеить сессию для монтажки из файлов, про которые известно, что они
@@ -627,12 +672,21 @@ def api_v2_chapter_archive(request: Request, chapter_id: str):
                 {"ok": False, "error": "storage_unavailable"},
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+        from app.config import settings
+        if settings.asr_audit_enabled and result and result.get("ready") and not result.get("files_missing"):
+            import zipfile
+            from app.services.asr_audit_lifecycle import record_audit_assembly
+            with zipfile.ZipFile(target) as archive:
+                if "сессия.sesx" in archive.namelist():
+                    audit_assembled = record_audit_assembly(db, str(chapter_id))
         # Сборка помечает главу сданной — без фиксации отметка уходит вместе с сессией.
         db.commit()
     if result is None:
         if os.path.exists(target):
             os.remove(target)
         return not_found_response("chapter_not_found")
+    if audit_assembled:
+        _enqueue_assembled_audit(chapter_id)
     return FileResponse(
         target,
         media_type="application/zip",

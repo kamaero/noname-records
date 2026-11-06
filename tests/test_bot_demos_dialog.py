@@ -40,7 +40,7 @@ def db():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine, autoflush=False)() as session:
-        _user(session, "uo", "Примеряфеицшпчб Примерщюагоэсгв", roles=("admin",), tid=OWNER)
+        _user(session, "uo", "Фернос Фарита", roles=("admin",), tid=OWNER)
         _user(session, "u41", "Ветрова Ольга", tid="41")
         session.commit()
         yield session

@@ -32,7 +32,7 @@ def db():
         session.add(ScriptBook(id=BOOK, title="Карта", display_title="Карта", source_filename="k.txt",
                                source_format="txt"))
         session.add(Character(id="c1", book_id=BOOK, name="Хдыбдяр", aliases="Дзимве́л", appears_in="1,2",
-                              actor_name="Примерлаяюмнфшв Примерцосезбсдв"))
+                              actor_name="Шелвар Шарита"))
         session.add(Character(id="c2", book_id=BOOK, name="Рассказчик"))
         for index in (1, 2, 3):
             chapter = f"ch-{index}"
@@ -94,10 +94,10 @@ def test_progress_counts_the_markup_chapters(db):
     _say(db, "ch-3:00000", "Хдыбдяр")
     db.add(AudioFile(book_code=derive_book_code("Карта"), original_filename="t.wav", stored_key="k/3",
                      mime_type="audio/wav", size_bytes=1, chapter="Глава 3", role="Хдыбдяр",
-                     actor_name="Примерлаяюмнфшв Примерцосезбсдв", kind="take", canonical_filename="t3.wav"))
+                     actor_name="Шелвар Шарита", kind="take", canonical_filename="t3.wav"))
     db.commit()
 
-    assert role_deadlines.role_progress(_fresh(db), db.get(Character, "c1"), "Примерлаяюмнфшв Примерцосезбсдв") == (1, 1)
+    assert role_deadlines.role_progress(_fresh(db), db.get(Character, "c1"), "Шелвар Шарита") == (1, 1)
 
 
 def test_the_studio_snapshot_counts_the_markup_chapters_for_a_role_given_by_name(db):
@@ -106,14 +106,14 @@ def test_the_studio_snapshot_counts_the_markup_chapters_for_a_role_given_by_name
     studio = Studio(_fresh(db), now=datetime(2026, 10, 29))
 
     role = SimpleNamespace(book_id=BOOK, name="Хдыбдяр", appears_in="1,2")
-    assert studio.progress(role, "Примерлаяюмнфшв Примерцосезбсдв") == (0, 1)
+    assert studio.progress(role, "Шелвар Шарита") == (0, 1)
 
 
 def test_a_role_whose_lines_all_moved_away_closes_its_deadline(db):
     from app.models import RoleDeadline
 
     _say(db, "ch-1:00000", "Рассказчик")  # у книги есть разметка, у Хдыбдяра — ни реплики
-    db.add(RoleDeadline(character_id="c1", book_id=BOOK, actor_name="Примерлаяюмнфшв Примерцосезбсдв", kind="role",
+    db.add(RoleDeadline(character_id="c1", book_id=BOOK, actor_name="Шелвар Шарита", kind="role",
                         due_at=datetime(2026, 11, 18), created_at=datetime(2026, 10, 1)))
     db.commit()
     sent = []
@@ -129,8 +129,8 @@ def test_a_book_without_markup_keeps_a_role_without_chapters_open(db):
     from app.models import RoleDeadline
 
     db.add(ScriptBook(id="b2", title="Старая", display_title="Старая", source_filename="s.txt", source_format="txt"))
-    db.add(Character(id="c9", book_id="b2", name="Ао", appears_in="", actor_name="Примернхкэятжщб Примерезчзжовув"))
-    db.add(RoleDeadline(character_id="c9", book_id="b2", actor_name="Примернхкэятжщб Примерезчзжовув", kind="role",
+    db.add(Character(id="c9", book_id="b2", name="Ао", appears_in="", actor_name="Ярвена Ярдин"))
+    db.add(RoleDeadline(character_id="c9", book_id="b2", actor_name="Ярвена Ярдин", kind="role",
                         due_at=datetime(2026, 11, 18), created_at=datetime(2026, 10, 1)))
     db.commit()
 

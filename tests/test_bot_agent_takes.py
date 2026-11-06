@@ -12,7 +12,7 @@ from app.services.take_format import REQUIRED
 
 def _recording(db, *, several=False):
     role = db.get(Character, "c2")
-    role.name, role.actor_name = "Афыл", "Примерэклцлдзп Примергножжэщцб"
+    role.name, role.actor_name = "Афыл", "Ортель Орвис"
     if several:
         db.add(Character(id="c3", book_id="b1", name="Второй", actor_name="Другой Диктор", appears_in="1"))
     set_active_book(db, "b1", updated_by="owner")
@@ -31,7 +31,7 @@ def test_named_take_uses_the_approved_actor_without_questions(db, extension):
     out = handle_update(db, _take_audio(f"KP_Ch13_Afyl_OrtelOrvis.{extension}"), now=NOW)
     row = db.query(BotUpload).one()
     assert (row.purpose, row.state, row.character_id, row.actor_name, row.role_name, row.book_id) == \
-        ("take", "queued", "c2", "Примерэклцлдзп Примергножжэщцб", "Афыл", "b1")
+        ("take", "queued", "c2", "Ортель Орвис", "Афыл", "b1")
     assert [item.method for item in out] == ["sendMessage", "enqueue_bot_take"]
     assert "распознаю" in _text(out) and "reply_markup" not in out[0].payload
     repeat = handle_update(db, _take_audio(f"KP_Ch13_Afyl_OrtelOrvis.{extension}"), now=NOW)
@@ -53,7 +53,7 @@ def test_unknown_filename_asks_only_kind_then_uses_the_approved_role(db):
     assert ("Дубль", f"at:t:{row.id}") in _buttons(out)
     selected = handle_update(db, _press(f"at:t:{row.id}"), now=NOW)
     assert [item.method for item in selected] == ["answerCallbackQuery", "sendMessage", "enqueue_bot_take"]
-    assert (row.purpose, row.state, row.actor_name) == ("take", "queued", "Примерэклцлдзп Примергножжэщцб")
+    assert (row.purpose, row.state, row.actor_name) == ("take", "queued", "Ортель Орвис")
     repeated = handle_update(db, _press(f"at:t:{row.id}"), now=NOW)
     assert not any(item.method.startswith("enqueue") for item in repeated)
 
@@ -84,10 +84,10 @@ def test_choose_role_without_choosing_actor(db):
     handle_update(db, _take_audio("Untitled.wav"), now=NOW)
     row = db.query(BotUpload).one()
     out = handle_update(db, _press(f"at:t:{row.id}"), now=NOW)
-    assert ("Афыл — Примерэклцлдзп Примергножжэщцб", f"at:r:{row.id}:c2") in _buttons(out)
+    assert ("Афыл — Ортель Орвис", f"at:r:{row.id}:c2") in _buttons(out)
     assert not any("Дракон" in label for label, _ in _buttons(out))
     queued = handle_update(db, _press(f"at:r:{row.id}:c2"), now=NOW)
-    assert row.state == "queued" and row.actor_name == "Примерэклцлдзп Примергножжэщцб"
+    assert row.state == "queued" and row.actor_name == "Ортель Орвис"
     assert queued[-1].method == "enqueue_bot_take"
 
 
@@ -99,7 +99,7 @@ def test_callbacks_recheck_agent_access_and_approved_role(db):
     assert [item.method for item in foreign] == ["answerCallbackQuery"]
     assert row.purpose == "agentpick"
     handle_update(db, _press(f"at:t:{row.id}"), now=NOW)
-    db.get(Character, "c2").actor_name = "Примерэклцлдзп Примергножжэщцб?"
+    db.get(Character, "c2").actor_name = "Ортель Орвис?"
     db.commit()
     out = handle_update(db, _press(f"at:r:{row.id}:c2"), now=NOW)
     assert "больше не утверждена" in _text(out) and row.state == "choose"
@@ -155,5 +155,5 @@ def test_role_choices_are_paged_and_callback_data_fits_telegram(db):
     assert all(len(data.encode()) <= 64 for _, data in buttons)
     assert ("Дальше ›", f"at:p:{row.id}:1") in buttons
     out = handle_update(db, _press(f"at:p:{row.id}:1"), now=NOW)
-    assert ("Афыл — Примерэклцлдзп Примергножжэщцб", f"at:r:{row.id}:c2") in _buttons(out)
+    assert ("Афыл — Ортель Орвис", f"at:r:{row.id}:c2") in _buttons(out)
     assert ("‹ Назад", f"at:p:{row.id}:0") in _buttons(out)

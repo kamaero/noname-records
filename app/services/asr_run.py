@@ -163,14 +163,14 @@ RETRY_DELAYS = (30, 120)
 _sleep = time.sleep
 
 
-def _transcribe_retrying(call):
+def _transcribe_retrying(call, *, retry_errors=None):
     """Вызвать распознавание, переждав «сервис занят». До 23.10 одного 503 хватало, чтобы
     дубль навсегда остался «failed»: сессия клала его целым куском в начало главы."""
     for delay in (*RETRY_DELAYS, None):
         try:
             return call()
         except Exception as exc:  # noqa: BLE001 — решаем по коду, остальное летит дальше
-            if delay is None or str(exc) not in RETRY_ERRORS:
+            if delay is None or str(exc) not in (RETRY_ERRORS if retry_errors is None else retry_errors):
                 raise
             logger.warning("Распознавание ответило %s — повтор через %s с", exc, delay)
             _sleep(delay)

@@ -16,10 +16,10 @@ def db(monkeypatch):
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine, autoflush=False)() as session:
-        session.add(User(id="u11", login="admin", password_hash="x", display_name="Примеряфеицшпчб Примерщюагоэсгв", is_active="true"))
-        session.add(User(id="u99", login="namesake", password_hash="x", display_name="Примеряфеицшпчб Примерщюагоэсгв", is_active="true"))
+        session.add(User(id="u11", login="admin", password_hash="x", display_name="Фернос Фарита", is_active="true"))
+        session.add(User(id="u99", login="namesake", password_hash="x", display_name="Фернос Фарита", is_active="true"))
         session.add(TelegramAuthAccount(telegram_user_id="11", role="admin", access_scope="full",
-                                        display_name="Примеряфеицшпчб Примерщюагоэсгв", is_active="true", user_id="u11"))
+                                        display_name="Фернос Фарита", is_active="true", user_id="u11"))
         session.commit()
         yield session
 

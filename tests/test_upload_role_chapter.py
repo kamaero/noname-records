@@ -1,6 +1,6 @@
 """Запись главы не ложится в главу, где у её роли нет ни одной реплики.
 
-03.10 Примертэпсивпов Примерукватеуэб загрузила «фыегу люпкетфу» в главу 1 (назвала файл `Ch01` и
+03.10 Лирвин Ланта загрузила «фыегу люпкетфу» в главу 1 (назвала файл `Ch01` и
 выбрала главу 1 в форме — сверка номера промолчала), а Фыеги говорит только в главе 32.
 Решение владельца — жёсткий отказ.
 """
@@ -27,7 +27,7 @@ def db(monkeypatch):
         session.add(ScriptChapter(id="ch1", book_id="b1", chapter_index=1, chapter_title="Глава 1. Стул шатается"))
         session.add(ScriptChapter(id="ch32", book_id="b1", chapter_index=32, chapter_title="Глава 32. Фыеги"))
         session.add(ScriptChapter(id="ch40", book_id="b1", chapter_index=40, chapter_title=""))
-        session.add(Character(book_id="b1", name="Фыеги Люпкетфа", aliases="Фыеги", actor_name="Примертэпсивпов Примерукватеуэб"))
+        session.add(Character(book_id="b1", name="Фыеги Люпкетфа", aliases="Фыеги", actor_name="Лирвин Ланта"))
         session.commit()
         counts = {
             "ch1": {"Хдыбдяр": 12, "Рассказчик": 40},
@@ -98,7 +98,7 @@ def _sessions_with_chapters(monkeypatch):
         book = db.query(ScriptBook).one()
         db.add(ScriptChapter(id="c1", book_id=book.id, chapter_index=1, chapter_title="Глава 1. Ничего особенного"))
         db.add(ScriptChapter(id="c34", book_id=book.id, chapter_index=34, chapter_title="Глава 34. Поздравляю с бракосочетанием"))
-        db.add(Character(book_id=book.id, name="Нрарсх", actor_name="Примерчбдууцтю Примергножжэщцб"))
+        db.add(Character(book_id=book.id, name="Нрарсх", actor_name="Нартия Нилдар"))
         db.commit()
     counts = {"c1": {"Хдыбдяр": 3}, "c34": {"Нрарсх": 5}}
     monkeypatch.setattr(urc, "chapter_role_counts", lambda db, chapter_id: counts.get(chapter_id, {}))
@@ -107,7 +107,7 @@ def _sessions_with_chapters(monkeypatch):
 
 
 def _meta_bhulh(chapter: str, **extra):
-    return {"book_code": "KP", "chapter": chapter, "role": "Нрарсх", "actor_name": "Примерчбдууцтю Примергножжэщцб", **extra}
+    return {"book_code": "KP", "chapter": chapter, "role": "Нрарсх", "actor_name": "Нартия Нилдар", **extra}
 
 
 def test_the_upload_refuses_a_role_with_no_lines_and_keeps_nothing(monkeypatch):
@@ -145,8 +145,8 @@ def test_the_preview_shows_the_same_refusal_in_words(monkeypatch):
     payload = {
         "files": [{"name": "KP_Ch01_Nrarsh_NartiyaNildar.wav", "size": 4}],
         "overrides": [{"chapter": "Глава 1. Ничего особенного", "role": "Нрарсх",
-                       "actor_name": "Примерчбдууцтю Примергножжэщцб", "book_code": "KP"}],
-        "book_code": "KP", "actor_name": "Примерчбдууцтю Примергножжэщцб",
+                       "actor_name": "Нартия Нилдар", "book_code": "KP"}],
+        "book_code": "KP", "actor_name": "Нартия Нилдар",
     }
 
     body = json.loads(asyncio.run(handler(_JsonRequest(payload))).body)

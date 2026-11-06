@@ -365,8 +365,8 @@ def test_owner_summary_wording():
 def test_owner_summary_names_the_chapter_so_two_files_do_not_look_like_a_repeat():
     """29.10: Кораненко прислала четыре файла — главы 5, 9, 16, 18 — и владелец получил
     четыре одинаковых «Саяху», 1 глава»: без номера это выглядело как дубли сообщений."""
-    one = bot_takes.owner_summary("Примершупядяобб Примерцвфмллрив", "Саяху", [{"index": 5, "found": 4, "total": 4, "missing": []}])
-    other = bot_takes.owner_summary("Примершупядяобб Примерцвфмллрив", "Саяху", [{"index": 9, "found": 3, "total": 3, "missing": []}])
+    one = bot_takes.owner_summary("Гленто Гарсин", "Саяху", [{"index": 5, "found": 4, "total": 4, "missing": []}])
+    other = bot_takes.owner_summary("Гленто Гарсин", "Саяху", [{"index": 9, "found": 3, "total": 3, "missing": []}])
     assert "«Саяху», гл. 5." in one and "«Саяху», гл. 9." in other
     assert one != other
 
@@ -537,12 +537,12 @@ def test_report_counts_paragraphs_not_pieces(db, tmp_path, lines, monkeypatch):
 
     from app.v2.models import V2Attribution, V2Segment
 
-    torn = "— Ты уже минуту с чашкой сидишь, — сказала она. — Что-то случилось?"
-    whole_line = "— Я сейчас."
+    torn = "— Ты видишь этот старый фонарь, — сказала она. — Он давно погас."
+    whole_line = "— Я принесу свечу."
     for ordinal, text in enumerate((torn, whole_line)):
         db.add(V2Segment(id=f"s{ordinal}", book_id="b1", chapter_id="ch1", ordinal=ordinal, kind="paragraph",
                          text=text, char_start=0, char_end=len(text)))
-    cut1, cut2 = torn.index(", — сказала"), torn.index(" — Что-то")
+    cut1, cut2 = torn.index(", — сказала"), torn.index(" — Он давно")
     for segment_id, start, end, speaker in (("s0", 0, cut1, "Юмкуба"), ("s0", cut1, cut2, "Рассказчик"),
                                             ("s0", cut2, len(torn), "Юмкуба"), ("s1", 0, len(whole_line), "Юмкуба")):
         db.add(V2Attribution(id=str(uuid.uuid4()), segment_id=segment_id, span_start=start, span_end=end,
@@ -556,7 +556,7 @@ def test_report_counts_paragraphs_not_pieces(db, tmp_path, lines, monkeypatch):
     monkeypatch.setattr(asr_run, "expected_lines", expected)
     monkeypatch.setattr(asr_replay, "expected_lines", expected)
     assert len(expected(db, "ch1", "Юмкуба")) == 3  # три куска сверки — две реплики
-    # Гл. 1 записана целиком: «Ты уже минуту…», «Что-то случилось?», «Я сейчас.» — две реплики, а не три.
+    # Глава записана целиком: три куска разметки составляют две реплики.
     source = _wav(tmp_path / "ch1.wav", 22.2)
     run = Run(db, tmp_path, source, heard=slice_transcript(DATA["segments"], 0, 22.2))
     assert run() == "done"

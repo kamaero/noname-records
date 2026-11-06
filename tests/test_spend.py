@@ -75,3 +75,14 @@ def test_the_summary_sums_the_month_and_never_shows_a_negative_rest(db):
     assert summary["total_rub"] == pytest.approx(3 * 66)
     assert summary["unknown_calls"] == 1 and summary["left_rub"] == 0
     assert summary["by_step"]["attribution"]["rub"] == pytest.approx(198)
+
+
+
+def test_reported_audit_cost_and_unknown_cost_are_distinct(db):
+    base = dict(created_at=datetime(2026, 1, 1).isoformat(), step="asr_audit", provider="routerai",
+                model="test", unit="seconds", input_units=30, output_units=0,
+                book_id="book", chapter_id="chapter", run_id="run")
+    spend._write(db, {**base, "estimated": False, "actual_rub": 1.25})
+    spend._write(db, {**base, "estimated": True, "actual_rub": None})
+    rows = db.query(SpendEntry).order_by(SpendEntry.id).all()
+    assert sorted((row.price_known, row.rub or 0) for row in rows) == [(False, 0), (True, 1.25)]

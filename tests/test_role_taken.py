@@ -1,6 +1,6 @@
 """Проба на роль, уже утверждённую за другим, не принимается (решение владельца 05.10).
 
-Примергизиядаю Примергножжэщцб прислал пробу на Хдыбдяра, накрепко утверждённого за Приваловым
+Елмар Ервис прислал пробу на Хдыбдяра, накрепко утверждённого за Приваловым
 Сергеем: форма предлагала весь каст, а сервер делил загрузку только на «твоя роль —
 дубль, любая другая — проба». Роль со «?» (предложение агента) и свободная — как раньше.
 """
@@ -29,14 +29,14 @@ def db():
     with sessionmaker(bind=engine)() as session:
         session.add(ScriptBook(id="b1", title="Карта Приозерья", source_filename="k", source_format="txt", created_at=NOW))
         session.add(ScriptBook(id="b2", title="Сезон ветров", source_filename="s", source_format="txt", created_at=NOW))
-        session.add(Character(book_id="b1", name="Хдыбдяр", aliases="Дзим", actor_name="Примерлаяюмнфшв Примерцосезбсдв"))
+        session.add(Character(book_id="b1", name="Хдыбдяр", aliases="Дзим", actor_name="Шелвар Шарита"))
         session.add(Character(book_id="b1", name="Саяху", actor_name="Кузнецова Светлана?"))
         session.add(Character(book_id="b1", name="Тик-Так", actor_name=""))
         session.commit()
         yield session
 
 
-def _taken(db, role, actor="Примергизиядаю Примергножжэщцб", code="КП"):
+def _taken(db, role, actor="Елмар Ервис", code="КП"):
     return role_taken_by_other(db, book_code=code, role=role, actor_name=actor)
 
 
@@ -53,7 +53,7 @@ def test_a_tentative_or_free_role_is_open(db):
 
 
 def test_the_approved_actor_himself_is_not_blocked(db):
-    assert _taken(db, "Хдыбдяр", actor="Примерцосезбсдв Примерлаяюмнфшв") is False
+    assert _taken(db, "Хдыбдяр", actor="Шарита Шелвар") is False
 
 
 def test_another_book_is_another_cast(db):
@@ -73,7 +73,7 @@ def _taken_sessions():
     sessions = _sessions()
     with sessions() as db:
         book = db.query(ScriptBook).one()
-        db.add(Character(book_id=book.id, name="Нрарсх", actor_name="Примерчбдууцтю Примергножжэщцб"))
+        db.add(Character(book_id=book.id, name="Нрарсх", actor_name="Нартия Нилдар"))
         db.commit()
     return sessions
 
@@ -86,7 +86,7 @@ def _as(monkeypatch, *, owner: bool):
             "is_authenticated": lambda request: True,
             "has_any_role": lambda request, roles: owner,
             "has_workspace_full_access": lambda request: True,
-            "session_payload": lambda request: {"display_name": "Примергизиядаю Примергножжэщцб", "sub": "tg_2"},
+            "session_payload": lambda request: {"display_name": "Елмар Ервис", "sub": "tg_2"},
             "is_agent": lambda request: False,
             "SessionLocal": sessions,
             "AudioFile": AudioFile,
@@ -108,7 +108,7 @@ def _as(monkeypatch, *, owner: bool):
 def test_the_upload_refuses_an_audition_on_a_taken_role(monkeypatch):
     _as(monkeypatch, owner=False)
     sessions = _taken_sessions()
-    meta = {"book_code": "KP", "chapter": "", "role": "Нрарсх", "actor_name": "Примергизиядаю Примергножжэщцб"}
+    meta = {"book_code": "KP", "chapter": "", "role": "Нрарсх", "actor_name": "Елмар Ервис"}
 
     status_code, body, rows = _post(sessions, [_upload("KP_Nrarsh_LarvikLavant_proba.wav")], [meta])
 
@@ -135,8 +135,8 @@ def test_the_preview_shows_the_same_refusal(monkeypatch):
     })["dictor_pro_batch_validate"]
     payload = {
         "files": [{"name": "KP_Nrarsh_LarvikLavant_proba.wav", "size": 4}],
-        "overrides": [{"chapter": "", "role": "Нрарсх", "actor_name": "Примергизиядаю Примергножжэщцб", "book_code": "KP"}],
-        "book_code": "KP", "actor_name": "Примергизиядаю Примергножжэщцб",
+        "overrides": [{"chapter": "", "role": "Нрарсх", "actor_name": "Елмар Ервис", "book_code": "KP"}],
+        "book_code": "KP", "actor_name": "Елмар Ервис",
     }
     item = json.loads(asyncio.run(handler(_JsonRequest(payload))).body)["items"][0]
     assert item["ok"] is False and "role_taken" in item["errors"]
@@ -145,7 +145,7 @@ def test_the_preview_shows_the_same_refusal(monkeypatch):
 
 def test_the_approved_actor_still_uploads_his_take():
     sessions = _taken_sessions()
-    meta = {"book_code": "KP", "chapter": "Глава 1", "role": "Нрарсх", "actor_name": "Примерчбдууцтю Примергножжэщцб"}
+    meta = {"book_code": "KP", "chapter": "Глава 1", "role": "Нрарсх", "actor_name": "Нартия Нилдар"}
     status_code, _body, rows = _post(sessions, [_upload("KP_Ch01_Nrarsh_NartiyaNildar.wav")], [meta])
     assert status_code == 200 and len(rows) == 1 and isinstance(rows[0], AudioFile)
 
@@ -153,6 +153,6 @@ def test_the_approved_actor_still_uploads_his_take():
 def test_the_owner_may_upload_an_audition_onto_a_taken_role(monkeypatch):
     """Владелец решает каст сам — например, загружает пробу, присланную мимо системы, под рекаст."""
     _as(monkeypatch, owner=True)
-    meta = {"book_code": "KP", "chapter": "", "role": "Нрарсх", "actor_name": "Примергизиядаю Примергножжэщцб"}
+    meta = {"book_code": "KP", "chapter": "", "role": "Нрарсх", "actor_name": "Елмар Ервис"}
     status_code, _body, rows = _post(_taken_sessions(), [_upload("KP_Nrarsh_LarvikLavant_proba.wav")], [meta])
     assert status_code == 200 and len(rows) == 1

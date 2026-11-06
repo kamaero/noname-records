@@ -217,16 +217,16 @@ def test_studio_chat_index_agrees_with_chat_for():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine, autoflush=False)() as session:
-        session.add(User(id="u1", login="tg_1", password_hash="x", display_name="Примерлаяюмнфшв Примерцосезбсдв", is_active="true"))
-        rows = [("1", "Примеритдпбтесв Примерлиуццибшб", "u1", "true"), ("2", "Ветрова Ольга", "", "true"),
-                ("3", "Петрова Ольга", "", "true"), ("4", "Иванов Пётр", "", "false"), ("5", "Примерчюнгнчэлв Примеронгялюцз", "", "true")]
+        session.add(User(id="u1", login="tg_1", password_hash="x", display_name="Шелвар Шарита", is_active="true"))
+        rows = [("1", "Бранти Бурнел", "u1", "true"), ("2", "Ветрова Ольга", "", "true"),
+                ("3", "Петрова Ольга", "", "true"), ("4", "Иванов Пётр", "", "false"), ("5", "Цертан Царели", "", "true")]
         for tid, name, user_id, active in rows:
             session.add(TelegramAuthAccount(telegram_user_id=tid, role="dictor", access_scope="full",
                                             display_name=name, is_active=active, user_id=user_id))
         session.commit()
         studio = bot_studio.Studio(session, now=NOW)
-        for actor in ("Примерлаяюмнфшв Примерцосезбсдв", "Примеритдпбтесв Примерлиуццибшб", "Ольга", "Ветрова Ольга", "Иванов Пётр",
-                      "Примеронгялюцз Примерчюнгнчэлв", "Панков", "", "Никто"):
+        for actor in ("Шелвар Шарита", "Бранти Бурнел", "Ольга", "Ветрова Ольга", "Иванов Пётр",
+                      "Царели Цертан", "Панков", "", "Никто"):
             assert studio.chat(actor) == chat_for(session, actor), actor
 
 

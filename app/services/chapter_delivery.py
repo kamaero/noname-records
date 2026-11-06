@@ -216,8 +216,20 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
             "session_outdated": bool(chapter.session_archived_at and chapter.session_outdated_at),
             # Записано архивацией (`archive_chapter_session`), не посчитано здесь заново.
             "session_markers_skipped": int(chapter.session_markers_skipped or 0),
+            "audit_assembled": bool(chapter.audit_assembly_fingerprint and chapter.audit_narrator_fingerprint),
             **AMBIENT_EMPTY,
         })
+    from app.config import settings
+    from app.services.asr_audit import latest_audits
+
+    audits = latest_audits(db, [row["chapter_id"] for row in rows])
+    for row in rows:
+        row["audit"] = audits.get(row["chapter_id"])
+        if row["audit"] and not ambient:
+            # Денежные данные доступны тем же ролям, что и смета; диктору нужен
+            # статус сверки, а не стоимость вызова модели.
+            row["audit"] = {**row["audit"], "stt_cost_rub": None}
+        row["audit_assembled"] = row["audit_assembled"] and settings.asr_audit_enabled
     if ambient:
         fields = _ambient_fields(db, [row["chapter_id"] for row in rows],
                                  {row["chapter_id"] for row in rows if row["ready"]})
@@ -694,19 +706,19 @@ def colour_tracks(tracks: list[SessionTrack]) -> None:
         track.hue = round(track.hue, 1)
 
 
-def build_chapter_session(db, chapter_id: str, *, sample_rate: int | None = None, relative: bool = False) -> str | None:
+def build_chapter_session(db, chapter_id: str, *, sample_rate: int | None = None, relative: bool = False, include_audit: bool = True) -> str | None:
     """Сессия Audition для главы: треки по ролям, клипы по репликам. `None` — главы нет.
 
     Тонкая обёртка над `build_chapter_session_with_stats` — большинству вызывающих число
     пропущенных маркеров не нужно, а сигнатура этой функции старая и на ней держится
     архивация и раздача главы.
     """
-    xml, _skipped = build_chapter_session_with_stats(db, chapter_id, sample_rate=sample_rate, relative=relative)
+    xml, _skipped = build_chapter_session_with_stats(db, chapter_id, sample_rate=sample_rate, relative=relative, include_audit=include_audit)
     return xml
 
 
 def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | None = None,
-                                     relative: bool = False) -> tuple[str | None, int]:
+                                     relative: bool = False, include_audit: bool = True) -> tuple[str | None, int]:
     """То же самое, что `build_chapter_session`, и вдобавок число маркеров без места.
 
     `None, 0` — главы нет. Число пропущенных — так архивация (см. `archive_chapter_session`)
@@ -778,6 +790,14 @@ def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | 
         # без разметки звукорежиссёра, а не отказ вовсе.
         logger.exception("session_markers сорвались на главе %s — сессия соберётся без маркеров", chapter_id)
         markers, skipped = [], 0
+    if include_audit:
+        try:
+            from app.services.narrator_audit_markers import narrator_audit_session_markers
+            audit_markers, audit_skipped = narrator_audit_session_markers(db, chapter_id, tracks)
+            markers.extend(audit_markers)
+            skipped += audit_skipped
+        except Exception:
+            logger.exception("Не удалось добавить маркеры проверки рассказчика главы %s", chapter_id)
     xml = build_session_xml(title=title, sample_rate=sample_rate or session_rate(by_role), tracks=tracks, markers=markers)
     return xml, skipped
 
@@ -1217,6 +1237,10 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
                 source_in=source_in,
                 source_out=source_out,
                 relative=str(item.canonical_filename or "") if relative else "",
+                audio_file_id=str(item.id),
+                segment_id=segment_id,
+                role_index=int(replica.get("role_index") or 0),
+                role=role,
             )))
             offset += length
         track_free_at[role] = offset + GAP_SECONDS
@@ -1445,13 +1469,43 @@ def archive_pending_chapter_sessions(db) -> dict:
             # Коммит на каждую главу, а не один на весь круг: так же, как в
             # `audio_mirror.mirror_once` — сбой на главе N не должен откатывать
             # отметки уже записанных 1..N-1 к следующему кругу.
+            audit_ready = _record_archived_narrator_audit(db, chapter.id, status_of_book[chapter.book_id])
             db.commit()
+            if audit_ready:
+                _enqueue_archived_narrator_audit(chapter.id)
         elif result and result["reason"] == "unchanged":
+            audit_ready = _record_archived_narrator_audit(db, chapter.id, status_of_book[chapter.book_id])
             db.commit()
+            if audit_ready:
+                _enqueue_archived_narrator_audit(chapter.id)
             skipped += 1
         else:
             skipped += 1
     return {"archived": archived, "skipped": skipped, "rebuilt": rebuilt}
+
+
+def _record_archived_narrator_audit(db, chapter_id: str, book_status: dict) -> bool:
+    try:
+        from app.config import settings
+        if not settings.asr_audit_enabled:
+            return False
+        from app.services.asr_audit_lifecycle import record_audit_assembly
+
+        return bool(record_audit_assembly(db, chapter_id, book_status=book_status))
+    except Exception:
+        logger.exception("Не удалось сохранить основание аудита архивированной главы %s", chapter_id)
+        return False
+
+
+def _enqueue_archived_narrator_audit(chapter_id: str) -> None:
+    # Очередь пишет своим соединением: вызываем только после фиксации проекта,
+    # иначе SQLite блокирует постановку платного прогона транзакцией архивации.
+    try:
+        from app.services.asr_audit_lifecycle import enqueue_audit
+
+        enqueue_audit(chapter_id)
+    except Exception:
+        logger.exception("Не удалось поставить аудит архивированной главы %s", chapter_id)
 
 
 def _tell_owner_rebuilt(db, chapter, replaced_key: str) -> None:

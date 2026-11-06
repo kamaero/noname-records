@@ -35,7 +35,7 @@ def db():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine, autoflush=False)() as session:
-        for uid, name, role, tid in (("uo", "Примеряфеицшпчб Примерщюагоэсгв", "admin", OWNER), ("u41", "Ветрова Ольга", "dictor", "41")):
+        for uid, name, role, tid in (("uo", "Фернос Фарита", "admin", OWNER), ("u41", "Ветрова Ольга", "dictor", "41")):
             session.add(User(id=uid, login=uid, password_hash="x", display_name=name, is_active="true"))
             session.add(UserRole(user_id=uid, role=role))
             session.add(TelegramAuthAccount(telegram_user_id=tid, role=role, access_scope="full", display_name=name,

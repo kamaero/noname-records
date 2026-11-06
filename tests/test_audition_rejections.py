@@ -30,7 +30,7 @@ def _book(db, title="Карта приозерья"):
     return book
 
 
-def _audition(db, book, *, role="Пяднтикух", actor="Примеронгялюцз Примерчюнгнчэлв", book_code=None):
+def _audition(db, book, *, role="Пяднтикух", actor="Царели Цертан", book_code=None):
     item = AudioFile(
         book_code=book_code if book_code is not None else derive_book_code(book.title),
         original_filename="p.wav", stored_key=f"k/{role}/{actor}.wav", mime_type="audio/wav",
@@ -48,7 +48,7 @@ def _rejections(db):
 
 # ---------- рассылка ----------
 
-def _approve(db, book, *, role="Пяднтикух", actor="Примерктенчечж Примерптмюгэюц"):
+def _approve(db, book, *, role="Пяднтикух", actor="Талерия Тиркан"):
     """Утвердили `actor` на роль — так, как это делает ручка каста: имя в карточке и событие."""
     ch = db.query(Character).filter_by(book_id=book.id, name=role).one_or_none()
     if ch is None:
@@ -60,7 +60,7 @@ def _approve(db, book, *, role="Пяднтикух", actor="Примерктен
     db.commit()
 
 
-def _due(db, *, actor="Примеронгялюцз Примерчюнгнчэлв", role="Пяднтикух"):
+def _due(db, *, actor="Царели Цертан", role="Пяднтикух"):
     book = _book(db)
     item = _audition(db, book, role=role, actor=actor)
     _approve(db, book, role=role)
@@ -85,7 +85,7 @@ def mail(monkeypatch):
 #: учётки Telegram в тестах: каждому — свой чат, Панков — «111». Раньше фикстура
 #: находила «111» по любому имени, то есть утверждённый и отвергнутый были одним
 #: человеком — с проверкой победителя по чату такой мир отменял бы все письма.
-PEOPLE = {"Примеронгялюцз Примерчюнгнчэлв": "111"}
+PEOPLE = {"Царели Цертан": "111"}
 
 
 def _resolve_people(db, name):
@@ -135,7 +135,7 @@ def test_a_ripe_rejection_goes_to_the_actor_once(db, mail):
 def test_approved_by_the_deadline_means_no_letter(db, mail):
     book, _ = _due(db)
     # утверждение переиграли в пользу Панкова — без нового события, только карточка
-    db.query(Character).filter_by(book_id=book.id, name="Пяднтикух").one().actor_name = "Примерчюнгнчэлв Примеронгялюцз"
+    db.query(Character).filter_by(book_id=book.id, name="Пяднтикух").one().actor_name = "Цертан Царели"
     db.commit()
 
     assert ar.send_due_rejections(db, now=LATER) == [(_rejections(db)[0].id, "cancelled")]
@@ -144,7 +144,7 @@ def test_approved_by_the_deadline_means_no_letter(db, mail):
 
 def test_a_role_back_to_tentative_by_the_deadline_means_no_letter(db, mail):
     book, _ = _due(db)
-    db.query(Character).filter_by(book_id=book.id, name="Пяднтикух").one().actor_name = "Примерптмюгэюц Примерктенчечж?"
+    db.query(Character).filter_by(book_id=book.id, name="Пяднтикух").one().actor_name = "Тиркан Талерия?"
     db.commit()
 
     [(_, status)] = ar.send_due_rejections(db, now=LATER)
@@ -159,12 +159,12 @@ def test_no_account_goes_to_the_owner(db, mail, monkeypatch):
 
     assert status == "no_account" and mail["direct"] == []
     [relay] = mail["relay"]
-    assert "Примеронгялюцз Примерчюнгнчэлв" in relay and "не доставлен" in relay
+    assert "Царели Цертан" in relay and "не доставлен" in relay
 
 
 def test_an_ambiguous_name_goes_to_the_owner_with_candidates(db, mail, monkeypatch):
     monkeypatch.setattr(ar, "resolve_actor_candidates", lambda db, name: (
-        [("1", "Примеронгялюцз Примерчюнгнчэлв"), ("2", "Роман Пан")] if name == "Примеронгялюцз Примерчюнгнчэлв" else _resolve_people(db, name)
+        [("1", "Царели Цертан"), ("2", "Роман Пан")] if name == "Царели Цертан" else _resolve_people(db, name)
     ))
     _due(db)
 
@@ -184,9 +184,9 @@ def test_telegram_silence_is_failed_and_not_retried(db, mail, monkeypatch):
 
 def test_each_row_is_committed_before_the_next(db, mail, monkeypatch):
     book = _book(db)
-    _audition(db, book, actor="Примеронгялюцз Примерчюнгнчэлв")
-    _audition(db, book, actor="Примерктенчечж Примерптмюгэюц")
-    _approve(db, book, actor="Примервсммчпфиб Примерубщркгюд")
+    _audition(db, book, actor="Царели Цертан")
+    _audition(db, book, actor="Талерия Тиркан")
+    _approve(db, book, actor="Пуриса Пирхан")
     calls = []
 
     def send(db_, text, chat_ids=None, direct=False, **_):
@@ -224,21 +224,21 @@ def test_a_crash_after_sending_never_sends_twice(db, mail, monkeypatch):
 
 def test_one_broken_row_does_not_block_the_rest(db, mail, monkeypatch):
     book = _book(db)
-    _audition(db, book, actor="Примеронгялюцз Примерчюнгнчэлв")
-    _audition(db, book, actor="Примерктенчечж Примерптмюгэюц")
-    _approve(db, book, actor="Примервсммчпфиб Примерубщркгюд")
+    _audition(db, book, actor="Царели Цертан")
+    _audition(db, book, actor="Талерия Тиркан")
+    _approve(db, book, actor="Пуриса Пирхан")
 
     def resolve(db_, name):
-        if name == "Примеронгялюцз Примерчюнгнчэлв":
+        if name == "Царели Цертан":
             raise RuntimeError("база занята")
-        return [("222", name)] if name == "Примерктенчечж Примерптмюгэюц" else [(f"tg-{name}", name)]
+        return [("222", name)] if name == "Талерия Тиркан" else [(f"tg-{name}", name)]
 
     monkeypatch.setattr(ar, "resolve_actor_candidates", resolve)
     ar.send_due_rejections(db, now=LATER)
     ar.send_due_rejections(db, now=LATER + timedelta(minutes=1))
 
     statuses = {r.actor_name: r.status for r in _rejections(db)}
-    assert statuses == {"Примеронгялюцз Примерчюнгнчэлв": "failed", "Примерктенчечж Примерптмюгэюц": "sent"}
+    assert statuses == {"Царели Цертан": "failed", "Талерия Тиркан": "sent"}
     assert [ids for ids, _ in mail["direct"]] == [("222",)]
 
 
@@ -246,13 +246,13 @@ def test_one_broken_row_does_not_block_the_rest(db, mail, monkeypatch):
 
 def test_approval_schedules_a_rejection_to_everybody_else_in_fifteen_minutes(db):
     book = _book(db)
-    for actor in ("Примеронгялюцз Примерчюнгнчэлв", "Примерктенчечж Примерптмюгэюц", "Ветрова Ольга"):
+    for actor in ("Царели Цертан", "Талерия Тиркан", "Ветрова Ольга"):
         _audition(db, book, actor=actor)
 
-    _approve(db, book, actor="Примерптмюгэюц Примерктенчечж")
+    _approve(db, book, actor="Тиркан Талерия")
 
     rows = {r.actor_name: (r.status, r.due_at) for r in _rejections(db)}
-    assert rows == {"Примеронгялюцз Примерчюнгнчэлв": ("pending", LATER), "Ветрова Ольга": ("pending", LATER)}
+    assert rows == {"Царели Цертан": ("pending", LATER), "Ветрова Ольга": ("pending", LATER)}
 
 
 def test_four_auditions_of_one_actor_are_one_rejection(db):
@@ -276,19 +276,19 @@ def test_reapproval_within_fifteen_minutes_moves_the_rejection(db, mail):
     """Утвердили Ивашкину, через 5 минут передумали в пользу Панкова: письмо уходит
     Ивашкиной (новым сроком), а не Панкову."""
     book = _book(db)
-    _audition(db, book, actor="Примеронгялюцз Примерчюнгнчэлв")
-    _audition(db, book, actor="Примерктенчечж Примерптмюгэюц")
-    _approve(db, book, actor="Примерктенчечж Примерптмюгэюц")
+    _audition(db, book, actor="Царели Цертан")
+    _audition(db, book, actor="Талерия Тиркан")
+    _approve(db, book, actor="Талерия Тиркан")
     ch = db.query(Character).filter_by(book_id=book.id, name="Пяднтикух").one()
-    ch.actor_name = "Примеронгялюцз Примерчюнгнчэлв"
-    ar.schedule_rejections_for_approval(db, book=book, role="Пяднтикух", approved_actor="Примеронгялюцз Примерчюнгнчэлв",
+    ch.actor_name = "Царели Цертан"
+    ar.schedule_rejections_for_approval(db, book=book, role="Пяднтикух", approved_actor="Царели Цертан",
                                         now=NOW + timedelta(minutes=5))
     db.commit()
 
     done = dict((r.actor_name, r) for r in _rejections(db))
-    assert done["Примерктенчечж Примерптмюгэюц"].due_at == LATER + timedelta(minutes=5)
+    assert done["Талерия Тиркан"].due_at == LATER + timedelta(minutes=5)
     # отказ новому победителю гаснет сразу при его утверждении (с 04.10), а не к сроку
-    assert done["Примеронгялюцз Примерчюнгнчэлв"].status == "cancelled"
+    assert done["Царели Цертан"].status == "cancelled"
     assert ar.send_due_rejections(db, now=LATER) == []
     assert mail["direct"] == []
 
@@ -300,15 +300,15 @@ def test_a_settled_rejection_is_never_reopened(db):
     _rejections(db)[0].status = "sent"
     db.commit()
 
-    _approve(db, book, actor="Примервсммчпфиб Примерубщркгюд")
+    _approve(db, book, actor="Пуриса Пирхан")
 
     assert [r.status for r in _rejections(db)] == ["sent"]
 
 
 def test_approval_never_rejects_the_approved_actor_spelled_differently(db):
     book = _book(db)
-    _audition(db, book, actor="Примеронгялюцз Примерчюнгнчэлв")
-    _approve(db, book, actor="Примерчюнгнчэлв Примеронгялюцз")
+    _audition(db, book, actor="Царели Цертан")
+    _approve(db, book, actor="Цертан Царели")
     assert _rejections(db) == []
 
 
@@ -333,7 +333,7 @@ def test_no_auditions_left_by_the_deadline_means_no_letter(db, mail):
 
 def test_deleting_the_last_audition_of_a_pair_takes_scores_and_cancels(db):
     book, item = _due(db)
-    db.add(AuditionScore(book_id=book.id, role="Пяднтикух", actor_name="Примеронгялюцз Примерчюнгнчэлв", lane="author",
+    db.add(AuditionScore(book_id=book.id, role="Пяднтикух", actor_name="Царели Цертан", lane="author",
                          voter_uid="a", voter_name="Автор", score=3))
     db.commit()
 
@@ -347,7 +347,7 @@ def test_deleting_the_last_audition_of_a_pair_takes_scores_and_cancels(db):
 def test_deleting_one_of_two_auditions_keeps_scores_and_rejection(db):
     book, item = _due(db)
     _audition(db, book)
-    db.add(AuditionScore(book_id=book.id, role="Пяднтикух", actor_name="Примеронгялюцз Примерчюнгнчэлв", lane="author",
+    db.add(AuditionScore(book_id=book.id, role="Пяднтикух", actor_name="Царели Цертан", lane="author",
                          voter_uid="a", voter_name="Автор", score=3))
     db.commit()
 
@@ -363,11 +363,11 @@ def test_deleting_one_of_two_auditions_keeps_scores_and_rejection(db):
 def test_the_winner_under_another_name_gets_no_letter(db, mail, monkeypatch):
     """Проба залита под телеграм-именем, утверждён под именем из каста: имена разные,
     а учётка одна. Отказ за выигранную роль — худшее письмо из возможных."""
-    monkeypatch.setitem(PEOPLE, "Примербояюррнэв Примержзаэезяхв", "777")
-    monkeypatch.setitem(PEOPLE, "Примервсммчпфиб Примерубщркгюд", "777")
+    monkeypatch.setitem(PEOPLE, "Черима Чормин", "777")
+    monkeypatch.setitem(PEOPLE, "Пуриса Пирхан", "777")
     book = _book(db)
-    _audition(db, book, actor="Примербояюррнэв Примержзаэезяхв")
-    _approve(db, book, actor="Примервсммчпфиб Примерубщркгюд")
+    _audition(db, book, actor="Черима Чормин")
+    _approve(db, book, actor="Пуриса Пирхан")
 
     [(_, status)] = ar.send_due_rejections(db, now=LATER)
 
@@ -376,12 +376,12 @@ def test_the_winner_under_another_name_gets_no_letter(db, mail, monkeypatch):
 
 
 def test_two_spellings_of_one_loser_get_one_letter(db, mail, monkeypatch):
-    monkeypatch.setitem(PEOPLE, "Примербояюррнэв Примержзаэезяхв", "777")
-    monkeypatch.setitem(PEOPLE, "Примервсммчпфиб Примерубщркгюд", "777")
+    monkeypatch.setitem(PEOPLE, "Черима Чормин", "777")
+    monkeypatch.setitem(PEOPLE, "Пуриса Пирхан", "777")
     book = _book(db)
-    _audition(db, book, actor="Примербояюррнэв Примержзаэезяхв")
-    _audition(db, book, actor="Примервсммчпфиб Примерубщркгюд")
-    _approve(db, book, actor="Примерктенчечж Примерптмюгэюц")
+    _audition(db, book, actor="Черима Чормин")
+    _audition(db, book, actor="Пуриса Пирхан")
+    _approve(db, book, actor="Талерия Тиркан")
 
     statuses = sorted(s for _, s in ar.send_due_rejections(db, now=LATER))
 
@@ -397,7 +397,7 @@ def test_approval_landing_while_claiming_cancels_the_letter(db, mail, monkeypatc
 
     def resolve_and_reapprove(db_, name):
         if not calls:
-            db_.query(Character).filter_by(book_id=book.id, name="Пяднтикух").one().actor_name = "Примеронгялюцз Примерчюнгнчэлв"
+            db_.query(Character).filter_by(book_id=book.id, name="Пяднтикух").one().actor_name = "Царели Цертан"
             db_.commit()
         calls.append(name)
         return _resolve_people(db_, name)
@@ -425,32 +425,32 @@ def test_approval_reaches_auditions_whose_role_is_spelled_differently(db, mail):
     """Проба «тик-так» (из имени файла), роль в касте «Тик-Так»: отказ всё равно заводится
     и уходит — иначе проигравшие на такую роль не узнали бы ничего."""
     book = _book(db)
-    _audition(db, book, role="тик-так", actor="Примеронгялюцз Примерчюнгнчэлв")
-    db.add(Character(book_id=book.id, name="Тик-Так", actor_name="Примергдпнкюцю Примероюбргфюу"))
+    _audition(db, book, role="тик-так", actor="Царели Цертан")
+    db.add(Character(book_id=book.id, name="Тик-Так", actor_name="Келмар Корели"))
     db.flush()
-    ar.schedule_rejections_for_approval(db, book=book, role="Тик-Так", approved_actor="Примергдпнкюцю Примероюбргфюу", now=NOW)
+    ar.schedule_rejections_for_approval(db, book=book, role="Тик-Так", approved_actor="Келмар Корели", now=NOW)
     db.commit()
 
     [rej] = _rejections(db)
-    assert (rej.role, rej.actor_name, rej.status) == ("тик-так", "Примеронгялюцз Примерчюнгнчэлв", "pending")
+    assert (rej.role, rej.actor_name, rej.status) == ("тик-так", "Царели Цертан", "pending")
     assert [s for _, s in ar.send_due_rejections(db, now=LATER)] == ["sent"]
 
 
 def test_approval_reaches_auditions_named_by_an_alias(db):
     book = _book(db)
-    _audition(db, book, role="Отец Чудовищ", actor="Примеронгялюцз Примерчюнгнчэлв")
-    db.add(Character(book_id=book.id, name="Убкнэляб", aliases="Отец Чудовищ", actor_name="Примергдпнкюцю Примероюбргфюу"))
+    _audition(db, book, role="Отец Чудовищ", actor="Царели Цертан")
+    db.add(Character(book_id=book.id, name="Убкнэляб", aliases="Отец Чудовищ", actor_name="Келмар Корели"))
     db.flush()
     ar.schedule_rejections_for_approval(db, book=book, role="Убкнэляб", aliases="Отец Чудовищ",
-                                        approved_actor="Примергдпнкюцю Примероюбргфюу", now=NOW)
+                                        approved_actor="Келмар Корели", now=NOW)
     db.commit()
 
-    assert [(r.role, r.actor_name) for r in _rejections(db)] == [("Отец Чудовищ", "Примеронгялюцз Примерчюнгнчэлв")]
+    assert [(r.role, r.actor_name) for r in _rejections(db)] == [("Отец Чудовищ", "Царели Цертан")]
 
 
 # ---------- отказ по оценкам: оба оценили, обе ниже 7 (решение владельца 04.10) ----------
 
-def _score(db, book, lane, score, *, role="Пяднтикух", actor="Примеронгялюцз Примерчюнгнчэлв"):
+def _score(db, book, lane, score, *, role="Пяднтикух", actor="Царели Цертан"):
     row = db.query(AuditionScore).filter_by(book_id=book.id, role=role, actor_name=actor, lane=lane).one_or_none()
     if score is None:
         if row is not None:
@@ -515,7 +515,7 @@ def test_taking_a_score_back_cancels(db):
 def test_low_scores_do_not_reject_the_actor_approved_on_the_role(db):
     book = _book(db)
     _audition(db, book)
-    db.add(Character(book_id=book.id, name="Пяднтикух", actor_name="Примерчюнгнчэлв Примеронгялюцз"))
+    db.add(Character(book_id=book.id, name="Пяднтикух", actor_name="Цертан Царели"))
     db.commit()
     _score(db, book, "author", 3)
     _score(db, book, "studio", 3)
@@ -526,7 +526,7 @@ def test_a_score_raise_does_not_cancel_a_rejection_for_an_approved_rival(db):
     """Утвердили другого — отказ уходит, какой бы ни была оценка: роль одна."""
     book = _book(db)
     _audition(db, book)
-    _approve(db, book, actor="Примерктенчечж Примерптмюгэюц")
+    _approve(db, book, actor="Талерия Тиркан")
     _score(db, book, "author", 9)
     _score(db, book, "studio", 9)
     assert [r.status for r in _rejections(db)] == ["pending"]
@@ -556,7 +556,7 @@ def test_settle_rechecks_scores_when_nothing_is_approved(db, mail):
     assert mail["direct"] == []
 
 
-def _old_scores(db, book, author, studio, *, role="Пяднтикух", actor="Примеронгялюцз Примерчюнгнчэлв"):
+def _old_scores(db, book, author, studio, *, role="Пяднтикух", actor="Царели Цертан"):
     """Оценки, стоящие с прошлых дней, — без нажатия, без сверки отказа."""
     for lane, score in (("author", author), ("studio", studio)):
         db.add(AuditionScore(book_id=book.id, role=role, actor_name=actor, lane=lane,
@@ -571,7 +571,7 @@ def test_old_low_scores_do_not_turn_a_withdrawn_rival_approval_into_a_letter(db,
     book = _book(db)
     _audition(db, book)
     _old_scores(db, book, 4, 5)
-    _approve(db, book, actor="Примерктенчечж Примерптмюгэюц")
+    _approve(db, book, actor="Талерия Тиркан")
     db.query(Character).filter_by(book_id=book.id, name="Пяднтикух").one().actor_name = ""
     db.commit()
 
@@ -586,7 +586,7 @@ def test_approving_this_actor_cancels_his_score_rejection_at_once(db, mail):
     _audition(db, book)
     _score(db, book, "author", 4)
     _score(db, book, "studio", 4)
-    _approve(db, book, actor="Примеронгялюцз Примерчюнгнчэлв")
+    _approve(db, book, actor="Царели Цертан")
     assert [r.status for r in _rejections(db)] == ["cancelled"]
 
     db.query(Character).filter_by(book_id=book.id, name="Пяднтикух").one().actor_name = ""
@@ -634,7 +634,7 @@ def test_the_letter_without_a_reason_is_word_for_word_the_old_one():
 def test_the_sent_letter_includes_the_reason_the_author_gave(db, mail):
     book = _book(db)
     _audition(db, book)
-    db.add(AuditionScore(book_id=book.id, role="Пяднтикух", actor_name="Примеронгялюцз Примерчюнгнчэлв", lane="author",
+    db.add(AuditionScore(book_id=book.id, role="Пяднтикух", actor_name="Царели Цертан", lane="author",
                          voter_uid="a", voter_name="А", score=3, reason="manner"))
     db.commit()
     _score(db, book, "studio", 4)
@@ -648,7 +648,7 @@ def test_the_authors_own_words_never_reach_the_dictor(db, mail):
     """Комментарий — только студии (решение 11.10): в письме отказа его нет ни при какой причине."""
     book = _book(db)
     _audition(db, book)
-    db.add(AuditionScore(book_id=book.id, role="Пяднтикух", actor_name="Примеронгялюцз Примерчюнгнчэлв", lane="author",
+    db.add(AuditionScore(book_id=book.id, role="Пяднтикух", actor_name="Царели Цертан", lane="author",
                          voter_uid="a", voter_name="А", score=3, reason="voice",
                          comment="Тут нужен скрипучий старик, а не баритон"))
     db.commit()
@@ -661,7 +661,7 @@ def test_the_authors_own_words_never_reach_the_dictor(db, mail):
 
 # ---------- «Отказать» рукой (13.10) ----------
 
-def _by_hand(db, *, actor="Примеронгялюцз Примерчюнгнчэлв", role="Пяднтикух"):
+def _by_hand(db, *, actor="Царели Цертан", role="Пяднтикух"):
     book = _book(db)
     _audition(db, book, role=role, actor=actor)
     rej = ar.reject_by_hand(db, book_id=book.id, role=role, actor_name=actor, now=NOW)
@@ -682,7 +682,7 @@ def test_a_hand_rejection_goes_out_without_approval_or_scores(db, mail):
 
 def test_take_it_back_before_the_deadline(db, mail):
     book, _ = _by_hand(db)
-    ar.cancel_pending_rejection(db, book_id=book.id, role="Пяднтикух", actor_name="Примеронгялюцз Примерчюнгнчэлв")
+    ar.cancel_pending_rejection(db, book_id=book.id, role="Пяднтикух", actor_name="Царели Цертан")
     db.commit()
 
     assert ar.send_due_rejections(db, now=LATER) == []
@@ -692,10 +692,10 @@ def test_take_it_back_before_the_deadline(db, mail):
 def test_a_score_does_not_undo_a_hand_rejection(db, mail):
     """Оценку поставили после «Отказать» — сверка с оценками не должна гасить решение человека."""
     book, _ = _by_hand(db)
-    db.add(AuditionScore(book_id=book.id, role="Пяднтикух", actor_name="Примеронгялюцз Примерчюнгнчэлв", lane="author",
+    db.add(AuditionScore(book_id=book.id, role="Пяднтикух", actor_name="Царели Цертан", lane="author",
                          voter_uid="a", voter_name="Автор", score=9))
     db.flush()
-    rej = ar.sync_rejection_with_scores(db, book_id=book.id, role="Пяднтикух", actor_name="Примеронгялюцз Примерчюнгнчэлв", now=NOW)
+    rej = ar.sync_rejection_with_scores(db, book_id=book.id, role="Пяднтикух", actor_name="Царели Цертан", now=NOW)
     db.commit()
 
     assert rej.status == ar.PENDING and rej.cause == ar.CAUSE_MANUAL
@@ -705,7 +705,7 @@ def test_a_score_does_not_undo_a_hand_rejection(db, mail):
 
 def test_approving_the_same_actor_cancels_a_hand_rejection(db, mail):
     book, _ = _by_hand(db)
-    _approve(db, book, actor="Примеронгялюцз Примерчюнгнчэлв")
+    _approve(db, book, actor="Царели Цертан")
 
     assert ar.send_due_rejections(db, now=LATER) == []
     assert mail["direct"] == []
@@ -713,11 +713,11 @@ def test_approving_the_same_actor_cancels_a_hand_rejection(db, mail):
 
 def test_the_approved_actor_cannot_be_rejected(db):
     book = _book(db)
-    _audition(db, book, actor="Примеронгялюцз Примерчюнгнчэлв")
-    _approve(db, book, actor="Примеронгялюцз Примерчюнгнчэлв")
+    _audition(db, book, actor="Царели Цертан")
+    _approve(db, book, actor="Царели Цертан")
 
     with pytest.raises(ar.RejectError) as error:
-        ar.reject_by_hand(db, book_id=book.id, role="Пяднтикух", actor_name="Примеронгялюцз Примерчюнгнчэлв", now=NOW)
+        ar.reject_by_hand(db, book_id=book.id, role="Пяднтикух", actor_name="Царели Цертан", now=NOW)
     assert error.value.code == "approved"
 
 
@@ -725,7 +725,7 @@ def test_a_sent_rejection_is_not_sent_again(db, mail):
     book, _ = _by_hand(db)
     ar.send_due_rejections(db, now=LATER)
 
-    rej = ar.reject_by_hand(db, book_id=book.id, role="Пяднтикух", actor_name="Примеронгялюцз Примерчюнгнчэлв", now=LATER)
+    rej = ar.reject_by_hand(db, book_id=book.id, role="Пяднтикух", actor_name="Царели Цертан", now=LATER)
     db.commit()
     assert rej.status == ar.SENT
     assert ar.send_due_rejections(db, now=LATER + timedelta(hours=1)) == []

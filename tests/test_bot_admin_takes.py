@@ -26,7 +26,7 @@ def test_admin_named_file_uses_someone_elses_approved_role(db, roles):
     out = handle_update(db, _take_audio(), now=NOW)
     row = db.query(BotUpload).one()
     assert (row.purpose, row.state, row.role_name, row.actor_name) == \
-        ("take", "queued", "Афыл", "Примерэклцлдзп Примергножжэщцб")
+        ("take", "queued", "Афыл", "Ортель Орвис")
     assert [item.method for item in out] == ["sendMessage", "enqueue_bot_take"]
 
 
@@ -37,12 +37,12 @@ def test_admin_unknown_file_offers_own_and_other_roles(db):
     assert _text(out) == "Это дубль или проба?"
     out = handle_update(db, _press(f"at:t:{row.id}"), now=NOW)
     buttons = _buttons(out)
-    assert ("Афыл — Примерэклцлдзп Примергножжэщцб", f"at:r:{row.id}:c2") in buttons
+    assert ("Афыл — Ортель Орвис", f"at:r:{row.id}:c2") in buttons
     assert ("Своя роль — Администратор Студии", f"at:r:{row.id}:own") in buttons
     assert not any("Дракон" in name for name, _ in buttons)
     out = handle_update(db, _press(f"at:r:{row.id}:c2"), now=NOW)
     assert out[-1].method == "enqueue_bot_take"
-    assert row.actor_name == "Примерэклцлдзп Примергножжэщцб" and row.character_id == "c2"
+    assert row.actor_name == "Ортель Орвис" and row.character_id == "c2"
     assert not any(item.method.startswith("enqueue")
                    for item in handle_update(db, _press(f"at:r:{row.id}:c2"), now=NOW))
 

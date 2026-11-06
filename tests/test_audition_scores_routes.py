@@ -5,10 +5,10 @@ from app.auth import session_serializer
 from app.main import app
 from app.services.audition_scores import ScoreError
 
-BODY = {"book_id": "b1", "role": "Саяху", "actor_name": "Примершупядяобб Примерцвфмллрив", "lane": "author", "score": 8}
+BODY = {"book_id": "b1", "role": "Саяху", "actor_name": "Гленто Гарсин", "lane": "author", "score": 8}
 
 
-def _client(roles, name="Примервлщющючб Примернкяхаххчб"):
+def _client(roles, name="Вискон Варени"):
     client = TestClient(app)
     client.cookies.set("session", session_serializer.dumps({"uid": "u1", "sub": "u1", "roles": roles, "display_name": name}))
     return client
@@ -37,18 +37,18 @@ def test_the_author_scores_the_author_lane(monkeypatch):
     response = _client(["author"]).post("/api/v2/auditions/score", json=BODY)
 
     assert response.status_code == 200
-    assert response.json() == {"ok": True, "scores": {"author": {"score": 8, "name": "Примервлщющючб Примернкяхаххчб"}, "studio": None},
+    assert response.json() == {"ok": True, "scores": {"author": {"score": 8, "name": "Вискон Варени"}, "studio": None},
                                "rejection": None}
     # после оценки ручка сверяет отказ пары — оба ниже 7 значит письмо через 15 минут
-    assert calls == [("b1", "Саяху", "Примершупядяобб Примерцвфмллрив", "author", 8, "u1", "Примервлщющючб Примернкяхаххчб"),
-                     ("sync", "b1", "Саяху", "Примершупядяобб Примерцвфмллрив")]
+    assert calls == [("b1", "Саяху", "Гленто Гарсин", "author", 8, "u1", "Вискон Варени"),
+                     ("sync", "b1", "Саяху", "Гленто Гарсин")]
 
 
 def test_nobody_presses_somebody_elses_lane(monkeypatch):
     calls: list = []
     _patch(monkeypatch, calls)
 
-    assert _client(["admin"], name="Примеряфеицшпчб Примерщюагоэсгв").post("/api/v2/auditions/score", json=BODY).status_code == 403
+    assert _client(["admin"], name="Фернос Фарита").post("/api/v2/auditions/score", json=BODY).status_code == 403
     assert _client(["author"]).post("/api/v2/auditions/score", json={**BODY, "lane": "studio"}).status_code == 403
     for roles in (["agent"], ["dictor"]):
         assert _client(roles).post("/api/v2/auditions/score", json=BODY).status_code == 403
@@ -58,7 +58,7 @@ def test_nobody_presses_somebody_elses_lane(monkeypatch):
 def test_the_admin_scores_the_studio_lane(monkeypatch):
     calls: list = []
     _patch(monkeypatch, calls)
-    response = _client(["admin"], name="Примеряфеицшпчб Примерщюагоэсгв").post("/api/v2/auditions/score", json={**BODY, "lane": "studio"})
+    response = _client(["admin"], name="Фернос Фарита").post("/api/v2/auditions/score", json={**BODY, "lane": "studio"})
     assert response.status_code == 200 and calls[0][3] == "studio"
 
 
@@ -102,7 +102,7 @@ def test_a_reason_from_the_author_notifies_the_owner_after_the_response(monkeypa
     _patch(monkeypatch, [])
     monkeypatch.setattr("app.v2.api.send_reaction_to_owner", lambda *pair: sent.append(pair))
     _client(["author"]).post("/api/v2/auditions/score", json={**BODY, "score": 4, "reason": "voice"})
-    assert sent == [("b1", "Саяху", "Примершупядяобб Примерцвфмллрив")]
+    assert sent == [("b1", "Саяху", "Гленто Гарсин")]
     sent.clear()
     _client(["author"]).post("/api/v2/auditions/score", json={**BODY, "score": 4})   # голая оценка — без письма
     assert sent == []

@@ -31,7 +31,7 @@ def db():
             Character(book_id=book.id, name="Куйбу Гудисди", actor_name="Сомов Роман"),
             Character(book_id=book.id, name="Дгарнин", actor_name=""),
             Character(book_id=other.id, name="Бдеукс", actor_name="Зотов Сергей"),
-            Character(book_id=other.id, name="Кфиухс", actor_name="Примерлаяюмнфшв Примерцосезбсдв"),
+            Character(book_id=other.id, name="Кфиухс", actor_name="Шелвар Шарита"),
         ])
         session.flush()
         yield session
@@ -107,16 +107,16 @@ def test_suggested_here_is_an_audition_even_if_approved_in_another_book(db):
     """
     book, other = db.query(ScriptBook).order_by(ScriptBook.id).all()[:2]
     db.add_all([
-        Character(book_id=book.id, name="Ао", actor_name="Примерасоуогчт Примердбснрфажв?"),
-        Character(book_id=other.id, name="Ао", actor_name="Примерасоуогчт Примердбснрфажв"),
+        Character(book_id=book.id, name="Ао", actor_name="Жарвен Журта?"),
+        Character(book_id=other.id, name="Ао", actor_name="Жарвен Журта"),
     ])
     db.flush()
 
     kp = _code(db, book.title)
-    assert classify_upload_kind(db, role="Ао", actor_name="Примерасоуогчт Примердбснрфажв", book_code=kp) == "audition"
+    assert classify_upload_kind(db, role="Ао", actor_name="Жарвен Журта", book_code=kp) == "audition"
     # в той книге, где утверждена, — по-прежнему дубль
     sv = _code(db, other.title)
-    assert classify_upload_kind(db, role="Ао", actor_name="Примерасоуогчт Примердбснрфажв", book_code=sv) == "take"
+    assert classify_upload_kind(db, role="Ао", actor_name="Жарвен Журта", book_code=sv) == "take"
 
 
 def test_an_unassigned_role_here_still_takes_the_voice_from_another_book(db):
@@ -125,23 +125,23 @@ def test_an_unassigned_role_here_still_takes_the_voice_from_another_book(db):
     db.add(Character(book_id=book.id, name="Кфиухс", actor_name=""))
     db.flush()
 
-    assert classify_upload_kind(db, role="Кфиухс", actor_name="Примерлаяюмнфшв Примерцосезбсдв",
+    assert classify_upload_kind(db, role="Кфиухс", actor_name="Шелвар Шарита",
                                 book_code=_code(db, book.title)) == "take"
 
 
 def test_approved_for_someone_else_here_is_an_audition(db):
     book = db.query(ScriptBook).filter(ScriptBook.title == "Карта переправы").one()
-    db.add(Character(book_id=book.id, name="Кфиухс", actor_name="Примерчюнгнчэлв Примеронгялюцз"))
+    db.add(Character(book_id=book.id, name="Кфиухс", actor_name="Цертан Царели"))
     db.flush()
 
-    assert classify_upload_kind(db, role="Кфиухс", actor_name="Примерлаяюмнфшв Примерцосезбсдв",
+    assert classify_upload_kind(db, role="Кфиухс", actor_name="Шелвар Шарита",
                                 book_code=_code(db, book.title)) == "audition"
 
 
 def test_the_book_finds_the_role_by_alias(db):
     book = db.query(ScriptBook).filter(ScriptBook.title == "Карта переправы").one()
-    db.add(Character(book_id=book.id, name="Ао", aliases="Чародейка", actor_name="Примерасоуогчт Примердбснрфажв"))
+    db.add(Character(book_id=book.id, name="Ао", aliases="Чародейка", actor_name="Жарвен Журта"))
     db.flush()
 
-    assert classify_upload_kind(db, role="Чародейка", actor_name="Примерасоуогчт Примердбснрфажв",
+    assert classify_upload_kind(db, role="Чародейка", actor_name="Жарвен Журта",
                                 book_code=_code(db, book.title)) == "take"

@@ -54,7 +54,7 @@ CH57 = [
 ]
 
 
-def test_arnaha_whole_splits_like_by_hand():
+def test_six_chapters_split_at_pauses():
     data = json.loads(FIXTURE.read_text(encoding="utf-8"))
     chapters = [
         (int(key), f"ch{key}", f"Глава {key}", lines)

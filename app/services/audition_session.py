@@ -50,6 +50,12 @@ class SessionClip:
     #: чужой машине его нет; не найдя его, Audition идёт по относительному от папки
     #: с сессией. Значит сессию можно положить прямо к файлам.
     relative: str = ""
+    # Идентификаторы связывают нарезку с исходником для проверки рассказчика;
+    # в XML проекта они не записываются.
+    audio_file_id: str = ""
+    segment_id: str = ""
+    role_index: int | None = None
+    role: str = ""
 
     @property
     def length(self) -> float:

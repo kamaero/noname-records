@@ -22,6 +22,10 @@ _Сгенерировано из коммита 73b3bfa._
 | `APP_NAME` | `'Noname Records'` | `app/config.py:72` |  |
 | `ASR_LANGUAGE` | `'ru'` | `app/config.py:117` |  |
 | `ASR_MODEL` | `'whisper-1'` | `app/config.py:116` |  |
+| `ASR_AUDIT_ENABLED` | `'0'` | `app/config.py` | Явно включает платную строгую проверку рассказчика. |
+| `ASR_AUDIT_MODEL` | `'elevenlabs/scribe-v2'` | `app/config.py` | Модель первого распознавания через RouterAI. |
+| `ASR_AUDIT_CONFIRM_MODEL` | `'microsoft/mai-transcribe-2'` | `app/config.py` | Модель подтверждения находок через RouterAI. |
+| `LLM_AUDIT_MODEL` | `'deepseek/deepseek-v4-pro'` | `app/config.py` | Модель сравнения и подтверждения находок через RouterAI. |
 | `ASR_PROMPT` | `''` | `app/config.py:118` |  |
 | `ASR_PROVIDER` | `'openai'` | `app/config.py:115` | Распознавание речи. Раньше эти переменные стояли в .env и не читались никем. |
 | `AUDIO_NAS_PATH` | `''` | `app/config.py:105` | Зеркало записей на второй диск или NAS: тот же ключ, другой корень. Пусто — зеркалирование выключено, приём при этом работает. |

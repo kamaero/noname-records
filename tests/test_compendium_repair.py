@@ -34,7 +34,7 @@ def db():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine, autoflush=False)() as session:
-        session.add(Author(id="a1", name="Примервлщющючб Примернкяхаххчб", slug="user_example_нзбпщнюиб"))
+        session.add(Author(id="a1", name="Вискон Варени", slug="vareni"))
 
         def card(cid, name, description, topic=TOPIC):
             session.add(AuthorCharacter(id=cid, author_id="a1", canonical_name=name, aliases="[]",

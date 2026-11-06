@@ -16,7 +16,7 @@ def _role(person, name):
 
 def _pay(db, role_key, kind, amount=None):
     return payouts.pay_role(db, book_id="b1", role_key=role_key, actor_name="Ветрова Ольга", kind=kind,
-                            amount_rub=amount, by="Примеряфеицшпчб Примерщюагоэсгв", now=NOW)
+                            amount_rub=amount, by="Фернос Фарита", now=NOW)
 
 
 def test_advance_on_a_role_in_progress_then_final_pays_the_rest(db):

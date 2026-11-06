@@ -100,6 +100,38 @@ export function AsrCoveragePage() {
       pushToast({ tone: "error", title: "Не запустилось", detail: describeApiError(error, "сервер не ответил") }),
   });
 
+  /* Строгая проверка рассказчика — платный прогон. Сама ставится,
+     когда глава собирается; кнопка — для повтора по решению владельца. */
+  const auditChapter = useMutation({
+    mutationFn: (chapter: BookRecordingChapter) =>
+      apiPostJson<{ ok: boolean; job_id?: string }>(`/api/v2/chapters/${encodeURIComponent(chapter.chapter_id)}/audit`, {}),
+    onSuccess: async (_result, chapter) => {
+      pushToast({
+        tone: "success",
+        title: "Строгая проверка запущена",
+        detail: `Глава ${chapter.chapter_index}. Платный прогон запущен; результат появится здесь.`,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
+    },
+    onError: async (error) => {
+      const detail = error instanceof ApiError && error.errorCode === "chapter_not_assembled"
+        ? "Глава изменилась — соберите её заново"
+        : error instanceof ApiError && error.errorCode === "already_queued"
+          ? "Проверка уже ожидает или выполняется; повтор не запущен"
+          : error instanceof ApiError && error.errorCode === "audit_disabled"
+            ? "Строгая проверка отключена"
+            : error instanceof ApiError && error.errorCode === "audit_missing_key"
+              ? "Добавьте ключ RouterAI в настройках нейросетей"
+              : error instanceof ApiError && error.errorCode === "audit_over_limit"
+                ? "Месячный лимит исчерпан; проверьте настройки трат"
+                : error instanceof ApiError && error.errorCode === "audit_budget_unavailable"
+                  ? "Не удалось проверить месячный лимит"
+            : describeApiError(error, "сервер не ответил");
+      pushToast({ tone: "error", title: "Не запустилось", detail });
+      await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
+    },
+  });
+
   /* «Сдана» = сведена, прослушана и выложена; её ставит человек, а не скачивание архива.
      Когда сдана последняя опубликованная глава, спрашиваем про «Озвучена»: сервер сам
      книгу не закрывает — это решение владельца, с письмами и закрытием сроков. */
@@ -328,6 +360,45 @@ export function AsrCoveragePage() {
         },
       },
       {
+        key: "audit",
+        header: "Рассказчик",
+        align: "right",
+        className: "asr-col-audit",
+        nowrap: true,
+        render: (row) => {
+          const audit = row.audit;
+          const busy = audit?.status === "queued" || audit?.status === "running" || audit?.status === "unknown";
+          const label = !audit ? "—" : audit.status === "unknown" ? "исход неизвестен" : busy ? "проверяется…"
+            : audit.status === "failed" ? "ошибка"
+            : audit.status === "skipped" ? "пропущен"
+            : audit.confirmed > 0 ? `${audit.confirmed} подтр.`
+            : audit.flags > 0 ? `${audit.flags} флаг.` : "✓";
+          const title = !audit ? "Аудит ещё не запускался"
+            : audit.status === "unknown" ? "Исход неизвестен — повтор не выполняется. Проверьте журнал задач."
+            : audit.status === "failed" ? "Прогон остановлен; причину смотрите в журнале задач"
+            : audit.status === "skipped" ? (audit.error_message?.includes("narrator_input_changed_after_payment")
+              ? "Состав рассказчика изменился во время проверки. Оплаченный результат сохранён; автоматический повтор запрещён."
+              : "Проверка пропущена; условия и исход оплаты смотрите в журнале задач")
+            : `Строгая проверка (${audit.model}): отклонений ${audit.flags}, подтверждено ${audit.confirmed}. Цена STT ${audit.stt_cost_rub == null ? "неизвестна" : `${audit.stt_cost_rub.toFixed(2)} ₽`}`;
+          return (
+            <span className="asr-links">
+              <span className={audit?.confirmed ? "num asr-holes" : "cast-muted"} title={title}>{label}</span>
+              {isAdmin && row.audit_assembled && !busy ? (
+                <button
+                  type="button"
+                  className="asr-run"
+                  disabled={auditChapter.isPending}
+                  onClick={stopRow(() => auditChapter.mutate(row))}
+                  title="Платная проверка сборки рассказчика; стоимость зависит от длительности и тарифов, повтор оплачивается заново"
+                >
+                  {audit ? "повторить" : "проверить"}
+                </button>
+              ) : null}
+            </span>
+          );
+        },
+      },
+      {
         key: "backup",
         header: "Бэкап",
         className: "asr-col-backup",
@@ -381,7 +452,7 @@ export function AsrCoveragePage() {
         ),
       },
     ],
-    [canDownload, isAdmin, release, recognise, ambient, stopAmbient, openChapters],
+    [canDownload, isAdmin, release, recognise, auditChapter, ambient, stopAmbient, openChapters],
   );
 
   const toggleChapter = useCallback((row: BookRecordingChapter) => {

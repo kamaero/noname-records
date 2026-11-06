@@ -50,10 +50,10 @@ def db(monkeypatch):
                                    status="processing"))
             for n in (1, 2, 3):
                 session.add(ScriptChapter(id=f"{bid}-{n}", book_id=bid, chapter_index=n, chapter_title=f"Глава {n}"))
-        session.add(User(id="admin", login="admin", password_hash="x", display_name="Примеряфеицшпчб Примерщюагоэсгв", is_active="true"))
+        session.add(User(id="admin", login="admin", password_hash="x", display_name="Фернос Фарита", is_active="true"))
         session.add(UserRole(user_id="admin", role="admin"))
         session.add(TelegramAuthAccount(telegram_user_id="900000100", role="admin", access_scope="full",
-                                        display_name="Примеряфеицшпчб Примерщюагоэсгв", is_active="true", user_id="admin"))
+                                        display_name="Фернос Фарита", is_active="true", user_id="admin"))
         roles = [
             # (id, книга, роль, актёр, главы)
             ("c1", "b1", "Убув", "Ветрова Ольга", "1,2"),

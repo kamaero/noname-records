@@ -22,23 +22,23 @@ def db(monkeypatch):
         session.add(ScriptBook(id="b1", title=KP, display_title=KP, source_filename="x", source_format="docx",
                                total_chars=0, author_sheets_x1000=0, chapter_count=1, has_chapters="true",
                                status="processing"))
-        session.add(Character(id="c1", book_id="b1", name="Дракон", actor_name="Примерчюнгнчэлв Примеронгялюцз?", appears_in="1"))
-        session.add(User(id="u80", login="tg_80", password_hash="x", display_name="Примернкяхаххчб Примервлщющючб", is_active="true"))
+        session.add(Character(id="c1", book_id="b1", name="Дракон", actor_name="Цертан Царели?", appears_in="1"))
+        session.add(User(id="u80", login="tg_80", password_hash="x", display_name="Варени Вискон", is_active="true"))
         session.add(UserRole(user_id="u80", role="author"))
         session.add(TelegramAuthAccount(telegram_user_id="80", role="author", access_scope="full",
-                                        display_name="Примернкяхаххчб Примервлщющючб", is_active="true", user_id="u80"))
+                                        display_name="Варени Вискон", is_active="true", user_id="u80"))
         session.add(AudioFile(id="a1", book_code=derive_book_code(KP), original_filename="voice.ogg",
                               stored_key="k/a1", mime_type="audio/ogg", size_bytes=2048, chapter="", role="дракон",
-                              actor_name="Примерчюнгнчэлв Примеронгялюцз", kind="audition", codec="opus"))
-        session.add(AuditionScore(book_id="b1", role="дракон", actor_name="Примерчюнгнчэлв Примеронгялюцз", lane="studio", score=7,
-                                  voter_uid="u11", voter_name="Примеряфеицшпчб Примерщюагоэсгв", reason=""))
+                              actor_name="Цертан Царели", kind="audition", codec="opus"))
+        session.add(AuditionScore(book_id="b1", role="дракон", actor_name="Цертан Царели", lane="studio", score=7,
+                                  voter_uid="u11", voter_name="Фернос Фарита", reason=""))
         session.commit()
         yield session
 
 
 def test_caption_names_role_book_actor_voice_and_scores(db):
     text = audition_card.caption(db, db.get(AudioFile, "a1"))
-    assert text.startswith("🎙 Проба «Дракон» («Карта Приозерья») — Примерчюнгнчэлв Примеронгялюцз · голосовое")
+    assert text.startswith("🎙 Проба «Дракон» («Карта Приозерья») — Цертан Царели · голосовое")
     assert "Автор: —   Студия: 7" in text
 
 
@@ -88,9 +88,9 @@ NOW = datetime(2026, 10, 5, 12, 0, 0)
 
 @pytest.fixture()
 def staff(db):
-    db.add(User(id="u11", login="admin", password_hash="x", display_name="Примеряфеицшпчб Примерщюагоэсгв", is_active="true"))
+    db.add(User(id="u11", login="admin", password_hash="x", display_name="Фернос Фарита", is_active="true"))
     db.add(UserRole(user_id="u11", role="admin"))
-    db.add(TelegramAuthAccount(telegram_user_id="11", role="admin", access_scope="full", display_name="Примеряфеицшпчб Примерщюагоэсгв",
+    db.add(TelegramAuthAccount(telegram_user_id="11", role="admin", access_scope="full", display_name="Фернос Фарита",
                                is_active="true", user_id="u11"))
     db.add(User(id="u41", login="tg_41", password_hash="x", display_name="Ветрова Ольга", is_active="true"))
     db.add(UserRole(user_id="u41", role="dictor"))
@@ -112,7 +112,7 @@ def _texts(out, chat):
 
 
 def _score(db, lane):
-    row = db.query(AuditionScore).filter_by(role="дракон", actor_name="Примерчюнгнчэлв Примеронгялюцз", lane=lane).one_or_none()
+    row = db.query(AuditionScore).filter_by(role="дракон", actor_name="Цертан Царели", lane=lane).one_or_none()
     return row.score if row else None
 
 
@@ -181,7 +181,7 @@ def test_the_owner_scores_the_studio_lane_and_both_low_schedule_a_rejection(staf
     handle_update(staff, _press("ac:s3:a1", "80"), now=NOW)
     handle_update(staff, _press("ac:s5:a1", "11"), now=NOW)
     assert _score(staff, "studio") == 5
-    assert staff.query(AuditionRejection).filter_by(actor_name="Примерчюнгнчэлв Примеронгялюцз", status="pending").count() == 1
+    assert staff.query(AuditionRejection).filter_by(actor_name="Цертан Царели", status="pending").count() == 1
 
 
 def test_a_dictor_cannot_press(staff):
@@ -193,29 +193,29 @@ def test_approve_goes_through_the_shared_chain(staff, monkeypatch):
     calls = []
     monkeypatch.setattr("app.services.cast_assign.notify_role_approved", lambda db, **kw: calls.append(kw) or {})
     out = handle_update(staff, _press("ac:a:a1", "11"), now=NOW)
-    assert staff.get(Character, "c1").actor_name == "Примерчюнгнчэлв Примеронгялюцз"
-    assert "Утверждено: Примерчюнгнчэлв Примеронгялюцз — «Дракон»" in _texts(out, "11")[0] and calls
+    assert staff.get(Character, "c1").actor_name == "Цертан Царели"
+    assert "Утверждено: Цертан Царели — «Дракон»" in _texts(out, "11")[0] and calls
     edit = next(o for o in out if o.method == "editMessageCaption")   # подпись и кнопки — одним вызовом
     assert "ac:a:a1" not in [b["callback_data"] for row in edit.payload["reply_markup"]["inline_keyboard"] for b in row]
 
 
 def test_approving_a_busy_actor_asks_first(staff, monkeypatch):
     monkeypatch.setattr("app.services.cast_assign.notify_role_approved", lambda db, **kw: {})
-    staff.add(Character(id="c2", book_id="b1", name="Убув", actor_name="Примерчюнгнчэлв Примеронгялюцз", appears_in="1"))
+    staff.add(Character(id="c2", book_id="b1", name="Убув", actor_name="Цертан Царели", appears_in="1"))
     staff.commit()
     out = handle_update(staff, _press("ac:a:a1", "11"), now=NOW)
     ask = next(o for o in out if o.method == "sendMessage")
-    assert "На «Убув» уже стоит Примерчюнгнчэлв Примеронгялюцз" in ask.payload["text"]
-    assert staff.get(Character, "c1").actor_name == "Примерчюнгнчэлв Примеронгялюцз?"
+    assert "На «Убув» уже стоит Цертан Царели" in ask.payload["text"]
+    assert staff.get(Character, "c1").actor_name == "Цертан Царели?"
     handle_update(staff, _press("ac:A:a1", "11"), now=NOW)
-    assert staff.get(Character, "c1").actor_name == "Примерчюнгнчэлв Примеронгялюцз"
+    assert staff.get(Character, "c1").actor_name == "Цертан Царели"
 
 
 def test_the_same_actor_already_on_the_role(staff):
-    staff.get(Character, "c1").actor_name = "Примерчюнгнчэлв Примеронгялюцз"
+    staff.get(Character, "c1").actor_name = "Цертан Царели"
     staff.commit()
     out = handle_update(staff, _press("ac:a:a1", "11"), now=NOW)
-    assert "Роль уже утверждена: Примерчюнгнчэлв Примеронгялюцз" in _texts(out, "11")[0]
+    assert "Роль уже утверждена: Цертан Царели" in _texts(out, "11")[0]
 
 
 def test_stale_cards(staff):
@@ -328,11 +328,11 @@ def test_the_track_is_named_after_the_role_and_actor(db, tmp_path, monkeypatch):
     sent = []
     audition_card.send_card(db, "a1", send_audio=lambda chat, **kw: sent.append(kw) or True,
                             send_text=lambda chat, text: True)
-    assert sent[0]["filename"] == "Дракон — Примерчюнгнчэлв Примеронгялюцз.ogg"
+    assert sent[0]["filename"] == "Дракон — Цертан Царели.ogg"
 
 
 def test_a_score_on_an_approved_card_does_not_bring_back_approve(staff, monkeypatch):
-    staff.get(Character, "c1").actor_name = "Примерчюнгнчэлв Примеронгялюцз"
+    staff.get(Character, "c1").actor_name = "Цертан Царели"
     staff.commit()
     out = handle_update(staff, _press("ac:s9:a1", "11"), now=NOW)
     edit = next(o for o in out if o.method == "editMessageCaption")

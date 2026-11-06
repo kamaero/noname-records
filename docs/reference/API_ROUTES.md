@@ -228,6 +228,7 @@ _Сгенерировано из коммита 73b3bfa._
 | POST | `/api/v2/chapters/{chapter_id}/approve` | `app.v2.api:api_v2_chapter_approve` | The author's «проверено» on one chapter, or taking it back. |
 | GET | `/api/v2/chapters/{chapter_id}/archive.zip` | `app.v2.api:api_v2_chapter_archive` | Дубли главы одним архивом — исходник для сведения. |
 | POST | `/api/v2/chapters/{chapter_id}/asr` | `app.v2.api:api_v2_chapter_asr` | Поставить главу в очередь на распознавание. |
+| POST | `/api/v2/chapters/{chapter_id}/audit` | `app.v2.api:api_v2_chapter_audit` | Администратор: повторно запустить платную строгую проверку собранной главы. |
 | GET | `/api/v2/chapters/{chapter_id}/recording` | `app.v2.api:api_v2_chapter_recording` | Кто из говорящих ролей главы уже записан, а кто ещё нет. |
 | GET | `/api/v2/chapters/{chapter_id}/script` | `app.v2.api:api_v2_chapter_script` |  |
 | POST | `/api/v2/chapters/{chapter_id}/session-archive` | `app.v2.api:api_v2_chapter_session_archive` | `POST /api/v2/chapters/{id}/session-archive` — положить .sesx на NAS. |

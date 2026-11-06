@@ -58,11 +58,11 @@ def db():
                           source_filename="k.txt", source_format="txt", created_at=NOW)
         session.add(book)
         session.add(Character(id="c-eina", book_id="b1", name="Лира", aliases="бухгалтер скардоваи",
-                              actor_name="Примерицплцвфлб Примермфдчсошсб?"))
+                              actor_name="Харвин Хортен?"))
         session.add(Character(id="c-ao", book_id="b1", name="Ао"))
         session.add(AudioFile(book_code=derive_book_code(book.title), original_filename="p.wav", stored_key="k/1",
                               mime_type="audio/wav", size_bytes=10, chapter="", role="Лйра",
-                              actor_name="Примерицплцвфлб Примермфдчсошсб", kind="audition", uploaded_at=NOW))
+                              actor_name="Харвин Хортен", kind="audition", uploaded_at=NOW))
         session.commit()
         yield session
 
@@ -71,7 +71,7 @@ def test_feed_offers_the_similar_role_with_who_is_on_it(db):
     [pair] = book_pairs(db, db.get(ScriptBook, "b1"), sees_scores=True, viewer_name="")
 
     assert pair["character_id"] == ""
-    assert pair["role_guess"] == {"character_id": "c-eina", "name": "Лира", "actor_name": "Примерицплцвфлб Примермфдчсошсб?"}
+    assert pair["role_guess"] == {"character_id": "c-eina", "name": "Лира", "actor_name": "Харвин Хортен?"}
 
 
 def test_a_found_role_has_no_guess(db):
@@ -82,7 +82,7 @@ def test_a_found_role_has_no_guess(db):
     assert (pair["character_id"], pair["role_guess"]) == ("c-eina", None)
 
 
-def _score(db, role, lane, score, actor="Примерицплцвфлб Примермфдчсошсб"):
+def _score(db, role, lane, score, actor="Харвин Хортен"):
     db.add(AuditionScore(book_id="b1", role=role, actor_name=actor, lane=lane, voter_uid="v", voter_name="V",
                          score=score, created_at=NOW, updated_at=NOW))
     db.commit()
@@ -91,7 +91,7 @@ def _score(db, role, lane, score, actor="Примерицплцвфлб Прим
 def test_the_audition_moves_under_the_book_spelling_and_the_cast_is_untouched(db):
     _score(db, "Лйра", "author", 9)
     result = move_auditions_to_role(db, book_id="b1", character_id="c-eina", role="Лйра",
-                                    audition_actor="Примерицплцвфлб Примермфдчсошсб", actor_uid="u1")
+                                    audition_actor="Харвин Хортен", actor_uid="u1")
     db.commit()
 
     assert result == {"moved": 1, "character_id": "c-eina", "name": "Лира"}
@@ -109,11 +109,11 @@ def test_a_score_the_right_pair_already_has_wins(db):
     _score(db, "Лйра", "author", 6)
     _score(db, "Лйра", "studio", 8)
     _score(db, "Лира", "author", 9)
-    db.add(AuditionRejection(book_id="b1", book_code="КП", role="Лйра", actor_name="Примерицплцвфлб Примермфдчсошсб",
+    db.add(AuditionRejection(book_id="b1", book_code="КП", role="Лйра", actor_name="Харвин Хортен",
                              due_at=NOW, status="cancelled"))
     db.commit()
     move_auditions_to_role(db, book_id="b1", character_id="c-eina", role="Лйра",
-                           audition_actor="Примерицплцвфлб Примермфдчсошсб", actor_uid="u1")
+                           audition_actor="Харвин Хортен", actor_uid="u1")
     db.commit()
 
     scores = {(s.role, s.lane): s.score for s in db.query(AuditionScore)}
@@ -123,7 +123,7 @@ def test_a_score_the_right_pair_already_has_wins(db):
 
 def test_another_actors_audition_stays(db):
     move_auditions_to_role(db, book_id="b1", character_id="c-eina", role="Лйра",
-                           audition_actor="Примерхмчвшстз Примержшзбеио", actor_uid="u1")
+                           audition_actor="Ревента Ревмар", actor_uid="u1")
     assert db.query(AudioFile).one().role == "Лйра"
 
 
@@ -132,5 +132,5 @@ def test_a_role_of_another_book_is_not_found(db):
     db.commit()
     with pytest.raises(CreateRoleError) as exc:
         move_auditions_to_role(db, book_id="b2", character_id="c-eina", role="Лйра",
-                               audition_actor="Примерицплцвфлб Примермфдчсошсб", actor_uid="u1")
+                               audition_actor="Харвин Хортен", actor_uid="u1")
     assert exc.value.code == "character_not_found"

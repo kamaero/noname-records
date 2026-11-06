@@ -222,6 +222,11 @@ def _write(db, fields: dict) -> None:
     if fields.get("estimated"):
         # провайдер не сказал, сколько потратил: оценка токенов — не повод писать рубли
         row.rub, row.price_known = None, False
+    actual_rub = fields.get("actual_rub")
+    import math
+    if (isinstance(actual_rub, (int, float)) and not isinstance(actual_rub, bool)
+            and math.isfinite(actual_rub) and actual_rub >= 0):
+        row.rub, row.price_known = actual_rub, True
 
 
 def drain_spool() -> int:
@@ -264,16 +269,20 @@ def _spool(fields: dict) -> bool:
 
 def record_call(provider: str, model: str, *, unit: str, input_units: int, output_units: int = 0,
                 step: str | None = None, book_id: str = "", chapter_id: str = "", run_id: str = "",
-                estimated: bool = False) -> None:
+                estimated: bool = False, actual_rub: float | None = None) -> None:
     """Записать вызов в журнал своей сессией. Сбой записи не роняет работу: база занята —
     строка ложится в файл рядом с базой и переносится при следующем обращении к журналу."""
+    import math
+    if actual_rub is not None and (not isinstance(actual_rub, (int, float)) or isinstance(actual_rub, bool)
+                                   or not math.isfinite(actual_rub) or actual_rub < 0):
+        raise ValueError("invalid_actual_cost")
     ctx = _CONTEXT.get()
     fields = {"created_at": utcnow_naive().strftime("%Y-%m-%dT%H:%M:%S.%f"),  # время вызова, не ответа базы
                "step": step or ctx.get("step") or "other",
               "provider": provider, "model": model, "unit": unit, "input_units": int(input_units or 0),
               "output_units": int(output_units or 0), "book_id": book_id or ctx.get("book_id", ""),
               "chapter_id": chapter_id or ctx.get("chapter_id", ""), "run_id": run_id or ctx.get("run_id", ""),
-              "estimated": bool(estimated)}
+              "estimated": bool(estimated), "actual_rub": actual_rub}
     drain_spool()
     try:
         with SessionLocal() as db, _short_wait(db):

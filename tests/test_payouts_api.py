@@ -21,7 +21,7 @@ def api(db, monkeypatch):
     from app.api import payouts as api_module
     monkeypatch.setattr(api_module, "SessionLocal", lambda: same_session(db))
     monkeypatch.setattr(api_module, "is_authenticated", lambda request: True)
-    monkeypatch.setattr(api_module, "session_display_name", lambda request: "Примеряфеицшпчб Примерщюагоэсгв")
+    monkeypatch.setattr(api_module, "session_display_name", lambda request: "Фернос Фарита")
     monkeypatch.setattr(api_module, "is_owner_request", lambda db, request: True)
     return api_module
 
