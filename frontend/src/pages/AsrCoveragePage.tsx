@@ -26,11 +26,6 @@ import "./AsrCoveragePage.css";
 /** книги, у которых есть что записывать */
 const PUBLISHED_BOOK = new Set(["published", "published_to_dictor", "ready_for_mix"]);
 
-function percent(chapter: BookRecordingChapter): number {
-  if (!chapter.total_roles) return 0;
-  return Math.round((chapter.recorded_roles / chapter.total_roles) * 100);
-}
-
 /** ISO → «дд.мм»; пустое или кривое значение не должно ломать строку. */
 function shortDate(iso: string): string {
   const d = new Date(iso);
@@ -294,14 +289,6 @@ export function AsrCoveragePage() {
   const columns = useMemo<Column<BookRecordingChapter>[]>(
     () => [
       {
-        key: "index",
-        header: "№",
-        align: "right",
-        className: "asr-col-index",
-        nowrap: true,
-        render: (row) => <span className="num">{row.chapter_index}</span>,
-      },
-      {
         key: "title",
         header: "Глава",
         render: (row) => (
@@ -309,170 +296,47 @@ export function AsrCoveragePage() {
             {/* Треугольник не кнопка, а указатель: нажимается вся строка, и своя
                 мишень рядом с общей только сбивала бы с толку. */}
             <span className="asr-caret" aria-hidden="true">{openChapters.has(row.chapter_id) ? "▾" : "▸"}</span>
-            {row.chapter_title || "Без названия"}
-            {row.released_at ? <span className="asr-done" title="Сведена, прослушана, выложена"> · Сдана · {shortDate(row.released_at)}</span> : null}
-            {row.delivered_at && !row.released_at ? <span className="asr-done" title="Архив скачан целиком — сведение началось"> · всё записано</span> : null}
+            <span className="asr-index num">{row.chapter_index}.</span>
+            <span className="asr-title-text" title={row.chapter_title || "Без названия"}>{row.chapter_title || "Без названия"}</span>
+            {row.integrity_bad > 0 || row.session_outdated || row.session_markers_skipped > 0 ? <span className="asr-broken" title="Есть проблема с файлами или проектом — раскройте главу">⚠</span> : null}
+            {row.released_at ? <span className="asr-done" title="Сведена, прослушана, выложена">Сдана · {shortDate(row.released_at)}</span> : null}
+            {row.delivered_at && !row.released_at ? <span className="asr-done" title="Архив скачан целиком — сведение началось">всё записано</span> : null}
           </span>
         ),
-      },
-      {
-        key: "roles",
-        header: "Ролей",
-        align: "right",
-        className: "asr-col-roles",
-        nowrap: true,
-        render: (row) => (
-          <span className="num" title={`Записано ролей: ${row.recorded_roles} из ${row.total_roles}`}>
-            {row.recorded_roles}<span className="asr-of">/{row.total_roles}</span>
-          </span>
-        ),
-      },
-      {
-        key: "bar",
-        header: "Покрытие",
-        className: "asr-col-bar",
-        render: (row) => {
-          const value = percent(row);
-          return (
-            <span className="asr-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}>
-              <span className={row.ready ? "asr-bar-fill is-ready" : "asr-bar-fill"} style={{ width: `${value}%` }} />
-              <span className="asr-bar-value num">{value}%</span>
-            </span>
-          );
-        },
       },
       {
         key: "asr",
-        header: "Реплик",
-        align: "right",
-        className: "asr-col-lines",
-        nowrap: true,
+        header: "Запись реплик",
+        className: "asr-col-bar",
         render: (row) => {
           if (row.asr_coverage === null) {
             return row.recorded_roles && canDownload ? (
-              <button
-                type="button"
-                className="asr-run"
-                disabled={recognise.isPending}
+              <button type="button" className="asr-run" disabled={recognise.isPending}
                 onClick={stopRow(() => recognise.mutate(row))}
-                title="Распознать записанное и сверить со сценарием"
-              >
-                распознать
-              </button>
-            ) : (
-              <span className="cast-muted">—</span>
-            );
+                title="Распознать записанное и сверить со сценарием">распознать</button>
+            ) : <span className="cast-muted">—</span>;
           }
           const whole = row.asr_coverage >= 1;
+          const value = whole ? 100 : Math.min(99, Math.round(row.asr_coverage * 100));
           return (
-            <span
-              className={whole ? "num" : "num asr-holes"}
-              title={`Найдено реплик: ${row.matched_lines} из ${row.total_lines}${row.missing_lines ? `. Не найдено в записанном: ${row.missing_lines}` : ""}`}
-            >
-              {Math.round(row.asr_coverage * 100)}%
-              <span className="asr-of"> {row.matched_lines}/{row.total_lines}</span>
+            <span className="asr-bar" role="progressbar" aria-label={`Найдено реплик: ${row.matched_lines} из ${row.total_lines}`}
+              aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.max(0, value))}>
+              <span className={whole ? "asr-bar-fill is-ready" : "asr-bar-fill"} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+              <span className={whole ? "asr-bar-value num" : "asr-bar-value num asr-holes"}>{value}% · {row.matched_lines}/{row.total_lines}</span>
             </span>
           );
         },
       },
       {
-        key: "integrity",
-        header: "Целостность",
-        align: "right",
-        className: "asr-col-integrity",
-        nowrap: true,
-        render: (row) => {
-          if (!row.recorded_roles) return <span className="cast-muted">—</span>;
-          // Все дубли главы приняты до миграции 0020 — суммы приёма у них нет, и
-          // сверять их не с чем. Кнопка тут рисовалась вечно: нажатие запускало пустую
-          // сверку за миллисекунды, счётчики так и оставались нулями.
-          const nothingToVerify = row.integrity_files > 0 && row.integrity_skipped === row.integrity_files;
-          if (nothingToVerify) {
-            return (
-              <span className="cast-muted" title="У этих файлов нет суммы приёма — сверять не с чем">
-                —
-              </span>
-            );
-          }
-          if (!row.integrity_checked) {
-            return canDownload ? (
-              <span className="asr-links">
-                <button
-                  type="button"
-                  className="asr-run"
-                  disabled={verify.isPending}
-                  onClick={stopRow(() => verify.mutate(row))}
-                  title="Перечитать файлы главы и сверить контрольные суммы"
-                >
-                  сверить
-                </button>
-              </span>
-            ) : (
-              <span className="cast-muted">—</span>
-            );
-          }
-          return row.integrity_bad ? (
-            <span className="num asr-broken" title={`Не прошли сверку: ${row.integrity_bad}. Файлы не удалены — нужно попросить перезалить`}>
-              {row.integrity_bad} ⚠
-            </span>
-          ) : (
-            <span className="num" title="Все файлы главы перечитаны, суммы сошлись">
-              {row.integrity_ok} ✓
-            </span>
-          );
-        },
-      },
-      {
-        key: "mirror",
-        header: "Копии",
-        align: "right",
-        className: "asr-col-mirror",
-        nowrap: true,
+        key: "backup",
+        header: "Бэкап",
+        className: "asr-col-backup",
         render: (row) => {
           const total = row.mirrored_files + row.unmirrored_files;
           if (!total) return <span className="cast-muted">—</span>;
-          const project = row.session_archived ? (
-            <>
-              {row.session_outdated ? (
-                <span className="asr-project asr-broken"
-                      title={row.missing_lines ? "Сверка изменилась: ждём дозапись, потом проект пересоберётся сам" : "Сверка изменилась: проект пересоберётся в ближайший круг, прежний останется рядом"}>
-                  {" "}проект устарел
-                </span>
-              ) : (
-                <span className="asr-project" title="Файл проекта лежит на NAS, в папке главы"> проект ✓</span>
-              )}
-              {row.session_markers_skipped > 0 ? (
-                <span className="asr-project-markers"
-                      title="Маркеры, которым не нашлось места на таймлайне: абзац без записанной реплики или сцена нулевой длины">
-                  · {row.session_markers_skipped} {plural(row.session_markers_skipped, "маркер", "маркера", "маркеров")} без места
-                </span>
-              ) : null}
-            </>
-          ) : null;
-          // Расхождение сумм важнее возраста: такой файл круг зеркалирования не
-          // возьмёт больше никогда, и «подождите» было бы неправдой.
-          if (row.mirror_broken) {
-            return (
-              <span className="num asr-broken" title="Копия на NAS не сошлась по сумме — сама не починится, файл на сервере цел">
-                {row.mirrored_files}/{total} ⚠{project}
-              </span>
-            );
-          }
-          if (row.stale_unmirrored) {
-            return (
-              <span className="num asr-broken" title="Файлы ждут копирования дольше суток — проверьте, доступен ли NAS">
-                {row.mirrored_files}/{total} ⚠{project}
-              </span>
-            );
-          }
-          if (row.unmirrored_files) {
-            return <span className="num cast-muted" title="Копии на NAS ещё едут">{row.mirrored_files}/{total}{project}</span>;
-          }
-          return (
-            <span className="num" title="Все файлы главы подтверждены на NAS">
-              {row.mirrored_files}/{total} ✓{project}
-            </span>
-          );
+          if (row.mirror_broken || row.stale_unmirrored) return <span className="asr-broken" title={row.mirror_broken ? "Копия на NAS не прошла сверку; файл на сервере цел" : "Копия ожидается больше суток; проверьте NAS"}>Ошибка</span>;
+          if (row.unmirrored_files) return <span className="cast-muted" title={`На NAS скопировано ${row.mirrored_files} из ${total} файлов`}>Копируется</span>;
+          return <span title={`Все ${total} файлов главы подтверждены на NAS`}>Есть ✓</span>;
         },
       },
       {
@@ -506,7 +370,7 @@ export function AsrCoveragePage() {
                   onClick={stopRow()}
                   title={`${row.ready ? "Дубли главы" : "То, что уже записано"}, эмбиент и сессия Audition одним архивом. Распакуйте и откройте сессия.sesx — файлы найдутся сами`}
                 >
-                  {row.ready ? "архив с сессией" : "архив частью"}
+                  {row.ready ? "архив" : "часть архива"}
                 </a>
                 {ambientControl(row)}
               </span>
@@ -517,7 +381,7 @@ export function AsrCoveragePage() {
         ),
       },
     ],
-    [canDownload, isAdmin, release, recognise, verify, ambient, stopAmbient, openChapters],
+    [canDownload, isAdmin, release, recognise, ambient, stopAmbient, openChapters],
   );
 
   const toggleChapter = useCallback((row: BookRecordingChapter) => {
@@ -531,9 +395,19 @@ export function AsrCoveragePage() {
   const renderDetail = useCallback(
     (row: BookRecordingChapter) => {
       if (!openChapters.has(row.chapter_id)) return null;
-      return <ChapterFilesRow chapterId={row.chapter_id} bookId={bookId} canDelete={canDeleteTakes} />;
+      return <>
+        <div className="asr-detail-status">
+          {row.integrity_bad > 0 ? <span className="asr-broken">Не прошли проверку файлов: {row.integrity_bad}</span>
+            : row.integrity_checked ? <span>Файлы проверены: {row.integrity_ok} ✓</span>
+            : row.integrity_files > 0 && row.integrity_skipped === row.integrity_files ? <span>Для проверки файлов нет контрольных сумм</span>
+            : row.recorded_roles && canDownload ? <button type="button" className="asr-run" disabled={verify.isPending} onClick={() => verify.mutate(row)}>Проверить файлы</button> : null}
+          {row.session_outdated ? <span className="asr-broken">Проект устарел</span> : null}
+          {row.session_markers_skipped > 0 ? <span className="asr-broken">{row.session_markers_skipped} {plural(row.session_markers_skipped, "маркер", "маркера", "маркеров")} без места</span> : null}
+        </div>
+        <ChapterFilesRow chapterId={row.chapter_id} bookId={bookId} canDelete={canDeleteTakes} />
+      </>;
     },
-    [openChapters, bookId, canDeleteTakes],
+    [openChapters, bookId, canDeleteTakes, canDownload, verify],
   );
 
   /* Прогресс книги — по собранным главам: все роли записаны и проект .sesx лежит на
@@ -588,7 +462,7 @@ export function AsrCoveragePage() {
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={bookPercent}
-          title="Собранная глава — все роли записаны и файл проекта .sesx лежит на NAS. Столбец «Ролей» считается по файлам, «Реплик» — по распознаванию: второе точнее и запускается по главам вручную"
+          title="Собранная глава — все роли записаны и файл проекта .sesx лежит на NAS. «Запись реплик» показывает найденные распознаванием реплики сценария"
         >
           <span className={chapters.length && assembled === chapters.length ? "asr-book-fill is-ready" : "asr-book-fill"} style={{ width: `${bookPercent}%` }} />
           <span className="asr-book-title">{book ? book.display_title || book.title : "—"}</span>

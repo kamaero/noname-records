@@ -48,27 +48,23 @@
 }
 
 /* Как в касте: доли в процентах, ширина всегда равна экрану, скроллить вбок нечего. */
-.asr-table .ui-table { table-layout: fixed; width: 100%; min-width: 0; }
-.asr-table .ui-table-wrap { overflow-x: hidden; }
+.asr-table .ui-table { table-layout: fixed; width: 100%; min-width: 760px; }
+.asr-table .ui-table-wrap { overflow-x: auto; }
 /* Плотность: общий ритм таблиц (40px строка, 12px поля) рассчитан на пару
    десятков строк, а тут глав бывает под сотню — видеть их разом важнее воздуха. */
 .asr-table .ui-table { font-size: 13px; }
 .asr-table .ui-table thead th { height: 28px; padding: 0 8px; }
 .asr-table .ui-table tbody td { height: 28px; padding: 0 8px; }
 .asr-table .ui-table tbody tr.ui-table-detail-row td { height: auto; padding: 0; }
-.asr-table .asr-col-index { width: 40px; }
-.asr-table .asr-col-roles { width: 64px; }
-/* Было 34% — 11 отдано «Целостности», затем ещё 10 отдано «Копиям»: сумма
-   процентных колонок не должна превысить 100 — на экране «Каст» это уже
-   стоило вечера. */
-.asr-table .asr-col-bar { width: 13%; }
-/* «сессия · архив · проект · эмбиент 12/14» — самый длинный набор, под него и ширина;
-   беда эмбиента («квота исчерпана») встаёт строкой ниже, а не раздвигает колонку. */
-.asr-table .asr-col-get { width: 272px; }
-.asr-table .asr-col-integrity { width: 11%; }
-.asr-table .asr-col-mirror { width: 10%; }
+.asr-table .asr-col-bar { width: 23%; }
+.asr-table .asr-col-backup { width: 100px; }
+.asr-table .asr-col-get { width: 300px; }
+.asr-detail-status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 14px 0 52px; background: var(--surface-2); font-size: 12px; }
 
-.asr-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.asr-title { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; }
+.asr-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.asr-title .asr-done { flex: none; }
+.asr-index { color: var(--text-faint); }
 .asr-of { color: var(--text-faint); }
 
 .asr-bar {
@@ -93,7 +89,7 @@
 .asr-bar-value {
   position: relative;
   display: block;
-  line-height: 14px;
+  line-height: 14px; white-space: nowrap;
   padding-left: 6px;
   font-size: 11px;
   color: var(--text-dim);
