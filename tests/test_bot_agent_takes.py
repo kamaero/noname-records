@@ -143,6 +143,7 @@ def test_role_choices_are_paged_and_callback_data_fits_telegram(db):
     import uuid
 
     _recording(db)
+    db.get(Character, "c2").name = "Ясная роль"
     for i in range(25):
         db.add(Character(id=str(uuid.uuid4()), book_id="b1", name=f"Роль {i:02d}",
                          actor_name="Другой Диктор", appears_in="1"))
@@ -155,5 +156,5 @@ def test_role_choices_are_paged_and_callback_data_fits_telegram(db):
     assert all(len(data.encode()) <= 64 for _, data in buttons)
     assert ("Дальше ›", f"at:p:{row.id}:1") in buttons
     out = handle_update(db, _press(f"at:p:{row.id}:1"), now=NOW)
-    assert ("Афыл — Ортель Орвис", f"at:r:{row.id}:c2") in _buttons(out)
+    assert ("Ясная роль — Ортель Орвис", f"at:r:{row.id}:c2") in _buttons(out)
     assert ("‹ Назад", f"at:p:{row.id}:0") in _buttons(out)

@@ -31,7 +31,7 @@ def db():
     with sessionmaker(bind=engine, autocommit=False, autoflush=False)() as session:
         session.add(ScriptBook(id=BOOK, title="Карта", display_title="Карта", source_filename="k.txt",
                                source_format="txt"))
-        session.add(Character(id="c1", book_id=BOOK, name="Хдыбдяр", aliases="Дзимве́л", appears_in="1,2",
+        session.add(Character(id="c1", book_id=BOOK, name="Хдыбдяр", aliases="хдыбдя́л", appears_in="1,2",
                               actor_name="Шелвар Шарита"))
         session.add(Character(id="c2", book_id=BOOK, name="Рассказчик"))
         for index in (1, 2, 3):
@@ -60,7 +60,7 @@ def _fresh(db):
 
 def test_the_chapters_of_a_role_follow_the_markup_not_appears_in(db):
     _say(db, "ch-2:00001", "Хдыбдяр")
-    _say(db, "ch-3:00000", "Дзимве́л")  # псевдоним с ударением — та же роль
+    _say(db, "ch-3:00000", "хдыбдя́л")  # псевдоним с ударением — та же роль
 
     chapters = role_deadlines.role_chapters(_fresh(db), db.get(Character, "c1"))
 

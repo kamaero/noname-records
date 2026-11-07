@@ -71,7 +71,7 @@ export function createRole(bookId: string, name: string): Promise<CreateRoleResp
   return apiPostJson<CreateRoleResponse>(`${book(bookId)}/characters`, { name });
 }
 
-/** Пробы актёра, подписанные иначе, чем роль в книге («Лйра»), — под эту роль («Лира»). */
+/** Пробы актёра, подписанные иначе, чем роль в книге («Ийли»), — под эту роль («Иули»). */
 export function moveAuditionsToRole(bookId: string, characterId: string, role: string, actorName: string): Promise<{ ok: boolean; moved: number }> {
   return apiPostJson<{ ok: boolean; moved: number }>(
     `${book(bookId)}/characters/${encodeURIComponent(characterId)}/auditions`, { role, actor_name: actorName });

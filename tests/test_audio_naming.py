@@ -66,7 +66,7 @@ class TestTheWordsInside:
             ("Царь Клопов", "TsarKlopov"),
             ("Тот-Кто-Знает", "TotKtoZnaet"),
             ("Pavel Petrovich", "PavelPetrovich"),
-            ("Ревина Мельникова (Яковлева)", "RevinaMelnikovaYakovleva"),
+            ("Лада Тестова (Примерова)", "LadaTestovaPrimerova"),
             ("Дгарни́н", "Dgarnin"),
         ],
     )

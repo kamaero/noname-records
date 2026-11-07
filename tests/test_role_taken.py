@@ -69,7 +69,7 @@ from app.services.shared_runtime import normalize_role_label  # noqa: E402
 
 
 def _taken_sessions():
-    """Нрарсх утверждён за Ермаковым; пробу шлёт Пухютпохов."""
+    """Роль уже утверждена за одним диктором; пробу присылает другой."""
     sessions = _sessions()
     with sessions() as db:
         book = db.query(ScriptBook).one()

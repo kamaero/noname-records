@@ -27,7 +27,7 @@ def test_plus_before_the_vowel_becomes_an_offset_into_the_source_word():
 
 def test_glued_apostrophe_and_non_breaking_hyphen_words_are_split_back():
     text = "Уль’Тахан и Йог‑Тыррэгл вошли в Полумрак."
-    marked = "УльТах+ан и ЙогСотх+отх вошл+и в Полумр+ак."
+    marked = "УльТах+ан и ЙогТырр+эгл вошл+и в Полумр+ак."
     got = align_plus_marks(text, marked)
     assert words(text) == ["Тахан", "Тыррэгл", "вошли", "Полумрак"]
     assert got == {0: 3, 1: 4, 2: 4, 3: 6}

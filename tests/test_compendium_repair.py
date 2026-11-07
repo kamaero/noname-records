@@ -18,7 +18,7 @@ FB2 = (
     '<?xml version="1.0" encoding="utf-8"?>'
     '<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0"><body>'
     f'<section><title><p>{TOPIC}</p></title>'
-    '<p>1513. <strong>Ныкфо Пудисди</strong>. Волшебник из старой семьи.</p>'
+    '<p>1513. <strong>Ныкфо Гудисди</strong>. Волшебник из старой семьи.</p>'
     '<p>-32. <strong>Ныкфо П</strong><strong>эыхялсы</strong>. Родился в 204 году.</p>'
     '<p>17. <strong>Удхотс</strong><strong> Конх</strong>. Изобретатель.</p>'
     '<p>18. <strong>Сюдиб</strong><strong>ан</strong>. Алхимик.</p>'
@@ -40,7 +40,7 @@ def db():
             session.add(AuthorCharacter(id=cid, author_id="a1", canonical_name=name, aliases="[]",
                                         description=description, source_topic=topic, status="confirmed"))
 
-        card("deg", "Ныкфо Пудисди", "удисди. Волшебник из старой семьи.")       # испорчено разбором
+        card("deg", "Ныкфо Гудисди", "удисди. Волшебник из старой семьи.")       # испорчено разбором
         card("gtr", "Ныкфо П", "кфо Пэыхялсы. Родился в 204 году.")              # обрезанное имя
         card("gfull", "Ныкфо Пэыхялсы", "", topic="")                            # полная, без описания
         card("amb", "Удхотс", "хотс Конх. Изобретатель.")               # обрезано, полной нет

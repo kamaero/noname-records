@@ -148,9 +148,8 @@ def list_users(db) -> list[dict]:
     least says so rather than showing what looks like a duplicate.
     """
     users = db.query(User).order_by(User.display_name.asc(), User.login.asc()).all()
-    # Telegram shows the name its owner typed there, the login carries the one the
-    # studio wrote down: «Ревина Мельникова» against «Ревина Мельникова (Яковлева)».
-    # Same rule as the cast uses to recognise an actor — two common tokens, order-free.
+    # Telegram и студия могут записать одно имя с разной полнотой или девичьей фамилией.
+    # Сравнение по двум общим словам находит такую пару независимо от порядка слов.
     twins: dict[str, tuple[str, str]] = {}
     for index, user in enumerate(users):
         for other in users[index + 1 :]:

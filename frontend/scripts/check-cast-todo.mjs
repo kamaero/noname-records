@@ -2,7 +2,6 @@
 // решают, что оператор видит первым, открыв книгу. Запуск: node scripts/check-cast-todo.mjs
 import { buildSync } from "esbuild";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 
 const out = buildSync({
   entryPoints: [new URL("../src/viewModels/booksCast.ts", import.meta.url).pathname],
@@ -84,11 +83,3 @@ function crossing(actor, roleA, roleB, chapter, acknowledged) {
 }
 
 console.log("booksCast.ts (castTodo): все проверки прошли");
-
-// ---- реальный ответ /cast — не проверка, а печать первых пяти ролей без актёра ----
-const real = JSON.parse(fs.readFileSync("/tmp/claude-0/castdbg/cast.json", "utf-8"));
-const realTodo = m.castTodo(real.characters, [], { roles: 5, crossings: 3 });
-console.log("Реальный payload — первые 5 ролей без актёра (ожидание: Хаколва 110, Дютуви 51, Диувы 49, Еома 43, Иббупус 33):");
-for (const row of realTodo.freeRoles) {
-  console.log(`  ${row.name} — ${row.lines_count}`);
-}

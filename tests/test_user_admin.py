@@ -153,7 +153,7 @@ class TestUpdate:
 
 class TestPassword:
     def test_a_new_password_works_and_the_old_one_stops(self, db):
-        made = create_user(db, display_name="Ревина Мельникова", roles=["dictor"])
+        made = create_user(db, display_name="Лада Тестова", roles=["dictor"])
         db.commit()
         old = made["password"]
 
@@ -224,21 +224,20 @@ class TestList:
         assert rows["max.ray"]["twin_login"] == "tg_900000100"
 
     def test_the_twin_is_found_the_way_the_cast_finds_an_actor(self, db):
-        """Telegram shows the name its owner typed there; the login carries the one I made.
+        """Имя в Telegram может отличаться девичьей фамилией или отчеством.
 
-        «Ревина Мельникова» and «Ревина Мельникова (Яковлева)» are one person, and so are
-        «Пётр Ступников» and «Диктор Пётр Ступников». Exact string equality
-        misses both; `names_match` — two common tokens, order-free — does not.
+        Точное равенство пропускает такие пары; два общих слова независимо
+        от порядка должны связывать их с одной учётной записью.
         """
-        create_user(db, display_name="Ревина Мельникова", roles=["dictor"])
-        create_user(db, display_name="Ревина Мельникова (Яковлева)", login="tg_900000108",
+        create_user(db, display_name="Лада Тестова", roles=["dictor"])
+        create_user(db, display_name="Лада Тестова (Примерова)", login="tg_900000108",
                     password_hash="telegram-login", roles=["author"])
         db.commit()
 
         rows = {row["login"]: row for row in list_users(db)}
 
-        assert rows["tg_900000108"]["twin_login"] == "revina.melnikova"
-        assert rows["revina.melnikova"]["twin_login"] == "tg_900000108"
+        assert rows["tg_900000108"]["twin_login"] == "lada.testova"
+        assert rows["lada.testova"]["twin_login"] == "tg_900000108"
 
     def test_two_different_people_are_not_twins(self, db):
         create_user(db, display_name="Антон Бондаренко", roles=["dictor"])

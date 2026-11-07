@@ -1258,8 +1258,14 @@ def _lines_by_audio(db, audio_ids: list[str]) -> dict[str, list[dict]]:
     """Выровненные реплики по каждому файлу — то, из чего режутся клипы."""
     if not audio_ids:
         return {}
+    return _lines_from_jobs(db.query(AsrJob).filter(
+        AsrJob.audio_file_id.in_(audio_ids), AsrJob.status == "done").all())
+
+
+def _lines_from_jobs(jobs) -> dict[str, list[dict]]:
+    """Единый разбор сверки для сборки главы и пакетной актуальности аудитов."""
     out: dict[str, list[dict]] = {}
-    for job in db.query(AsrJob).filter(AsrJob.audio_file_id.in_(audio_ids), AsrJob.status == "done").all():
+    for job in jobs:
         try:
             lines = json.loads(job.alignment_json or "{}").get("lines") or []
         except ValueError:

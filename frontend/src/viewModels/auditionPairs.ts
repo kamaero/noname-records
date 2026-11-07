@@ -75,8 +75,8 @@ export function asksReason(lane: AuditionLane, score: number | null): boolean {
   return lane === "author" && score !== null && score <= REASON_MAX_SCORE;
 }
 
-/** Причина — про героя, а не про голос (11.10): «не подошёл голос» Пяволов читал как
-    «голос плохой». Те же подписи у кнопок бота (`audition_scores.REASON_LABELS`). */
+/** Причина относится к герою: общее «Голос» воспринималось как приговор качеству голоса.
+    Те же подписи у кнопок бота (`audition_scores.REASON_LABELS`). */
 export const REASON_LABEL: Record<AuditionReason, string> = {
   voice: "Тембр не этого героя",
   manner: "Подача не этого героя",

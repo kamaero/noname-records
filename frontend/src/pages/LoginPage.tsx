@@ -36,7 +36,7 @@ export function LoginPage() {
   const telegramBotUsername = configQuery.data?.telegram_bot_username || "";
   // Кнопку рисует скрипт с telegram.org (окошко oauth.telegram.org). У кого этот адрес не
   // открывается — провайдер, VPN, блокировщик, встроенный браузер, — кнопки просто нет, и
-  // раньше на её месте была пустота (03.10, Тасунская). Не дождались — говорим прямо.
+  // раньше на её месте оставалась пустота. Не дождались — говорим прямо.
   const [widgetMissing, setWidgetMissing] = useState(false);
 
   useEffect(() => {

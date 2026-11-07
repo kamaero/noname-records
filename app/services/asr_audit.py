@@ -189,20 +189,27 @@ def _narrator_snapshot(db, chapter_id: str) -> dict:
     from app.models import AudioFile
     from app.services.chapter_delivery import _script_layout
     from app.services.asr_run import chapter_replicas
-    from app.services.author_profile import normalize_name
-    from app.services.audio_uploads import derive_book_code
-    from app.services.audio_naming import book_token
 
     lines = narrator_lines(db, chapter_id)
     layout = _script_layout(db, chapter_id)
     if layout is None:
         raise AsrAuditError("chapter_not_found")
-    all_lines = sorted([r for rows in lines.values() for r in rows], key=lambda r: r["index"])
     replicas = [row for row in chapter_replicas(db, chapter_id) if is_narrator_name(row["role"])]
+    return _snapshot_from_parts(lines, replicas, layout[3], layout[1],
+                                lambda source_id: db.get(AudioFile, source_id))
+
+
+def _snapshot_from_parts(lines, replicas, placed, book, audio_source) -> dict:
+    from app.services.author_profile import normalize_name
+    from app.services.audio_uploads import derive_book_code
+    from app.services.audio_naming import book_token
+
+    all_lines = sorted([r for rows in lines.values() for r in rows], key=lambda r: r["index"])
+    indices = {row["index"] for row in all_lines}
     addresses = {(normalize_name(row["role"]), row["role_index"], row["segment_id"]): i
                  for i, row in enumerate(replicas)}
     clips, sources = [], {}
-    for role, clip in layout[3]:
+    for role, clip in placed:
         if not is_narrator_name(role):
             continue
         role_index = getattr(clip, "role_index", None)
@@ -213,16 +220,15 @@ def _narrator_snapshot(db, chapter_id: str) -> dict:
             if len(candidates) != 1:
                 raise AsrAuditError("ambiguous_narrator_clip")
             index = candidates[0]
-        if index is None or index not in {r["index"] for r in all_lines}:
+        if index is None or index not in indices:
             raise AsrAuditError("unknown_narrator_clip_index")
         source_id = str(clip.audio_file_id)
-        audio = db.get(AudioFile, source_id)
+        audio = audio_source(source_id)
         if audio is None:
             raise AsrAuditError("narrator_source_not_found")
         # Старые записи ищутся и по заголовку главы, который повторяется в разных
         # книгах. Такой кандидат может попасть в саму раскладку; оплачивать и
         # обвинять чужую книгу при этом нельзя.
-        book = layout[1]
         if book_token(str(audio.book_code or "")) != book_token(derive_book_code(str(book.title or ""))):
             raise AsrAuditError(f"narrator_source_scope_mismatch:{source_id}")
         sources[source_id] = {key: getattr(audio, key) for key in
@@ -243,6 +249,70 @@ def _narrator_snapshot(db, chapter_id: str) -> dict:
 def narrator_input_fingerprint(db, chapter_id: str) -> str:
     """Отпечаток звука рассказчика не зависит от сдвигов таймлайна других ролей."""
     return _narrator_snapshot(db, chapter_id)["fingerprint"]
+
+
+def _narrator_fingerprints(db, chapter_ids: list[str]) -> dict[str, str]:
+    """Таблица ASR проверяет главы одним чтением входов, без полной сборки каждой.
+
+    Кэш живёт только в этом вызове: правка сценария или выравнивания должна сразу
+    погасить старый результат. Границы звука по-прежнему считает сборщик сессии,
+    включая заимствованные реплики и соседнюю речь у краёв клипа.
+    """
+    from app.models import AsrJob, AudioFile, ScriptBook, ScriptChapter
+    from app.services.asr_run import _replicas_from_segments
+    from app.services.audio_uploads import TAKE
+    from app.services.chapter_delivery import _chapter_label, _lines_from_jobs, _place_by_script
+    from app.v2.models import V2Segment
+    from app.v2.reader import effective_attributions
+
+    if not chapter_ids:
+        return {}
+    chapters = db.query(ScriptChapter).filter(ScriptChapter.id.in_(chapter_ids)).all()
+    if not chapters:
+        return {}
+    books = {book.id: book for book in db.query(ScriptBook).filter(
+        ScriptBook.id.in_({chapter.book_id for chapter in chapters})).all()}
+    segments = db.query(V2Segment).filter(V2Segment.chapter_id.in_(chapter_ids)).order_by(
+        V2Segment.ordinal.asc()).all()
+    attributions = effective_attributions(db, [segment.id for segment in segments])
+    segments_by_chapter = {}
+    for segment in segments:
+        segments_by_chapter.setdefault(segment.chapter_id, []).append(segment)
+    audio_files = db.query(AudioFile).filter(
+        AudioFile.kind == TAKE, AudioFile.chapter.in_({_chapter_label(chapter) for chapter in chapters})
+    ).order_by(AudioFile.uploaded_at.asc()).all()
+    files_by_label = {}
+    for item in audio_files:
+        files_by_label.setdefault(item.chapter, []).append(item)
+    jobs_by_audio = {}
+    if audio_files:
+        for job in db.query(AsrJob).filter(
+            AsrJob.audio_file_id.in_([item.id for item in audio_files]), AsrJob.status == "done"
+        ).all():
+            jobs_by_audio.setdefault(str(job.audio_file_id), []).append(job)
+    out = {}
+    for chapter in chapters:
+        try:
+            replicas = _replicas_from_segments(segments_by_chapter.get(chapter.id, []), attributions)
+            narrator = [row for row in replicas if is_narrator_name(row["role"])]
+            lines = {"required": [], "tags": [], "titles": []}
+            for index, row in enumerate(narrator):
+                kind = classify_narrator_line(row["text"])
+                lines[{"tag": "tags", "title": "titles"}.get(kind, "required")].append(
+                    {"index": index, "segment_id": row["segment_id"], "text": row["text"]})
+            files = files_by_label.get(_chapter_label(chapter), [])
+            by_role = {}
+            for item in files:
+                by_role.setdefault(str(item.role or "").strip(), []).append(item)
+            by_id = {str(item.id): item for item in files}
+            chapter_heard = _lines_from_jobs([job for key in by_id for job in jobs_by_audio.get(key, [])])
+            placed = _place_by_script(replicas, by_role, chapter_heard, relative=False, files_by_id=by_id)
+            out[str(chapter.id)] = _snapshot_from_parts(
+                lines, narrator, placed, books[chapter.book_id], by_id.get)["fingerprint"]
+        except Exception:
+            # Повреждение одной главы не скрывает актуальные результаты остальных.
+            logger.debug("Не удалось проверить актуальность аудита главы %s", chapter.id, exc_info=True)
+    return out
 
 
 def _preflight_sources(sources: dict, source_paths: dict) -> None:
@@ -444,7 +514,7 @@ _JUDGE_SYSTEM = """Ты — редактор аудиокниги. Провер�
 Правила:
 - Перестановка слов допустима — не отмечать.
 - Звуки без слов (смешки, кряхтения, вздохи) в расшифровке помечены тегами вроде [смеется] — они всегда допустимы.
-- Имена сверяй с глоссарием: любое фонетически близкое написание допустимо («Кысяти» = «Савита», «Мюсвпынюмрэям» = «Мюсвынюмрэмм»). Пропуск имени недопустим.
+- Имена сверяй с глоссарием: фонетически близкое написание допустимо, но пропуск имени недопустим.
 - Каждое слово с содержанием строки должно прозвучать в той же лексеме и той же форме. Пропуск слова, замена синонимом, другая грамматическая форма («получала» вместо «получила» и наоборот) — отметка partial с этими словами в missing_words.
 - «missing» — только если фрагмента записи нет или в нём нет текста строки совсем.
 - Если у строки несколько подходов, достаточно одного полностью прочитанного подхода. Слова из разных неполных подходов не склеивай в воображаемую полную реплику.
@@ -948,6 +1018,21 @@ def latest_audits(db, chapter_ids: list[str]) -> "dict[str, dict]":
     latest: dict[str, object] = {}
     for row in rows:
         latest[str(row.chapter_id)] = row
+    check_ids = []
+    for cid, row in latest.items():
+        if row.status != "done":
+            continue
+        try:
+            metadata = json.loads(row.lines_json or "{}")
+            if isinstance(metadata, dict) and metadata.get("narrator_input_fingerprint"):
+                check_ids.append(cid)
+        except (TypeError, ValueError):
+            pass
+    try:
+        fingerprints = _narrator_fingerprints(db, check_ids)
+    except Exception:
+        logger.debug("Не удалось загрузить входы аудитов", exc_info=True)
+        fingerprints = {}
     out: dict[str, dict] = {}
     for cid, row in latest.items():
         flags, confirmed = _audit_findings(row)
@@ -961,7 +1046,7 @@ def latest_audits(db, chapter_ids: list[str]) -> "dict[str, dict]":
         if audit_status == "done":
             try:
                 saved = str(metadata.get("narrator_input_fingerprint") or "")
-                if not saved or saved != narrator_input_fingerprint(db, cid):
+                if not saved or saved != fingerprints.get(cid):
                     audit_status = "stale"
             except Exception:
                 # Нельзя выдавать прошлые находки за текущие, если сравнение входа

@@ -105,7 +105,7 @@ def test_another_role_lists_the_whole_cast_of_the_only_open_book(db):
     row = db.query(BotUpload).one()
     handle_update(db, _press(f"ba:w:{row.id}:0"), now=NOW)
     out = handle_update(db, _press(f"ba:o:{row.id}"), now=NOW)
-    assert _buttons(out) == [("Убув", f"ba:r:{row.id}:c2"), ("Дракон", f"ba:r:{row.id}:c1"),
+    assert _buttons(out) == [("Дракон", f"ba:r:{row.id}:c1"), ("Убув", f"ba:r:{row.id}:c2"),
                              ("Отмена", f"ba:x:{row.id}")]
 
 

@@ -36,7 +36,7 @@ def _override(parsed, override):
 
 class TestWhatAnAuditionNeeds:
     def test_no_chapter_is_asked_for(self):
-        parsed = _override(_parse("Энея_пробы.wav", actor="Ершова"), {"kind": "audition", "role": "Лирей", "actor_name": "Ершова", "book_code": "КП"})
+        parsed = _override(_parse("Лирея_пробы.wav", actor="Ершова"), {"kind": "audition", "role": "Лирей", "actor_name": "Ершова", "book_code": "КП"})
 
         assert "chapter_not_found" not in parsed["errors"]
         assert parsed["ok"]
@@ -54,7 +54,7 @@ class TestWhatAnAuditionNeeds:
         assert "chapter_not_found" in parsed["errors"]
 
     def test_the_word_проба_is_not_mistaken_for_the_role(self):
-        parsed = _parse("Энея_пробы.wav", actor="Ершова")
+        parsed = _parse("Лирея_пробы.wav", actor="Ершова")
 
         assert parsed["role"] == "Лирея"
 

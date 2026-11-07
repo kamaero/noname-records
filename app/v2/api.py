@@ -1486,7 +1486,7 @@ async def api_v2_create_role(request: Request, book_id: str):
 
 
 async def api_v2_move_auditions(request: Request, book_id: str, character_id: str):
-    """Пробы, подписанные иначе, чем роль в книге («Лйра»), — под эту роль («Лира»)."""
+    """Пробы, подписанные иначе, чем роль в книге («Ийли»), — под эту роль («Иули»)."""
     if not _is_authenticated(request):
         return unauthorized_response()
     if not _can_edit(request):

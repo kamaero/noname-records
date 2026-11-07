@@ -61,7 +61,7 @@ def test_trailing_comma_and_spaces_are_ignored():
 
 
 def test_two_names_in_one_paragraph_split_by_line_break():
-    assert _words(parse_author_notation("РарсыкдкунЯк\nТаштарАгис")) == [
+    assert _words(parse_author_notation("РарсыкдкунЯк\nМибмякАвух")) == [
         ("рарсыкдкуняк", 10), ("мибмякавух", 6),
     ]
 
@@ -79,7 +79,7 @@ def test_hyphen_without_spaces_is_a_word_separator():
 
 
 def test_capital_consonant_is_not_a_stress():
-    # «НЫКфо»: А at 1 is the stress; Й at 2 is a consonant and must not confuse anything.
+    # «НЫКфо»: Ы at 1 is the stress; К at 2 is a consonant and must not confuse anything.
     assert _words(parse_author_notation("НЫКфо ДеАтти")) == [("ныкфо", 1), ("деатти", 2)]
 
 

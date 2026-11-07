@@ -23,8 +23,9 @@ from app.services.author_profile import normalize_name
 
 NARRATOR = "Рассказчик"
 
-# Settled by the owner: one man, four spellings.
-DEGATTI = ("Куйбу Гудисди", ["Гудисди", "Мэтр Гудисди", "Куйбу Гудисди", "Куйбу"])
+# Исторический экспорт сохраняет форму пары, но не решения по касту конкретной книги.
+# Объединения передаёт вызывающая сторона через merges.
+DEGATTI = ("", [])
 
 _PARENTHETICAL = re.compile(r"\s*\([^)]*\)\s*")
 _NARRATOR_PREFIX = re.compile(rf"^\s*{NARRATOR}\s+", re.IGNORECASE)

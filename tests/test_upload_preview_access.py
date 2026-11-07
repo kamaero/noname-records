@@ -70,7 +70,7 @@ def test_the_preview_warns_when_the_file_names_another_role():
 def test_an_audition_preview_asks_for_no_chapter():
     response = _client(["dictor"]).post("/dictor-pro/batch-validate", json={
         "book_code": "КП", "actor_name": "София Ершова",
-        "files": [{"name": "Энея_пробы.wav", "size": 10}],
+        "files": [{"name": "Ониу_пробы.wav", "size": 10}],
         "overrides": [{"book_code": "КП", "kind": "audition", "role": "Лирей", "actor_name": "София Ершова"}],
     })
     item = response.json()["items"][0]

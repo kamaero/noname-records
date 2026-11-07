@@ -130,7 +130,7 @@ def test_a_new_password_is_returned_and_takes_effect(store):
     SessionLocal, owner_id = store
     handlers, _ = _handlers(SessionLocal, uid=owner_id)
     with SessionLocal() as db:
-        made = create_user(db, display_name="Ревина Мельникова", roles=["dictor"])
+        made = create_user(db, display_name="Лада Тестова", roles=["dictor"])
         db.commit()
         user_id, old = made["user"]["id"], made["password"]
 

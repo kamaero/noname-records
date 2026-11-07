@@ -736,6 +736,7 @@ def test_other_role_timing_shift_does_not_invalidate_narrator_input(db):
     new_start = next(c.start for role, c in _script_layout(db, chapter_id)[3] if role == "Рассказчик")
     assert old_start != new_start
     assert asr_audit.narrator_input_fingerprint(db, chapter_id) == original
+    assert asr_audit._narrator_fingerprints(db, [chapter_id]) == {chapter_id: original}
 
 
 def test_models_freeze_at_run_start_for_all_stages(db, monkeypatch):
@@ -849,6 +850,84 @@ def test_latest_audit_is_not_current_after_script_changes(db):
     segment.text = "Изменённое содержание первой реплики."
     db.flush()
     assert asr_audit.latest_audits(db, [chapter_id])[chapter_id]["status"] == "stale"
+
+
+@pytest.mark.parametrize("change", ["original", "fix", "alias", "borrowed", "version", "checksum", "duration"])
+def test_batch_fingerprint_matches_session_input(db, change):
+    from app.models import AudioFile, AsrJob
+
+    chapter_id = _make_ready_chapter(db)
+    if change in {"fix", "alias", "borrowed"}:
+        _add_fix(db)
+    if change == "alias":
+        segment = db.query(V2Segment).filter(V2Segment.ordinal == 1).one()
+        db.query(V2Attribution).filter(V2Attribution.segment_id == segment.id).one().speaker = "Автор"
+        db.get(AudioFile, "fix").role = "Автор"
+    elif change == "borrowed":
+        db.get(AudioFile, "fix").role = "Герой"
+        job = db.query(AsrJob).filter(AsrJob.audio_file_id == "take-r").one()
+        alignment = json.loads(job.alignment_json)
+        alignment["lines"][1]["source_audio_file_id"] = "fix"
+        job.alignment_json = json.dumps(alignment)
+    elif change == "version":
+        segment = db.query(V2Segment).filter(V2Segment.ordinal == 0).one()
+        db.add(V2Attribution(id="latest", segment_id=segment.id, span_start=3,
+                             span_end=len(segment.text), speaker="Рассказчик", version=2))
+    elif change == "checksum":
+        db.get(AudioFile, "take-r").md5 = "updated"
+    elif change == "duration":
+        db.get(AudioFile, "take-r").duration_seconds = 11.6
+    db.flush()
+    assert asr_audit._narrator_fingerprints(db, [chapter_id]) == {
+        chapter_id: asr_audit.narrator_input_fingerprint(db, chapter_id)}
+
+
+def test_latest_audits_checks_many_chapters_with_bounded_queries(db):
+    from app.models import AudioFile, AsrJob
+    from sqlalchemy import event
+
+    db.add(ScriptBook(id=BOOK, title="Книга примеров", source_filename="test.txt", source_format="txt"))
+    chapter_ids = [f"chapter-{index}" for index in range(20)]
+    for index, cid in enumerate(chapter_ids):
+        text, label, aid, sid = "Начался новый день.", f"Глава {index}", f"audio-{index}", f"{cid}:00000"
+        db.add(ScriptChapter(id=cid, book_id=BOOK, chapter_index=index, chapter_title=label, status="published"))
+        db.add(V2Segment(id=sid, book_id=BOOK, chapter_id=cid, ordinal=0, kind="paragraph", text=text))
+        db.add(V2Attribution(id=f"attr-{index}", segment_id=sid, span_start=0,
+                             span_end=len(text), speaker="Рассказчик", version=1))
+        db.add(AudioFile(id=aid, book_code="КП", chapter=label, role="Рассказчик", kind="take",
+                         original_filename="test.wav", canonical_filename="test.wav", stored_key="test.wav",
+                         mime_type="audio/wav", size_bytes=1))
+        db.add(AsrJob(audio_file_id=aid, chapter_id=cid, status="done", alignment_json=json.dumps({
+            "lines": [{"index": 0, "text": text, "matched": True, "start": 0., "end": 2.}]})))
+    db.flush()
+    for cid in chapter_ids:
+        db.add(AsrAudit(chapter_id=cid, status="done", lines_json=json.dumps({
+            "narrator_input_fingerprint": asr_audit.narrator_input_fingerprint(db, cid)})))
+    db.flush()
+    queries = []
+    def count_queries(*args):
+        queries.append(1)
+    event.listen(db.get_bind(), "before_cursor_execute", count_queries)
+    try:
+        current = asr_audit.latest_audits(db, chapter_ids)
+        assert all(current[cid]["status"] == "done" for cid in chapter_ids)
+        assert len(queries) <= 10
+        segment = db.get(V2Segment, f"{chapter_ids[0]}:00000")
+        segment.text = "Сценарий изменился."
+        db.flush()
+        queries.clear()
+        current = asr_audit.latest_audits(db, chapter_ids)
+        assert current[chapter_ids[0]]["status"] == "stale"
+        assert all(current[cid]["status"] == "done" for cid in chapter_ids[1:])
+        assert len(queries) <= 10
+        job = db.query(AsrJob).filter(AsrJob.audio_file_id == "audio-1").one()
+        job.alignment_json = "[]"
+        db.flush()
+        current = asr_audit.latest_audits(db, chapter_ids)
+        assert current[chapter_ids[1]]["status"] == "stale"
+        assert all(current[cid]["status"] == "done" for cid in chapter_ids[2:])
+    finally:
+        event.remove(db.get_bind(), "before_cursor_execute", count_queries)
 
 
 def test_dictor_cannot_read_audit_cost(db):

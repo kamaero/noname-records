@@ -11,14 +11,15 @@ declines to assert — the ambiguous tail beside a replica, a colour with no leg
 absent from the records and therefore absent from both numerator and denominator. A
 prediction there is neither rewarded nor punished.
 """
-from app.v2.aliases import DEGATTI, AliasResolver
+from app.v2.aliases import AliasResolver
+from tests.aliases_fixture import EXPLICIT_MERGE_EXAMPLE
 from app.v2.bench import score
 
-CAST = {"куйбу гудисди": "Куйбу Гудисди", "вукьрадух": "Вукьрадух", "инвнехлизад": "Инвнехлизад"}
+CAST = {"тестор учебнов": "Тестор Учебнов", "вукьрадух": "Вукьрадух", "инвнехлизад": "Инвнехлизад"}
 
 
 def _resolver():
-    return AliasResolver(cast=CAST, merges=[DEGATTI])
+    return AliasResolver(cast=CAST, merges=[EXPLICIT_MERGE_EXAMPLE])
 
 
 def _rec(text, start, end, speaker, ordinal=0, chapter="Байка 1"):
@@ -78,8 +79,8 @@ class TestAccuracy:
         assert report.covered_chars == 14
 
     def test_another_spelling_of_the_same_man_is_not_an_error(self):
-        gold = [_rec(LINE, 0, len(LINE), "Куйбу Гудисди")]
-        guess = [_rec(LINE, 0, len(LINE), "Гудисди")]
+        gold = [_rec(LINE, 0, len(LINE), "Тестор Учебнов")]
+        guess = [_rec(LINE, 0, len(LINE), "Учебнов")]
 
         report = score(gold, guess, resolver=_resolver())
 

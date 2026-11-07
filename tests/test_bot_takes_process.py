@@ -363,8 +363,8 @@ def test_owner_summary_wording():
 
 
 def test_owner_summary_names_the_chapter_so_two_files_do_not_look_like_a_repeat():
-    """29.10: Кораненко прислала четыре файла — главы 5, 9, 16, 18 — и владелец получил
-    четыре одинаковых «Саяху», 1 глава»: без номера это выглядело как дубли сообщений."""
+    """Несколько глав одной роли давали одинаковые уведомления без номера главы,
+    поэтому их можно было принять за повтор одного сообщения."""
     one = bot_takes.owner_summary("Гленто Гарсин", "Саяху", [{"index": 5, "found": 4, "total": 4, "missing": []}])
     other = bot_takes.owner_summary("Гленто Гарсин", "Саяху", [{"index": 9, "found": 3, "total": 3, "missing": []}])
     assert "«Саяху», гл. 5." in one and "«Саяху», гл. 9." in other

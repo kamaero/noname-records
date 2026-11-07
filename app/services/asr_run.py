@@ -40,6 +40,12 @@ def chapter_replicas(db, chapter_id: str) -> list[dict]:
         return []
     rows_by_segment = effective_attributions(db, [segment.id for segment in segments])
 
+    return _replicas_from_segments(segments, rows_by_segment)
+
+
+def _replicas_from_segments(segments, rows_by_segment) -> list[dict]:
+    """Общий порядок реплик для одиночной главы и пакетной проверки аудитов."""
+
     out: list[dict] = []
     seen: dict[str, int] = {}
     for segment in segments:
