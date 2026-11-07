@@ -12,17 +12,17 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { apiGet } from "../../api/client";
 import { isAgentRoles } from "../../layout/AppShell";
 import type { ReaderBookChapters, ReaderCastEntry, ReaderChapterPayload } from "../../v2/types";
 import type { BooksResponse, DictorWorkspaceResponse, MeResponse } from "../../types";
+import { readRecordingPosition, writeRecordingPosition, type ReadingAnchor } from "./recordingPosition";
 import type { PanelBook, PanelChapter, PanelRole } from "./RecordingPanel";
 
 /** book statuses that mean «дикторам открыто» */
 const PUBLISHED_BOOK = new Set(["published", "published_to_dictor", "ready_for_mix"]);
 const NO_CAST: ReaderCastEntry[] = [];
-const SEP = "";
 
 export function sameActor(a: string, b: string): boolean {
   const left = a.trim().toLocaleLowerCase("ru-RU");
@@ -34,7 +34,8 @@ export function chapterLabel(chapter: PanelChapter | undefined): string {
   return chapter.title.trim() || `Chapter ${chapter.index}`;
 }
 
-export function useRecordingSelection() {
+export function useRecordingSelection({ rememberPosition = false } = {}) {
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedBookId = searchParams.get("book_id") || "";
   const requestedChapterId = searchParams.get("chapter_id") || "";
@@ -44,6 +45,11 @@ export function useRecordingSelection() {
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiGet<MeResponse>("/api/me") });
   const booksQuery = useQuery({ queryKey: ["books"], queryFn: () => apiGet<BooksResponse>("/api/books") });
 
+  const uid = meQuery.data?.authenticated ? meQuery.data.uid : "";
+  const remember = rememberPosition && !preview && Boolean(uid);
+  // Снимок только при входе/смене учётки: собственные записи не запускают восстановление заново.
+  const remembered = useMemo(() => remember ? readRecordingPosition(uid) : null, [remember, uid]);
+  const explicitChapter = Boolean(requestedChapterId);
   const isAgent = isAgentRoles(meQuery.data?.roles ?? []);
 
   /* Владелец и автор грузят за других: к ним попадают записи, присланные мимо системы —
@@ -70,21 +76,30 @@ export function useRecordingSelection() {
   );
 
   // One published book is taken silently; the picker only appears for two or more.
-  const bookId = requestedBookId || publishedBooks[0]?.id || "";
+  const rememberedBookId = publishedBooks.some((book) => book.id === remembered?.bookId) ? remembered?.bookId : "";
+  const bookId = requestedBookId || rememberedBookId || publishedBooks[0]?.id || "";
+  const rememberedHere = remembered?.bookId === bookId ? remembered : null;
+  const [resolvedWorkspaceChapter, setResolvedWorkspaceChapter] = useState<{ bookId: string; chapterId: string; requestedChapterId: string } | null>(null);
+  const resolvedChapter = resolvedWorkspaceChapter?.bookId === bookId &&
+    resolvedWorkspaceChapter.requestedChapterId === requestedChapterId ? resolvedWorkspaceChapter.chapterId : "";
+  const workspaceRequestedChapter = resolvedChapter || requestedChapterId || (remember ? rememberedHere?.chapterId : "") || "";
 
   const workspaceQuery = useQuery({
-    queryKey: ["recording-workspace", bookId, requestedChapterId],
+    queryKey: ["recording-workspace", uid, bookId, workspaceRequestedChapter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (bookId) params.set("book_id", bookId);
-      if (requestedChapterId) params.set("chapter_id", requestedChapterId);
+      if (workspaceRequestedChapter) params.set("chapter_id", workspaceRequestedChapter);
       const query = params.toString();
       return apiGet<DictorWorkspaceResponse>(`/api/recording/workspace${query ? `?${query}` : ""}`);
     },
-    enabled: Boolean(requestedBookId) || booksQuery.isFetched,
+    enabled: (!rememberPosition || meQuery.isSuccess) && (Boolean(requestedBookId) || booksQuery.isFetched),
     placeholderData: keepPreviousData,
   });
-  const workspace = workspaceQuery.data;
+  // keepPreviousData показывает старую книгу во время запроса. Она не подтверждает новый выбор.
+  const workspace = workspaceQuery.isSuccess && !workspaceQuery.isPlaceholderData &&
+    (!workspaceQuery.data.selected_book || workspaceQuery.data.selected_book.id === bookId)
+    ? workspaceQuery.data : undefined;
 
   // Preview only: an unpublished book has no workspace chapters, so take the v2-marked ones.
   const previewChaptersQuery = useQuery({
@@ -101,23 +116,31 @@ export function useRecordingSelection() {
       released: Boolean(chapter.released_at),
     }));
     if (published.length || !preview) return published;
-    return (previewChaptersQuery.data?.chapters ?? [])
+    return (previewChaptersQuery.data?.book.id === bookId ? previewChaptersQuery.data.chapters : [])
       .filter((chapter) => chapter.has_v2)
       .map((chapter) => ({ id: chapter.id, index: chapter.index, title: chapter.title, released: Boolean(chapter.released_at) }));
-  }, [workspace?.chapters, preview, previewChaptersQuery.data]);
+  }, [workspace?.chapters, preview, previewChaptersQuery.data, bookId]);
   const allowedChapterIds = useMemo(() => new Set(chapters.map((chapter) => chapter.id)), [chapters]);
 
-  // The chapter in the address wins when it is one of ours; otherwise the workspace's pick, else the first.
+  // Прямые ссылки, в том числе на сданную главу, важнее памяти браузера.
   const workspaceChapterId = workspace?.selected_chapter?.id ?? "";
-  const chapterId = chapters.some((chapter) => chapter.id === requestedChapterId)
+  const rememberedChapterId = !explicitChapter && chapters.some((item) => item.id === rememberedHere?.chapterId)
+    ? rememberedHere?.chapterId : "";
+  const chapterId = chapters.some((item) => item.id === requestedChapterId)
     ? requestedChapterId
-    : chapters.some((chapter) => chapter.id === workspaceChapterId)
-      ? workspaceChapterId
-      : chapters[0]?.id ?? "";
+    : rememberPosition
+      ? rememberedChapterId || chapters.find((item) => !item.released)?.id || chapters[0]?.id || ""
+      : chapters.some((item) => item.id === workspaceChapterId) ? workspaceChapterId : chapters[0]?.id || "";
   const chapter = chapters.find((item) => item.id === chapterId);
+  useEffect(() => {
+    if (rememberPosition && workspace && chapterId && workspaceChapterId !== chapterId) {
+      setResolvedWorkspaceChapter({ bookId, chapterId, requestedChapterId });
+    }
+  }, [rememberPosition, workspace, bookId, chapterId, workspaceChapterId, requestedChapterId]);
 
   const goToChapter = useCallback(
     (id: string) => {
+      setResolvedWorkspaceChapter(null);
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current);
@@ -131,10 +154,12 @@ export function useRecordingSelection() {
   );
 
   // The role: the actor's first own role until they pick another; a typed role survives chapter changes.
-  const [role, setRole] = useState(requestedRole);
+  const roleScope = `${uid}:${bookId}`;
+  const [roleChoice, setRoleChoice] = useState<{ scope: string; value: string } | null>(null);
   const goToBook = useCallback(
     (id: string) => {
-      setRole("");
+      setRoleChoice(null);
+      setResolvedWorkspaceChapter(null);
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current);
@@ -151,7 +176,11 @@ export function useRecordingSelection() {
 
   // The reader's cast is the preview fallback for roles (the workspace has none for an unpublished book).
   const [readerCast, setReaderCast] = useState<ReaderCastEntry[]>(NO_CAST);
-  const onReaderLoaded = useCallback((payload: ReaderChapterPayload) => setReaderCast(payload.cast), []);
+  const [loadedReader, setLoadedReader] = useState<ReaderChapterPayload | null>(null);
+  const onReaderLoaded = useCallback((payload: ReaderChapterPayload) => {
+    setReaderCast(payload.cast);
+    setLoadedReader(payload);
+  }, []);
 
   const cast = useMemo<PanelRole[]>(() => {
     const fromWorkspace = (workspace?.cast ?? []).map((item) => ({ name: item.name, lines: item.lines, actor: item.actor_name }));
@@ -170,17 +199,13 @@ export function useRecordingSelection() {
     [cast],
   );
 
-  const myRolesKey = myRoleNames.join(SEP);
-  useEffect(() => {
-    if (requestedRole) setRole(requestedRole);
-  }, [requestedRole]);
-  useEffect(() => {
-    if (!role && myRolesKey) setRole(myRolesKey.split(SEP)[0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myRolesKey]);
+  const rememberedRole = remember && !explicitChapter && rememberedHere &&
+    (!rememberedHere.role || cast.some((item) => item.name === rememberedHere.role)) ? rememberedHere.role : undefined;
+  const role = requestedRole || ((roleChoice?.scope === roleScope ? roleChoice.value : undefined) ??
+    rememberedRole ?? myRoleNames[0] ?? "");
   const chooseRole = useCallback(
     (nextRole: string) => {
-      setRole(nextRole);
+      setRoleChoice({ scope: roleScope, value: nextRole });
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current);
@@ -191,8 +216,28 @@ export function useRecordingSelection() {
         { replace: true },
       );
     },
-    [setSearchParams],
+    [setSearchParams, roleScope],
   );
+
+  const selectionValidated = remember && !workspaceQuery.isFetching && !booksQuery.isFetching &&
+    Boolean(workspace?.selected_book?.id === bookId && workspaceChapterId === chapterId && chapterId &&
+    loadedReader?.book.id === bookId && loadedReader?.chapter.id === chapterId &&
+    (!role || cast.some((item) => item.name === role)));
+  const savePosition = useCallback((anchor?: ReadingAnchor) => {
+    if (!selectionValidated) return;
+    const previous = readRecordingPosition(uid);
+    const same = previous?.bookId === bookId && previous.chapterId === chapterId && previous.role === role;
+    writeRecordingPosition(uid, { bookId, chapterId, role,
+      ...(anchor ? { anchor } : same && previous.anchor ? { anchor: previous.anchor } : {}),
+    });
+  }, [selectionValidated, uid, bookId, chapterId, role]);
+  useEffect(() => { savePosition(); }, [savePosition]);
+  const readerPosition = useMemo(() => selectionValidated ? {
+    identity: `${uid}:${bookId}:${chapterId}`,
+    initial: !explicitChapter && !location.hash && !searchParams.has("stress") &&
+      rememberedHere?.chapterId === chapterId && rememberedHere.role === role ? rememberedHere.anchor : undefined,
+    onChange: savePosition,
+  } : undefined, [selectionValidated, uid, bookId, chapterId, explicitChapter, location.hash, searchParams, rememberedHere, role, savePosition]);
 
   /* Роль выбрана — значит выбран и тот, за кого грузим: редактор, берущийся за чужую
      роль, почти всегда грузит за её актёра. Раньше поле молча оставалось со своим
@@ -222,6 +267,7 @@ export function useRecordingSelection() {
   return {
     searchParams,
     setSearchParams,
+    readerPosition,
     preview,
     isAgent,
     canUploadForOthers,

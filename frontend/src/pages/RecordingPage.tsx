@@ -24,7 +24,7 @@ import { roleScriptHref } from "../v2/roleRoutes";
 import "../components/recording/recording.css";
 
 export function RecordingPage() {
-  const sel = useRecordingSelection();
+  const sel = useRecordingSelection({ rememberPosition: true });
   const { searchParams, setSearchParams } = sel;
   const openStressQueue = searchParams.get("stress") === "1";
 
@@ -54,7 +54,7 @@ export function RecordingPage() {
     return `/takes${query ? `?${query}` : ""}`;
   }, [searchParams, sel.bookId, sel.chapterId, sel.role]);
 
-  if (sel.workspaceQuery.isLoading || (sel.preview && sel.previewChaptersQuery.isLoading)) {
+  if (sel.workspaceQuery.isLoading || sel.workspaceQuery.isPlaceholderData || (sel.preview && sel.previewChaptersQuery.isLoading)) {
     return <SkeletonPanel label="Opening script…" lines={6} />;
   }
   if (sel.workspaceQuery.isError) {
@@ -156,6 +156,7 @@ export function RecordingPage() {
         initialRoles={readerRoles}
         allowedChapterIds={sel.allowedChapterIds}
         onLoaded={sel.onReaderLoaded}
+        readingPosition={sel.readerPosition}
         openStressQueue={openStressQueue}
         onStressQueueOpened={clearStressRequest}
         roleScriptBase="/recording/role"

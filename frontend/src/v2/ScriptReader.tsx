@@ -59,6 +59,7 @@ import { RoleFinder } from "./RoleFinder";
 import { useReaderPrefs } from "./useReaderPrefs";
 import { useRoleCursor } from "./useRoleCursor";
 import { roleScriptHref, type RoleScriptBase } from "./roleRoutes";
+import { useReadingPosition, type ReadingPosition } from "./useReadingPosition";
 import { useSplitView } from "./useSplitView";
 import { NARRATOR, type ReaderChapterPayload, type ReaderSegment, type RoleStyle, type SoundMarker, type SoundPlace } from "./types";
 import "./ScriptReader.css";
@@ -134,6 +135,8 @@ export type ScriptReaderProps = {
   allowedChapterIds?: ReadonlySet<string>;
   /** the loaded payload, for hosts that mirror the chapter title / cast */
   onLoaded?: (payload: ReaderChapterPayload) => void;
+  /** Личная позиция чтения; только хост «Сценарий» передаёт её после проверки главы. */
+  readingPosition?: ReadingPosition;
   /** open with the split view on or off, whatever the reader's own preference says */
   forceCompare?: boolean;
   /** one-shot route request to open the stress queue after permissions load */
@@ -201,6 +204,7 @@ export function ScriptReader({
   initialRoles = NO_ROLES,
   allowedChapterIds,
   onLoaded,
+  readingPosition,
   forceCompare,
   openStressQueue = false,
   onStressQueueOpened,
@@ -308,6 +312,7 @@ export function ScriptReader({
   // the split measures itself again whenever one of these moves.
   const layoutKey = [chapterId, data ? "1" : "0", prefs.font, prefs.rail, prefs.cast, canEdit, canVoice].join("|");
   const split = useSplitView(compare, layoutKey);
+  useReadingPosition(readingPosition, chapterId, pageEl, compare, split.scriptRef, split.sourceRef);
 
   // A new chapter, a fresh link, a moved divider: both panes start from the top of
   // the same paragraph instead of wherever the previous chapter left them.
