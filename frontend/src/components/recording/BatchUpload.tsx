@@ -2,7 +2,7 @@
  * The batch drop zone: pick or drop several takes, see what the server will store
  * them as, then upload. Errors are words under the file, never a blocked button alone.
  */
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { Icon } from "../Icon";
 import { Button } from "../../ui";
 import type { BatchValidatedItem } from "../../types";
@@ -71,9 +71,26 @@ export function BatchUpload({
 }: BatchUploadProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [over, setOver] = useState(false);
+  const dragDepth = useRef(0);
+  const locked = disabled || isUploading;
+  const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer.types).includes("Files");
+
+  useEffect(() => {
+    // Сброс мимо области не должен открывать исходник вместо приложения. Текстовые
+    // переносы оставляем браузеру; сторож живёт только вместе с формой загрузки.
+    const preventFileNavigation = (event: globalThis.DragEvent) => {
+      if (event.dataTransfer && Array.from(event.dataTransfer.types).includes("Files")) event.preventDefault();
+    };
+    window.addEventListener("dragover", preventFileNavigation);
+    window.addEventListener("drop", preventFileNavigation);
+    return () => {
+      window.removeEventListener("dragover", preventFileNavigation);
+      window.removeEventListener("drop", preventFileNavigation);
+    };
+  }, []);
 
   const open = () => {
-    if (!disabled) inputRef.current?.click();
+    if (!locked) inputRef.current?.click();
   };
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -93,39 +110,54 @@ export function BatchUpload({
     || preview.some((item) => (item.errors ?? []).includes("chapter_mismatch"));
 
   return (
-    <div className="rec-upload">
+    <div
+      className={["rec-upload", over ? "is-over" : ""].filter(Boolean).join(" ")}
+      onDragEnter={(event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        dragDepth.current += 1;
+        if (!locked) setOver(true);
+      }}
+      onDragOver={(event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = locked ? "none" : "copy";
+      }}
+      onDragLeave={(event) => {
+        if (!hasFiles(event)) return;
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (!dragDepth.current) setOver(false);
+      }}
+      onDrop={(event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        dragDepth.current = 0;
+        setOver(false);
+        if (!locked) onSelect(Array.from(event.dataTransfer.files));
+      }}
+    >
       <div
         role="button"
-        tabIndex={disabled ? -1 : 0}
-        aria-disabled={disabled || undefined}
-        className={["rec-drop", over ? "is-over" : "", disabled ? "is-disabled" : ""].filter(Boolean).join(" ")}
+        tabIndex={locked ? -1 : 0}
+        aria-disabled={locked || undefined}
+        className={["rec-drop", over ? "is-over" : "", locked ? "is-disabled" : ""].filter(Boolean).join(" ")}
         onClick={open}
         onKeyDown={onKey}
-        onDragOver={(event) => {
-          if (disabled) return;
-          event.preventDefault();
-          setOver(true);
-        }}
-        onDragLeave={() => setOver(false)}
-        onDrop={(event) => {
-          event.preventDefault();
-          setOver(false);
-          if (!disabled) onSelect(Array.from(event.dataTransfer.files));
-        }}
       >
         <Icon name="upload" />
         <span className="rec-drop-text">
-          {disabled && disabledReason ? disabledReason : "Drop audio files here or click to choose"}
+          {disabled && disabledReason ? disabledReason : isUploading ? "Uploading recordings…" : "Drop audio files anywhere in this Files area, or click to choose"}
         </span>
         <input
           ref={inputRef}
           type="file"
           multiple
+          disabled={locked}
           accept={ACCEPT}
           className="rec-drop-input"
           tabIndex={-1}
           onChange={(event) => {
-            onSelect(Array.from(event.target.files ?? []));
+            if (!locked) onSelect(Array.from(event.target.files ?? []));
             event.target.value = "";
           }}
         />
@@ -142,7 +174,7 @@ export function BatchUpload({
                 <span className="rec-file-name">{file.name}</span>
                 {item ? (
                   <span className={bad ? "rec-file-as rec-file-as--bad" : "rec-file-as mono"}>
-                    {bad ? describeErrors(item.errors) : item.canonical_filename}
+                    {bad ? (item.error_text || describeErrors(item.errors)) : `Name preview: ${item.canonical_filename}`}
                   </span>
                 ) : null}
                 {warning ? <span className="rec-file-warn">{warning}</span> : null}

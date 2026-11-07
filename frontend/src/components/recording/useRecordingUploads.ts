@@ -220,13 +220,7 @@ export function useRecordingUploads(target: UploadTarget) {
   };
 }
 
-/**
- * Точное имя, которым диктору назвать файл при нынешнем выборе.
- *
- * Не образец, а именно то имя, которого от файла ждут: «назовите как-нибудь так»
- * оставляет варианты, а вариантов быть не должно. Считает сервер — транслитерация
- * живёт в одном месте, и второй её экземпляр на другом языке разошёлся бы с первым.
- */
+/** Подсказка серверного имени до выбора файла; формат и номер уточняет предпросмотр. */
 export function useExpectedFilename(target: Omit<UploadTarget, "kind">): { filename: string; kind: UploadKind } {
   const role = target.role.trim();
   const query = useQuery({

@@ -60,7 +60,7 @@ class _Request:
 
 
 def _sessions(approved_role: str = ""):
-    """`approved_role` — роль, на которую Роман Сомов утверждён в касте."""
+    """`approved_role` — роль, на которую Диктор01 утверждён в касте."""
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     sessions = sessionmaker(bind=engine)
@@ -69,7 +69,7 @@ def _sessions(approved_role: str = ""):
             book = ScriptBook(title="Карта переправы", source_filename="k.txt", source_format="txt", created_at=utcnow_naive())
             db.add(book)
             db.flush()
-            db.add(Character(book_id=book.id, name=approved_role, actor_name="Роман Сомов"))
+            db.add(Character(book_id=book.id, name=approved_role, actor_name="Диктор01"))
             db.commit()
     return sessions
 
@@ -83,7 +83,7 @@ def _handlers(sessions, sent: list):
         "is_authenticated": lambda request: True,
         "has_any_role": lambda request, roles: True,
         "has_workspace_full_access": lambda request: True,
-        "session_payload": lambda request: {"display_name": "Роман Сомов", "sub": "tg_1"},
+        "session_payload": lambda request: {"display_name": "Диктор01", "sub": "tg_1"},
         "is_agent": lambda request: False,
         "SessionLocal": sessions,
         "AudioFile": AudioFile,
@@ -116,7 +116,7 @@ def _post(files, meta, approved_role=""):
 
 
 def _meta(role, chapter=""):
-    return {"book_code": "КП", "chapter": chapter, "role": role, "actor_name": "Роман Сомов"}
+    return {"book_code": "КП", "chapter": chapter, "role": role, "actor_name": "Диктор01"}
 
 
 class TestARoleThatIsNotHis:
@@ -124,7 +124,7 @@ class TestARoleThatIsNotHis:
         status, body, stored, _ = _post([_upload("Сатухух.wav")], [_meta("Сатухух")])
 
         assert status == 200 and body["ok"] is True
-        assert stored == [("audition", "Сатухух", "", "KP_Satuhuh_RomanSomov_proba.wav")]
+        assert stored == [("audition", "Сатухух", "", "KP_Satuhuh_Diktor01_proba.wav")]
 
     def test_a_chapter_is_not_demanded_of_it(self):
         """Именно требование главы и загоняло слово «пробы» внутрь имени файла."""
@@ -140,8 +140,8 @@ class TestARoleThatIsNotHis:
 
         assert status == 200
         assert [row[3] for row in stored] == [
-            "KP_Satuhuh_RomanSomov_proba.wav",
-            "KP_Satuhuh_RomanSomov_proba_2.wav",
+            "KP_Satuhuh_Diktor01_proba.wav",
+            "KP_Satuhuh_Diktor01_proba_2.wav",
         ]
 
     def test_the_owner_is_told_it_is_an_audition(self):
@@ -157,7 +157,7 @@ class TestTheRoleHeHolds:
         )
 
         assert status == 200
-        assert stored == [("take", "Сатухух", "Глава4", "KP_Ch04_Satuhuh_RomanSomov.wav")]
+        assert stored == [("take", "Сатухух", "Глава4", "KP_Ch04_Satuhuh_Diktor01.wav")]
 
     def test_and_still_needs_its_chapter(self):
         status, body, stored, _ = _post([_upload("t.wav")], [_meta("Сатухух")], approved_role="Сатухух")
@@ -200,7 +200,7 @@ class TestWhoseNameGoesOnTheFile:
                     "is_authenticated": lambda request: True,
                     "has_any_role": lambda request, wanted: bool(set(roles) & set(wanted)),
                     "has_workspace_full_access": lambda request: True,
-                    "session_payload": lambda request: {"display_name": "Роман Сомов", "sub": "tg_1"},
+                    "session_payload": lambda request: {"display_name": "Диктор01", "sub": "tg_1"},
                     "is_agent": lambda request: "agent" in roles,
                     "SessionLocal": sessions,
                     "AudioFile": AudioFile,
@@ -224,18 +224,73 @@ class TestWhoseNameGoesOnTheFile:
             return [row.actor_name for row in db.query(AudioFile).all()]
 
     def test_a_dictor_cannot_sign_a_file_with_another_name(self):
-        assert self._post(["dictor"], "Сергей Зотов") == ["Роман Сомов"]
+        assert self._post(["dictor"], "Диктор02") == ["Диктор01"]
 
     def test_the_owner_can_upload_for_somebody_else(self):
-        assert self._post(["admin"], "Сергей Зотов") == ["Сергей Зотов"]
+        assert self._post(["admin"], "Диктор02") == ["Диктор02"]
 
     def test_so_can_the_author(self):
-        assert self._post(["author"], "Сергей Зотов") == ["Сергей Зотов"]
+        assert self._post(["author"], "Диктор02") == ["Диктор02"]
 
     def test_so_can_the_agent(self):
         """Агент ведёт актёров и грузит за них по роду занятий — часть из них в
         системе есть, часть нет и не будет; ей нужно называть чужое имя каждый раз."""
-        assert self._post(["agent"], "Сергей Зотов") == ["Сергей Зотов"]
+        assert self._post(["agent"], "Диктор02") == ["Диктор02"]
 
     def test_leaving_it_empty_still_means_yourself(self):
-        assert self._post(["admin"], "") == ["Роман Сомов"]
+        assert self._post(["admin"], "") == ["Диктор01"]
+
+
+def test_typed_upload_keeps_its_book_scope_after_saving_and_rejects_repeat(monkeypatch):
+    """Потерянный role_book_id давал 409 после commit и провоцировал повторную отправку."""
+    from app.models import ScriptChapter
+    from app.v2.models import V2Attribution, V2Segment
+    import app.api.recording as recording
+
+    sessions = _sessions("Narrator")
+    with sessions() as db:
+        book = db.query(ScriptBook).one()
+        book.role_identity_mode = "typed_v1"
+        book.language = "en"
+        book_id = book.id
+        character = db.query(Character).one()
+        character_id = character.id
+        db.add(ScriptBook(id="unrelated-book", title="Another Novel", source_filename="other.txt",
+                          source_format="txt", role_identity_mode="typed_v1"))
+        db.add(ScriptChapter(id="unrelated-chapter", book_id="unrelated-book", chapter_index=1,
+                             chapter_title="Chapter 1", status="published"))
+        db.add(ScriptChapter(id="typed-chapter", book_id=book_id, chapter_index=1,
+                             chapter_title="Chapter 1", status="published"))
+        db.add(V2Segment(id="typed-segment", book_id=book_id, chapter_id="typed-chapter",
+                         ordinal=0, text="A character speaks."))
+        db.add(V2Attribution(id="typed-attribution", segment_id="typed-segment", span_start=0,
+                             span_end=18, speaker="Narrator", role_ref=f"character:{character_id}", version=1))
+        db.commit()
+    monkeypatch.setattr(au, "audio_storage", _FakeStorage())
+    queued = []
+    monkeypatch.setattr(recording, "enqueue_asr_for_chapter", queued.append)
+    monkeypatch.setattr(recording, "chapter_needs_verification", lambda *args: False)
+    handlers = _handlers(sessions, [])
+    meta = [_meta("Narrator", "Chapter 1")]
+    response = asyncio.run(handlers["recording_batch"](_Request(), files=[_upload("random export.wav")],
+                                                       meta_json=json.dumps(meta)))
+    body = json.loads(response.body)
+    assert response.status_code == 200 and body["saved_count"] == 1
+    assert body["saved"][0]["canonical_filename"] == "KP_Ch01_Narrator_Diktor01.wav"
+    assert queued == ["typed-chapter"]
+    with sessions() as db:
+        stored = db.query(AudioFile).one()
+        assert stored.role_book_id == book_id
+        assert stored.role_ref == f"character:{character_id}"
+        assert stored.original_filename == "random export.wav"
+        from app.services.role_identity import book_roles
+        assert not book_roles(db, "unrelated-book").owns_audio(stored)
+        assert recording.find_chapter_for_take(db, stored).id == "typed-chapter"
+
+    repeated = asyncio.run(handlers["recording_batch"](_Request(), files=[_upload("another name.wav")],
+                                                       meta_json=json.dumps(meta)))
+    assert repeated.status_code == 400
+    assert json.loads(repeated.body)["items"][0]["error"] == "duplicate_in_storage"
+    assert queued == ["typed-chapter"]
+    with sessions() as db:
+        assert db.query(AudioFile).count() == 1

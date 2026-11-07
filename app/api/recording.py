@@ -8,8 +8,6 @@ from typing import Any, Callable
 from fastapi import File, Form, Request, UploadFile, status
 from fastapi.responses import JSONResponse
 
-from types import SimpleNamespace
-
 from app.models import ScriptBook
 from app.services import audio_mirror
 from app.services.asr_run import enqueue_asr_for_chapter, find_chapter_for_take
@@ -500,13 +498,16 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
             # чтобы диктор узнал о пропусках, пока он ещё у микрофона. Только по тому,
             # что реально сохранилось — файлу, упёршемуся в переполненный диск, ставить
             # распознавание не на что.
+            # После записи используем сохранённую typed-привязку к книге. Подмена
+            # строки на (код, глава) теряла role_book_id и превращала успешный
+            # приём typed-дубля в отказ 409 уже после commit.
             chapters = {
                 chapter.id
-                for item in prepared
-                if item["kind"] == "take" and item["index"] not in failed_indexes
-                for chapter in [find_chapter_for_take(db, SimpleNamespace(
-                    chapter=item["chapter"], book_code=item["book_code"]
-                ))]
+                for item in saved
+                if item["kind"] == "take"
+                for audio in [db.get(audio_file_model, item["id"])]
+                if audio is not None
+                for chapter in [find_chapter_for_take(db, audio)]
                 if chapter is not None
             }
             db.commit()

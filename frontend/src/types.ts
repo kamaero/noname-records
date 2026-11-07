@@ -1208,6 +1208,7 @@ export type BatchValidatedItem = {
   role: string;
   actor_name: string;
   canonical_filename: string;
+  error_text?: string;
   errors?: string[];
   warnings?: string[];
 };

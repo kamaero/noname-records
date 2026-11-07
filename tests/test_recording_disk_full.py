@@ -19,7 +19,6 @@ import json
 from fastapi import UploadFile
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from types import SimpleNamespace
 
 from app.api.recording import build_recording_handlers
 from app.db import Base
@@ -104,8 +103,18 @@ class TestABatchWhereOnlyOneFileOverflowsTheDisk:
     def _store(self, db, *, original_filename, book_code, chapter, role, actor_name, kind, **_kwargs):
         if original_filename == "too_big.wav":
             raise audio_mirror.LocalDiskFull("local_disk_full")
-        return SimpleNamespace(
+        # Приём сохраняет ORM-строку до commit: последующая постановка ASR читает
+        # её из новой транзакции вместе с границей книги, а не только ответ заглушки.
+        from app.services.role_identity import audio_role_identity
+        role_book_id, role_ref = audio_role_identity(db, book_code, role)
+        audio = AudioFile(
             id=f"id-{original_filename}",
+            book_code=book_code,
+            role_book_id=role_book_id,
+            role_ref=role_ref,
+            stored_key=original_filename,
+            mime_type="audio/wav",
+            size_bytes=8,
             original_filename=original_filename,
             canonical_filename=original_filename,
             chapter=chapter,
@@ -113,6 +122,9 @@ class TestABatchWhereOnlyOneFileOverflowsTheDisk:
             actor_name=actor_name,
             kind=kind,
         )
+        db.add(audio)
+        db.flush()
+        return audio
 
     def _seed_take(self, sessions) -> None:
         """Книга, глава и утверждение роли — чтобы «fits.wav» классифицировался
@@ -153,7 +165,11 @@ class TestABatchWhereOnlyOneFileOverflowsTheDisk:
         # Файл, который упёрся в переполненный диск, не топит уведомление и
         # распознавание того, что реально сохранилось и уже закоммичено.
         assert len(sent) == 1
-        assert len(queued) == 1
+        with sessions() as db:
+            stored = db.query(AudioFile).one()
+            assert stored.original_filename == "fits.wav"
+            assert db.get(AudioFile, "id-too_big.wav") is None
+            assert queued == [db.query(ScriptChapter).one().id]
 
     def test_a_broken_queue_after_saving_does_not_turn_the_answer_into_a_500(self, monkeypatch):
         """Redis отвалился после того, как файлы сохранены и закоммичены.
@@ -166,7 +182,10 @@ class TestABatchWhereOnlyOneFileOverflowsTheDisk:
         sessions = _sessions()
         self._seed_take(sessions)
 
+        queued = []
+
         def _explode(chapter_id):
+            queued.append(chapter_id)
             raise RuntimeError("redis is gone")
 
         monkeypatch.setattr("app.api.recording.enqueue_asr_for_chapter", _explode)
@@ -178,3 +197,6 @@ class TestABatchWhereOnlyOneFileOverflowsTheDisk:
         assert response.status_code == 200
         body = json.loads(response.body)
         assert body["ok"] is True and body["saved_count"] == 1
+        with sessions() as db:
+            assert db.query(AudioFile).one().original_filename == "fits.wav"
+            assert queued == [db.query(ScriptChapter).one().id]

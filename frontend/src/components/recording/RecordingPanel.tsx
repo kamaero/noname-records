@@ -365,10 +365,10 @@ export function RecordingPanel(props: RecordingPanelProps) {
             </span>
           </div>
 
-          {/* Не образец, а именно то имя, которого ждут от этого файла. */}
+          {/* Имя назначает сервер: диктору не нужно переименовывать исходник на диске. */}
           {expectedFilename ? (
             <div className="rec-naming">
-              <span className="rec-naming-label">Name your file:</span>
+              <span className="rec-naming-label">Automatic filename (WAV):</span>
               <code className="rec-naming-name mono">{expectedFilename}</code>
               <button
                 type="button"
@@ -381,13 +381,14 @@ export function RecordingPanel(props: RecordingPanelProps) {
             </div>
           ) : (
             <p className="rec-naming-empty muted">
-              Choose a role to see the exact filename to use.
+              Choose a role to see how the server will name your recording.
             </p>
           )}
           <p className="rec-naming-rule muted">
-            Assigned role — <code className="mono">KP_Ch01_Dgarnin_Zotov.wav</code>, audition —{" "}
-            <code className="mono">KP_Ch01_Osniva_NataliGolubeva_proba.wav</code>. Book, chapter, role, voice actor, in that order.{" "}
-            <code className="mono">Ch01</code> — chapter number: <code className="mono">Ch01</code> — first, <code className="mono">Ch34</code> — thirty-fourth. The chapter is taken from your selection above; mismatching filenames are rejected.
+            Drop your audio with its original filename. The server names it using the book, chapter, role and voice actor selected above, and keeps its format. A naming preview appears below before upload; the server assigns the final take or correction number when saving. Additional takes receive a number automatically. If the original filename explicitly names a different chapter, please confirm your selection.
+          </p>
+          <p className="rec-naming-rule muted">
+            For a short correction, keep <code className="mono">_fix</code> or <code className="mono">_fixN</code> in the original filename; the server assigns its correction number.
           </p>
           {/* Правило хранения исходников: запись на сервере лежит в одном экземпляре,
               и без копии у диктора её неоткуда восстановить, если она пропадёт. */}
