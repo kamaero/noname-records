@@ -67,7 +67,7 @@ def test_the_list_holds_only_dictors_with_their_counts(db):
     assert [i["name"] for i in items] == ["Ветрова Ольга", "Ёлкин Пётр"]
     olga = items[0]
     assert (olga["telegram_user_id"], olga["username"], olga["demos"], olga["roles"], olga["books"]) == \
-        ("42", "olga", 2, 3, 2)
+        ("42", "", 2, 3, 2)
     assert olga["main_demo"]["id"] == "d1" and olga["note"] == "Тёплый тембр"
     assert items[1]["main_demo"] is None and items[1]["telegram_user_id"] == ""
 

@@ -29,7 +29,9 @@ def touch(db, sender: dict, *, now: datetime) -> None:
         db.add(row)
     row.last_seen_at = now
     row.tg_name = name or row.tg_name or ""
-    row.username = str(sender.get("username") or row.username or "")[:64]
+    # Telegram присылает полный User: отсутствие username означает, что ник снят.
+    # Старое имя мог занять другой человек, поэтому сохранять его нельзя.
+    row.username = str(sender.get("username") or "")[:64]
     db.flush()
 
 

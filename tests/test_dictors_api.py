@@ -10,7 +10,7 @@ from app.auth import session_serializer
 from app.config import settings
 from app.db import Base
 from app.main import app
-from app.models import DictorDemo, DictorProfile, TelegramAuthAccount, User, UserRole
+from app.models import BotContact, DictorDemo, DictorProfile, TelegramAuthAccount, User, UserRole
 from app.services import audio_storage
 
 
@@ -54,6 +54,18 @@ def test_dictors_and_agents_are_kept_out(factory, roles):
 
 def test_anonymous_gets_401(factory):
     assert TestClient(app).get("/api/dictors").status_code == 401
+
+
+def test_author_and_admin_read_exact_bot_contact_username(factory):
+    with factory() as db:
+        db.add(TelegramAuthAccount(telegram_user_id="42", user_id="u1", role="dictor", is_active="true"))
+        db.add(BotContact(telegram_user_id="42", tg_name="Different Name", username="current_voice"))
+        db.add(DictorProfile(user_id="u1", telegram_username="former_voice"))
+        db.commit()
+    for roles, uid in [(["author"], "u1"), (["admin"], "admin")]:
+        api = _client(roles, uid=uid)
+        assert api.get("/api/dictors").json()["items"][0]["username"] == "current_voice"
+        assert api.get("/api/dictors/u1").json()["username"] == "current_voice"
 
 
 def test_the_author_reads_and_writes_the_note_but_nothing_else(factory):

@@ -59,6 +59,18 @@ def test_every_message_records_the_contact_once(db):
     assert (row.first_seen_at, row.last_seen_at, row.tg_name) == (NOW, NOW + timedelta(minutes=5), "Дарья")
 
 
+@pytest.mark.parametrize("kind", ["message", "callback"])
+def test_removed_username_is_cleared_on_the_next_bot_update(db, kind):
+    handle_update(db, _msg("hello", "41", username="old_voice"), now=NOW)
+    assert db.get(BotContact, "41").username == "old_voice"
+    update = _msg("hello again", "41")
+    if kind == "callback":
+        update = {"callback_query": {"id": "press", "from": update["message"]["from"],
+                                     "message": {"chat": {"id": 41, "type": "private"}}, "data": "unused"}}
+    handle_update(db, update, now=NOW + timedelta(minutes=1))
+    assert db.get(BotContact, "41").username == ""
+
+
 def test_the_report_names_known_and_unknown_people(db):
     handle_update(db, _msg("/start dictor", "41", first="Дарья"), now=NOW)
     handle_update(db, _msg("/start", "795", first="Лана", last="Ро", username="lanaro_voice"), now=NOW)

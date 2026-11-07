@@ -57,9 +57,11 @@ function seconds(value: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-function telegramLink(item: { telegram_user_id: string; username: string }): string {
-  if (item.username) return `https://t.me/${item.username}`;
-  return item.telegram_user_id ? `tg://user?id=${item.telegram_user_id}` : "";
+function telegramLink(item: { username: string }): string {
+  const reserved = new Set(["joinchat", "share", "proxy", "socks", "iv", "addstickers", "addemoji", "setlanguage",
+    "confirmphone", "login", "boost", "contact", "invoice", "addlist", "addtheme"]);
+  return /^[A-Za-z][A-Za-z0-9_]{3,31}$/.test(item.username) && !reserved.has(item.username.toLowerCase())
+    ? `https://t.me/${item.username}` : "";
 }
 
 
@@ -197,11 +199,11 @@ export function DictorsPage({ me }: { me: MeResponse }) {
       render: (item) => {
         const link = telegramLink(item);
         return link ? (
-          <a className="dic-tg" href={link} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-            {item.username ? `@${item.username}` : "chat"}
+          <a className="dic-tg" href={link} title="Last username received by the bot; updated when the actor messages the bot" target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+            @{item.username}
           </a>
         ) : (
-          <span className="dic-sub">—</span>
+          <span className="dic-sub" title="Ask the actor to message the bot to update their Telegram username">No chat link</span>
         );
       },
     },
@@ -467,9 +469,9 @@ function DictorSheet({
       subtitle={
         <span className="dic-card-sub">
           {link ? (
-            <a href={link} target="_blank" rel="noreferrer">{card.username ? `@${card.username}` : "Telegram chat"}</a>
+            <a href={link} title="Last username received by the bot; updated when the actor messages the bot" target="_blank" rel="noreferrer">@{card.username}</a>
           ) : (
-            "no Telegram"
+            <span title="Ask the actor to set a Telegram username and message the bot to update it">No username known to the bot — no chat link</span>
           )}
           {card.telegram_user_id ? <Reach value={card.reachable} /> : null}
         </span>

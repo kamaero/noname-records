@@ -10,11 +10,12 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import uuid
 
 from app.models import (
-    AuthorCharacter, BookBudget, Character, DictorAssignment, DictorDemo, DictorLink, DictorProfile, Recast,
+    AuthorCharacter, BookBudget, BotContact, Character, DictorAssignment, DictorDemo, DictorLink, DictorProfile, Recast,
     ScriptBook, TelegramAuthAccount, User, UserRole,
 )
 from app.services import audio_storage
@@ -43,9 +44,38 @@ def _dictor_ids(db) -> set[str]:
     return {uid for (uid,) in db.query(UserRole.user_id).filter(UserRole.role == "dictor").all()}
 
 
-def _telegram_of(db, user_ids) -> dict[str, str]:
-    rows = db.query(TelegramAuthAccount).filter(TelegramAuthAccount.user_id.in_(list(user_ids))).all()
-    return {row.user_id: str(row.telegram_user_id or "") for row in rows}
+def _telegram_username(value: str) -> str:
+    value = str(value or "").strip().removeprefix("@")
+    # Короткие коллекционные имена тоже встречаются; URL и служебные пути t.me — не ники.
+    reserved = {"joinchat", "share", "proxy", "socks", "iv", "addstickers", "addemoji", "setlanguage",
+                "confirmphone", "login", "boost", "contact", "invoice", "addlist", "addtheme"}
+    return value if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{3,31}", value) and value.lower() not in reserved else ""
+
+
+def _telegram_of(db, users: list[User]) -> dict[str, tuple[str, str]]:
+    rows = (db.query(TelegramAuthAccount, BotContact)
+            .outerjoin(BotContact, BotContact.telegram_user_id == TelegramAuthAccount.telegram_user_id)
+            .filter(TelegramAuthAccount.user_id.in_([user.id for user in users])).all())
+    by_user: dict[str, list] = {}
+    for account, contact in rows:
+        by_user.setdefault(account.user_id, []).append((account, contact))
+    out = {}
+    for user in users:
+        linked = by_user.get(user.id, [])
+        active = [(account, contact) for account, contact in linked if account.is_active == "true"]
+        if user.is_active != "true" or len(active) != 1:
+            out[user.id] = ("", "")
+            continue
+        account, contact = active[0]
+        tid = str(account.telegram_user_id or "")
+        if not re.fullmatch(r"[1-9][0-9]*", tid):
+            out[user.id] = ("", "")
+            continue
+        # Профиль привязан к User, а не Telegram ID: после смены или отвязки ID
+        # его старый ник мог стать чужим. Удостоверяет связь только контакт бота.
+        username = _telegram_username(contact.username) if contact is not None else ""
+        out[user.id] = (tid, username)
+    return out
 
 
 def _demo_row(demo: DictorDemo) -> dict:
@@ -74,8 +104,8 @@ def list_dictors(db) -> list[dict]:
     if not ids:
         return []
     users = db.query(User).filter(User.id.in_(list(ids))).all()
-    telegram = _telegram_of(db, ids)
     profiles = {p.user_id: p for p in db.query(DictorProfile).filter(DictorProfile.user_id.in_(list(ids))).all()}
+    telegram = _telegram_of(db, users)
     demos = _demos_by_user(db, ids)
     roles: dict[str, list[DictorAssignment]] = {}
     for row in db.query(DictorAssignment).filter(DictorAssignment.user_id.in_(list(ids))).all():
@@ -90,8 +120,8 @@ def list_dictors(db) -> list[dict]:
         items.append({
             "user_id": user.id,
             "name": str(user.display_name or ""),
-            "telegram_user_id": telegram.get(user.id, ""),
-            "username": str(getattr(profile, "telegram_username", "") or ""),
+            "telegram_user_id": telegram[user.id][0],
+            "username": telegram[user.id][1],
             "demos": len(own),
             "main_demo": _demo_row(main) if main else None,
             "roles": len(assigned),
@@ -113,6 +143,7 @@ def dictor_card(db, user_id: str) -> dict:
     user = _dictor(db, user_id)
     name = str(user.display_name or "")
     profile = db.get(DictorProfile, user.id)
+    telegram_id, username = _telegram_of(db, [user])[user.id]
     demos = _demos_by_user(db, [user.id]).get(user.id, [])
     main = _main_demo(profile, demos)
     titles = {book.id: str(book.title or "") for book in db.query(ScriptBook).all()}
@@ -141,8 +172,8 @@ def dictor_card(db, user_id: str) -> dict:
         "user_id": user.id,
         "name": name,
         "login": str(user.login or ""),
-        "telegram_user_id": _telegram_of(db, [user.id]).get(user.id, ""),
-        "username": str(getattr(profile, "telegram_username", "") or ""),
+        "telegram_user_id": telegram_id,
+        "username": username,
         "note": str(getattr(profile, "note", "") or ""),
         "main_demo_id": main.id if main else "",
         "demos": [_demo_row(d) | {"trimmed": bool(d.trimmed), "source": str(d.source or ""),
