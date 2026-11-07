@@ -7,6 +7,7 @@ from app.services import audio_storage, nas_health
 from app.services.audio_mirror import mirror_once, purge_deleted_once
 from app.services.chapter_delivery import archive_pending_chapter_sessions
 from app.services.nas_notice import NasTransitionNotice
+from app.services.mirror_wakeup import wait_for_mirror_wakeup
 from app.workers.launcher import heartbeat_background_run, start_tracked_thread
 
 logger = logging.getLogger(__name__)
@@ -91,7 +92,7 @@ def mirror_loop(*, settings, session_factory: Callable[[], Any], background_run_
                             sessions["archived"], sessions["skipped"], sessions["rebuilt"])
         except Exception:
             logger.exception("Ошибка в mirror_loop")
-        time.sleep(interval)
+        wait_for_mirror_wakeup(interval, settings=settings)
 
 
 def start_nas_probe_worker(*, settings, session_factory, background_run_cls, loop_factory) -> bool:

@@ -118,6 +118,11 @@ from app.v2.ambient_api import (
     api_v2_ambient_scene,
     api_v2_ambient_stop,
 )
+from app.v2.soundtrack_api import (
+    api_v2_soundtrack_chapter, api_v2_soundtrack_mutate,
+    api_v2_soundtrack_search, api_v2_soundtrack_credits,
+)
+from app.v2.youtube_api import search as youtube_search, detail as youtube_detail, download as youtube_download, status as youtube_status, jobs as youtube_jobs
 from app.v2.sound_api import (
     api_v2_sound_book,
     api_v2_sound_chapter,
@@ -154,9 +159,10 @@ CONTENT_SECURITY_POLICY = "; ".join(
         # does not use eval. Without this, Telegram login silently fails after the
         # popup authorizes (the callback that submits the form is CSP-blocked).
         "script-src 'self' 'unsafe-eval' https://telegram.org",
-        "frame-src https://oauth.telegram.org https://telegram.org",
+        "frame-src https://oauth.telegram.org https://telegram.org https://www.youtube-nocookie.com",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: https:",
+        "media-src 'self' https:",
         "font-src 'self' data:",
         "connect-src 'self'",
         "base-uri 'self'",
@@ -401,6 +407,15 @@ app.add_api_route("/api/v2/books/{book_id}/consilium/stop", api_v2_consilium_sto
 app.add_api_route("/api/v2/consilium/{finding_id}/accept", api_v2_consilium_accept, methods=["POST"])
 app.add_api_route("/api/v2/consilium/{finding_id}/dismiss", api_v2_consilium_dismiss, methods=["POST"])
 app.add_api_route("/api/v2/consilium/{finding_id}/recording-impact", api_v2_consilium_recording_impact, methods=["GET"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/soundtrack", api_v2_soundtrack_chapter, methods=["GET"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/youtube/{video}/detail", youtube_detail, methods=["GET"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/youtube/search", youtube_search, methods=["GET"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/youtube/download", youtube_download, methods=["POST"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/youtube/jobs", youtube_jobs, methods=["GET"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/youtube/jobs/{job_id}", youtube_status, methods=["GET"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/soundtrack", api_v2_soundtrack_mutate, methods=["POST"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/soundtrack/search", api_v2_soundtrack_search, methods=["GET"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/soundtrack/credits", api_v2_soundtrack_credits, methods=["GET"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/sound", api_v2_sound_chapter, methods=["GET"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/sound/markers", api_v2_sound_marker_add, methods=["POST"])
 app.add_api_route("/api/v2/sound/markers/{marker_id}", api_v2_sound_marker_edit, methods=["PATCH"])

@@ -13,6 +13,12 @@ from app.workers.launcher import _finish_background_run, heartbeat_background_ru
 logger = logging.getLogger(__name__)
 
 
+def perform_youtube_soundtrack_task(download_id: str):
+    from app.db import SessionLocal
+    from app.services.youtube_worker import perform
+    perform(SessionLocal, download_id)
+
+
 def _start_background_run(session_factory, run_id: str):
     with session_factory() as db:
         run = db.query(BackgroundRun).filter(BackgroundRun.id == run_id).first()

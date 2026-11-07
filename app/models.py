@@ -1401,3 +1401,97 @@ class BookThanksSent(Base):
     # Отметка ставится до отправки (сбой не должен вести к дублю), поэтому одна sent_at не
     # говорит, дошло ли письмо: delivered=True только после успешной отправки.
     delivered: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+
+
+class SoundtrackState(Base):
+    """Версия общей правки защищает закрепление от параллельного изменения списка."""
+    __tablename__ = "soundtrack_states"
+    chapter_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    book_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    snapshot_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class SoundtrackWork(Base):
+    """Оригинальные кредиты не затираются пользовательскими исправлениями."""
+    __tablename__ = "soundtrack_works"
+    __table_args__ = (UniqueConstraint("book_id", "source", "identity", name="uq_soundtrack_work_identity"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    book_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    identity: Mapped[str] = mapped_column(String(100), nullable=False)
+    original: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class SoundtrackEntry(Base):
+    """ID сцены намеренно без каскада: повторная разметка не уничтожает кредиты."""
+    __tablename__ = "soundtrack_entries"
+    __table_args__ = (UniqueConstraint("chapter_id", "work_id", "scene_id", "layer", name="uq_soundtrack_entry_use"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    book_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    chapter_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    work_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    scene_id: Mapped[str] = mapped_column(String(36), nullable=False, default="")
+    scene_title: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    layer: Mapped[str] = mapped_column(String(16), nullable=False)
+    used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    removed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    overrides: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class SoundtrackRejection(Base):
+    __tablename__ = "soundtrack_rejections"
+    __table_args__ = (UniqueConstraint("chapter_id", "scene_id", "layer", "openverse_id", name="uq_soundtrack_rejection"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    book_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    chapter_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    scene_id: Mapped[str] = mapped_column(String(36), nullable=False, default="")
+    layer: Mapped[str] = mapped_column(String(16), nullable=False)
+    openverse_id: Mapped[str] = mapped_column(String(36), nullable=False)
+
+
+class SoundtrackSnapshot(Base):
+    """Запись только добавляется: разблокирование не меняет утверждённую историю."""
+    __tablename__ = "soundtrack_snapshots"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    book_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    chapter_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    entries: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
+
+
+class SoundtrackRequest(Base):
+    __tablename__ = "soundtrack_requests"
+    __table_args__ = (UniqueConstraint("chapter_id", "request_id", name="uq_soundtrack_request"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    book_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    chapter_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    request_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    response: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class YoutubeSoundtrackDownload(Base):
+    """Журнал ручного подтверждения и фонового приёма трека конкретной сцены."""
+    __tablename__ = "youtube_soundtrack_downloads"
+    __table_args__ = (
+        UniqueConstraint("chapter_id", "request_id", name="uq_youtube_download_request"),
+        Index("ix_youtube_download_chapter", "chapter_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    book_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    chapter_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    scene_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    layer: Mapped[str] = mapped_column(String(16), nullable=False)
+    video_id: Mapped[str] = mapped_column(String(11), nullable=False)
+    request_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    rights_note: Mapped[str] = mapped_column(Text, nullable=False)
+    confirmed_by: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
+    error_code: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    audio_file_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)

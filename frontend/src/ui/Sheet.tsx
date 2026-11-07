@@ -3,6 +3,7 @@ import { Icon } from "../components/Icon";
 
 type SheetProps = {
   title: string;
+  className?: string;
   /** small text under the title */
   subtitle?: ReactNode;
   onClose: () => void;
@@ -13,7 +14,7 @@ type SheetProps = {
 };
 
 /** A side sheet with backdrop: Escape closes, focus lands on the close button. */
-export function Sheet({ title, subtitle, onClose, children, footer, side = "right" }: SheetProps) {
+export function Sheet({ title, subtitle, onClose, children, footer, side = "right", className }: SheetProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
 
   // focus once on open — not on every parent re-render (onClose is usually an inline arrow)
@@ -35,7 +36,7 @@ export function Sheet({ title, subtitle, onClose, children, footer, side = "righ
   return (
     <>
       <div className="ui-sheet-backdrop" onClick={onClose} aria-hidden="true" />
-      <aside className={side === "left" ? "ui-sheet ui-sheet--left" : "ui-sheet"} role="dialog" aria-modal="true" aria-label={title}>
+      <aside className={["ui-sheet", side === "left" ? "ui-sheet--left" : "", className].filter(Boolean).join(" ")} role="dialog" aria-modal="true" aria-label={title}>
         <header className="ui-sheet-head">
           <div className="ui-sheet-titles">
             <h2 className="ui-sheet-title">{title}</h2>

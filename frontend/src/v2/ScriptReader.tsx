@@ -34,6 +34,7 @@ import { bySegment, sceneNumbers } from "./sound";
 import { describeSoundError, isSoundRunActive, soundKeys, useSoundBook, useSoundChapter } from "./soundApi";
 import { SoundCard, type SoundPick } from "./SoundCard";
 import { SoundPlaces } from "./SoundPlaces";
+import { SoundtrackPanel } from "./SoundtrackPanel";
 import { LorePanel } from "./LorePanel";
 import { useLore } from "./loreApi";
 import { ConsiliumCard } from "./ConsiliumCard";
@@ -410,9 +411,9 @@ export function ScriptReader({
   }, [isMobile, prefs.rail, updatePrefs]);
 
   const toggleCast = useCallback(() => {
-    if (isMobile) setCastSheet((open) => !open);
+    if (isMobile || soundOn) setCastSheet((open) => !open);
     else updatePrefs({ cast: !prefs.cast });
-  }, [isMobile, prefs.cast, updatePrefs]);
+  }, [isMobile, soundOn, prefs.cast, updatePrefs]);
 
   // ---- editor layer (state is inert for dictors: nothing renders without can_edit) ----
   const reveal = useCallback(() => {
@@ -736,7 +737,8 @@ export function ScriptReader({
     "v2r",
     `v2r--font-${prefs.font}`,
     prefs.rail && !isMobile ? "v2r--rail" : "",
-    prefs.cast && !isMobile ? "v2r--cast" : "",
+    prefs.cast && !isMobile && !soundOn ? "v2r--cast" : "",
+    soundOn ? "v2r--soundtrack" : "",
     selected.size > 0 ? "v2r--role-mode" : "",
     canVoice ? "v2r--editor" : "",
     editing ? "v2r--editing" : "",
@@ -958,7 +960,7 @@ export function ScriptReader({
           // the narrator is not among the chips; the count must not promise him
           count: castRoles,
           selected: [...selected],
-          open: isMobile ? castSheet : prefs.cast,
+          open: isMobile || soundOn ? castSheet : prefs.cast,
           onToggle: toggleCast,
           onClear: () => setSelected(new Set()),
           cursor: roleCursor.total > 0 ? { position: roleCursor.position, total: roleCursor.total, onStep: roleCursor.go } : undefined,
@@ -1115,7 +1117,9 @@ export function ScriptReader({
           </nav>
         </div>
 
-        {prefs.cast && !isMobile ? (
+        {soundOn ? <SoundtrackPanel key={chapterId} chapterId={chapterId} markers={soundData?.markers ?? []} places={soundData?.places ?? []} segments={segments} article={pageEl} selectedMarkerId={soundActive} /> : null}
+
+        {prefs.cast && !isMobile && !soundOn ? (
           <aside className="v2r-cast" aria-label="Chapter cast">
             <div className="v2r-cast-head">
               <div className="v2r-cast-titles">
@@ -1137,7 +1141,7 @@ export function ScriptReader({
         ) : null}
       </div>
 
-      {isMobile && castSheet ? (
+      {(isMobile || soundOn) && castSheet ? (
         <Sheet title="Chapter cast" subtitle={castSubtitle} onClose={() => setCastSheet(false)}>
           {castLegend}
         </Sheet>

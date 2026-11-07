@@ -29,3 +29,6 @@ numpy>=2.0
 ruaccent
 cryptography
 tzdata
+
+# Клиент публичного каталога YouTube, без личных cookie и профиля.
+yt-dlp==2026.8.19

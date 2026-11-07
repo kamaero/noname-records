@@ -73,5 +73,11 @@ def mark_interrupted_runs(db) -> int:
         if book is not None and book.status == "processing":
             book.status = "stopped"
         count += 1
+    # Потоки очереди не переживают перезапуск приложения. Отдельный журнал
+    # YouTube тоже надо освободить, иначе закрепление главы останется закрытым.
+    from app.models import YoutubeSoundtrackDownload
+    for job in db.query(YoutubeSoundtrackDownload).filter(YoutubeSoundtrackDownload.status.in_(("queued", "running"))):
+        job.status, job.error_code = "failed", "youtube_worker_interrupted"
+        count += 1
     db.commit()
     return count

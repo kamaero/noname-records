@@ -23,6 +23,13 @@ from app.db import Base
 
 #: строки книги — по колонке book_id
 BY_BOOK = (
+    "youtube_soundtrack_downloads",
+    "soundtrack_requests",
+    "soundtrack_snapshots",
+    "soundtrack_rejections",
+    "soundtrack_entries",
+    "soundtrack_works",
+    "soundtrack_states",
     "ambient_tracks",
     "audition_rejections",
     "audition_scores",

@@ -1,7 +1,13 @@
 """Точка входа настольной версии: оболочка ждёт строку NONAME_READY и закрывает stdin при выходе.
 
-Тесты запускают настоящий процесс на 127.0.0.1 — в сеть они не ходят."""
+Тесты запускают настоящий процесс на 127.0.0.1 — в сеть они не ходят.
+Миграции выводят журнал в stderr: объединённый поток читает отдельный поток,
+чтобы заполненный pipe не блокировал запуск. На NONAME_READY отведено 60 секунд;
+при ошибке дочерний процесс завершается, последние строки попадают в диагностику."""
 import json
+import queue
+import threading
+from collections import deque
 import os
 import subprocess
 import sys
@@ -18,16 +24,42 @@ def _env() -> dict:
 
 
 def _start(data_dir: Path, token: str = "z" * 48) -> tuple[subprocess.Popen, str]:
+    # Alembic пишет в stderr больше размера pipe: ожидание одного stdout
+    # блокировало реальный запуск до NONAME_READY. Читаем оба потока вместе.
     proc = subprocess.Popen([sys.executable, "-m", "app.desktop", "--data-dir", str(data_dir), "--port", "0",
                              "--token", token], cwd=ROOT, env=_env(), stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    for _ in range(400):
-        line = proc.stdout.readline()
-        if line.startswith("NONAME_READY "):
-            return proc, line.split()[1]
-        if not line and proc.poll() is not None:
-            break
-    raise AssertionError(proc.stderr.read())
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    diagnostics = deque(maxlen=200)
+    ready = queue.Queue(maxsize=1)
+
+    def read_output():
+        for line in proc.stdout:
+            diagnostics.append(line)
+            if line.startswith("NONAME_READY "):
+                ready.put_nowait(line.split()[1])
+        try:
+            ready.put_nowait(None)
+        except queue.Full:
+            pass
+
+    reader = threading.Thread(target=read_output, daemon=True)
+    reader.start()
+    try:
+        url = ready.get(timeout=60)
+    except queue.Empty:
+        url = None
+    if url:
+        return proc, url
+    # При ошибке старт не должен оставлять сервер или блокировать весь сьют.
+    if proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+    reader.join(timeout=1)
+    raise AssertionError("Desktop did not report NONAME_READY within 60 seconds:\n" + "".join(diagnostics))
 
 
 def _stop(proc: subprocess.Popen) -> int:

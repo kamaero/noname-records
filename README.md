@@ -12,6 +12,7 @@ Your studio runs its own copy. AI services use your own provider keys and may ch
 - Find characters, review speaker attribution in the reader, and organize the cast.
 - Publish chapters to actors, collect takes and compare recordings with the script using speech recognition.
 - Download chapter projects for Adobe Audition. Optional tools include sound and ambient work and Telegram notifications.
+- Find scene music, environment audio and effects with Openverse or YouTube. Preview candidates beside the script, confirm rights before downloading, and maintain chapter credits. Files are added to Audition manually.
 
 AI results need human review. Provider availability, model quality and costs depend on your configuration.
 
