@@ -57,6 +57,7 @@
 .asr-table .ui-table tbody td { height: 28px; padding: 0 8px; }
 .asr-table .ui-table tbody tr.ui-table-detail-row td { height: auto; padding: 0; }
 .asr-table .asr-col-bar { width: 23%; }
+.asr-table .asr-col-duration { width: 120px; }
 .asr-table .asr-col-audit { width: 170px; }
 .asr-col-audit .asr-links { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 2px 6px; white-space: normal; }
 .asr-table .asr-col-backup { width: 100px; }

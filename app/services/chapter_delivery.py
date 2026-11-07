@@ -94,6 +94,12 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
         .all()
     )
     counts = book_role_counts_by_chapter(db, book.id, identities=identities)
+    # Оценка по тексту доступна и до записи; повторы дублей не раздувают время.
+    words_by_chapter: dict[str, int] = {}
+    for chapter_id, text in db.query(V2Segment.chapter_id, V2Segment.text).filter(
+        V2Segment.book_id == book.id, V2Segment.kind == "paragraph"
+    ):
+        words_by_chapter[chapter_id] = words_by_chapter.get(chapter_id, 0) + len(str(text or "").split())
     labels = {_chapter_label(chapter): chapter for chapter in chapters}
     recorded: dict[str, set[str]] = {}
     audio_of_chapter: dict[str, list[str]] = {}
@@ -190,6 +196,7 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
             "chapter_id": str(chapter.id),
             "chapter_index": int(chapter.chapter_index or 0),
             "chapter_title": str(chapter.chapter_title or ""),
+            "estimated_duration_seconds": max(1, round(words_by_chapter[chapter.id] * 60 / 150)) if words_by_chapter.get(chapter.id) else None,
             "total_roles": len(roles),
             "recorded_roles": done,
             "ready": bool(roles) and done == len(roles),

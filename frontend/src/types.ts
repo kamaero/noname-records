@@ -934,6 +934,7 @@ export type BookRecordingChapter = {
   chapter_id: string;
   chapter_index: number;
   chapter_title: string;
+  estimated_duration_seconds: number | null;
   total_roles: number;
   recorded_roles: number;
   ready: boolean;

@@ -252,8 +252,9 @@ export function HelpPage() {
       <HelpSection id="asr" title="ASR and recording progress" lead="ASR shows what the system found in uploaded recordings and what is still missing.">
         <p>Open <Link to="/asr">ASR</Link> and select the book. The bar above the table shows assembled chapters. <UiLabel>Started only</UiLabel> hides chapters without recordings. Expand a chapter to inspect its files.</p>
         <dl className="help-controls">
+          <div><dt>Duration ≈</dt><dd>Estimated from the chapter text at 150 words per minute. Actual duration depends on pacing and pauses.</dd></div>
           <div><dt>Recorded lines</dt><dd>Expected script lines found by transcription and their percentage of the chapter.</dd></div>
-          <div><dt>Narrator</dt><dd>Strict audit of the assembled narrator recording, with confirmed findings and passages needing attention. The owner must enable this paid feature. Each retry is charged separately.</dd></div>
+          <div><dt>Narrator errors</dt><dd>Findings confirmed by the strict audit of the assembled narrator recording; unconfirmed suspicions are excluded. The owner must enable this paid feature. Each retry is charged separately.</dd></div>
           <div><dt>Backup</dt><dd>Verified means all chapter files have confirmed NAS copies. Copying means some are still pending. An error needs a storage or checksum check.</dd></div>
           <div><dt>File verification</dt><dd>Inside an expanded chapter, checksums show whether files still match what the server received.</dd></div>
         </dl>

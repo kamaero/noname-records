@@ -26,6 +26,12 @@ import "./AsrCoveragePage.css";
 /** книги, у которых есть что записывать */
 const PUBLISHED_BOOK = new Set(["published", "published_to_dictor", "ready_for_mix"]);
 
+function duration(seconds: number): string {
+  const value = Math.round(seconds);
+  return [Math.floor(value / 3600), Math.floor(value / 60) % 60, value % 60]
+    .map((part) => String(part).padStart(2, "0")).join(":");
+}
+
 /** ISO → «дд.мм»; пустое или кривое значение не должно ломать строку. */
 function shortDate(iso: string): string {
   const d = new Date(iso);
@@ -337,6 +343,13 @@ export function AsrCoveragePage() {
         ),
       },
       {
+        key: "duration",
+        header: <span title="Estimated from chapter text at 150 words per minute">Duration ≈</span>,
+        className: "asr-col-duration",
+        nowrap: true,
+        render: (row) => row.estimated_duration_seconds == null ? "—" : <span className="num" title="Estimated from chapter text at 150 words per minute">{duration(row.estimated_duration_seconds)}</span>,
+      },
+      {
         key: "asr",
         header: "Recorded lines",
         className: "asr-col-bar",
@@ -365,7 +378,7 @@ export function AsrCoveragePage() {
       },
       {
         key: "audit",
-        header: "Narrator",
+        header: "Narrator errors",
         align: "right",
         className: "asr-col-audit",
         nowrap: true,
@@ -374,10 +387,9 @@ export function AsrCoveragePage() {
           const busy = audit?.status === "queued" || audit?.status === "running" || audit?.status === "unknown";
           const label = !audit ? "—" : audit.status === "unknown" ? "outcome unknown" : busy ? "auditing…"
             : audit.status === "stale" ? "outdated"
-            : audit.status === "failed" ? "error"
+            : audit.status === "failed" ? "audit failed"
             : audit.status === "skipped" ? "skipped"
-            : audit.confirmed > 0 ? `${audit.confirmed} confirmed`
-            : audit.flags > 0 ? `${audit.flags} flagged` : "✓";
+            : audit.status === "done" ? `${audit.confirmed} ${audit.confirmed === 1 ? "error" : "errors"}` : "no result";
           const title = !audit ? "No audit yet"
             : audit.status === "unknown" ? "Outcome unknown; no automatic retry. Check the task log."
             : audit.status === "stale" ? "The script or recording changed after the audit. Rebuild the chapter"

@@ -433,6 +433,19 @@ class TestTheArchive:
 class TestTheWholeBook:
     """Шестьдесят глав — один проход по атрибуциям, а не шестьдесят запросов подряд."""
 
+    def test_duration_estimates_paragraphs_without_takes(self, studio):
+        from app.services.chapter_delivery import book_recording_status
+        from app.v2.models import V2Segment
+
+        db, book, chapter = studio
+        db.add(V2Segment(id="estimate:1", book_id=book.id, chapter_id=chapter.id,
+                         ordinal=100, kind="paragraph", text="word " * 150))
+        db.add(V2Segment(id="estimate:2", book_id=book.id, chapter_id=chapter.id,
+                         ordinal=101, kind="heading", text="heading " * 150))
+        db.flush()
+        row = book_recording_status(db, book.id)["chapters"][0]
+        assert row["estimated_duration_seconds"] == 60
+
     def test_it_counts_each_chapter(self, studio, monkeypatch):
         from app.services.chapter_delivery import book_recording_status
 
