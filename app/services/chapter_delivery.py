@@ -240,7 +240,9 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
     from app.config import settings
     from app.services.asr_audit import latest_audits
 
-    audits = latest_audits(db, [row["chapter_id"] for row in rows], identities_by_book={book.id: identities})
+    audits = latest_audits(db, [row["chapter_id"] for row in rows],
+                           identities_by_book={book.id: identities},
+                           chapters_by_id={chapter.id: chapter for chapter in chapters})
     for row in rows:
         row["audit"] = audits.get(row["chapter_id"])
         if row["audit"] and not ambient:

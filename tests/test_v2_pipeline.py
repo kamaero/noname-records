@@ -61,7 +61,7 @@ def _seed(SessionLocal, *, characters=True, status="uploaded"):
 def _notify_recorder(monkeypatch):
     calls = []
     monkeypatch.setattr("app.services.telegram.notify_book_status_change",
-                        lambda db, book, prev, new, detail="": calls.append((prev, new, detail)) or 0)
+                        lambda db, book, prev, new, detail="", **kw: calls.append((prev, new, detail)) or 0)
     return calls
 
 

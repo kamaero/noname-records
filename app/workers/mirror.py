@@ -6,6 +6,7 @@ from typing import Any
 from app.services import audio_storage, nas_health
 from app.services.audio_mirror import mirror_once, purge_deleted_once
 from app.services.chapter_delivery import archive_pending_chapter_sessions
+from app.services.nas_notice import NasTransitionNotice
 from app.workers.launcher import heartbeat_background_run, start_tracked_thread
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,16 @@ def mirror_loop(*, settings, session_factory: Callable[[], Any], background_run_
     к этому моменту давно зеркалированы, а `.sesx` открывают руками, не в ту же минуту.
     """
     interval = max(1, int(settings.mirror_interval_minutes)) * 60
+    notice = NasTransitionNotice(grace_seconds=max(1, int(getattr(settings, "nas_probe_stale_seconds", 30))))
     while True:
+        if str(getattr(settings, "audio_nas_path", "") or "").strip():
+            try:
+                with session_factory() as db:
+                    notice.observe(db, nas_health.nas_online())
+            except Exception as exc:
+                # Сбой доставки не должен останавливать само зеркало. Читается только
+                # готовый флаг: зависшая NFS-проба не удерживает этот путь уведомления.
+                logger.warning("Не удалось проверить уведомления NAS: %s", type(exc).__name__)
         try:
             heartbeat_background_run(session_factory, background_run_cls, run_key="mirror-loop",
                                      meta={"interval_seconds": interval})

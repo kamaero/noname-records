@@ -155,7 +155,16 @@ def heartbeat_background_run(
         run.status = status
         run.heartbeat_at = utcnow_naive()
         if meta is not None:
-            run.meta_json = _safe_meta_json(meta)
+            import json
+
+            # Пульс меняет прогресс, но не стирает инициатора и параметры запуска.
+            try:
+                previous_meta = json.loads(run.meta_json or "{}")
+            except (ValueError, TypeError):
+                previous_meta = {}
+            if not isinstance(previous_meta, dict):
+                previous_meta = {}
+            run.meta_json = _safe_meta_json({**previous_meta, **meta})
         db.commit()
 
 

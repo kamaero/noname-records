@@ -165,7 +165,7 @@ def assembled_audit_snapshot(db, chapter_id: str) -> dict | None:
     return snapshot
 
 
-def enqueue_audit(chapter_id: str, *, force: bool = False) -> str | None:
+def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "") -> str | None:
     if not settings.asr_audit_enabled:
         return None
     chapter_id = str(chapter_id or "").strip()
@@ -179,6 +179,8 @@ def enqueue_audit(chapter_id: str, *, force: bool = False) -> str | None:
         run_key = f"asr-audit:{chapter_id}"
         run_id, now = str(uuid4()), utcnow_naive()
         meta = dict(snapshot, chapter_id=chapter_id, force=bool(force), payment_state="not_started")
+        if initiator_id:
+            meta["by"] = initiator_id
         active = exists(select(BackgroundRun.id).where(
             BackgroundRun.run_key == run_key, BackgroundRun.status.in_(["queued", "running"])))
         values = {
@@ -242,7 +244,8 @@ def enqueue_audit(chapter_id: str, *, force: bool = False) -> str | None:
     try:
         job = get_queue("consilium").enqueue(
             "app.worker_tasks.perform_asr_audit_task", chapter_id=chapter_id,
-            run_id=run_id, **snapshot, force=bool(force), job_timeout=3600 * 4, result_ttl=86400)
+            run_id=run_id, **snapshot, force=bool(force),
+            **({"initiator_id": initiator_id} if initiator_id else {}), job_timeout=3600 * 4, result_ttl=86400)
         return job.id
     except Exception:
         # Падение между принятием Redis и ответом клиенту неоднозначно: резерв остаётся.

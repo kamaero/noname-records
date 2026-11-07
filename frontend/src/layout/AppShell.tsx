@@ -112,7 +112,7 @@ export function buildNav(me: MeResponse): { primary: NavItem[]; secondary: NavIt
     { to: "/auditions", label: "Auditions", icon: "play", show: (editor || isAgent) && !oneSeat, muted: true, match: (p) => startsWithAny(p, ["/auditions"]) },
     { to: "/payouts", label: "Budget", icon: "ruble", show: Boolean(me.can_see_payouts), muted: true, match: (p) => startsWithAny(p, ["/payouts"]) },
     { to: "/dictors", label: "Voice actors", icon: "mic", show: editor, muted: true, match: (p) => startsWithAny(p, ["/dictors"]) },
-    { to: "/users", label: "Users", icon: "users", show: isAdmin && !oneSeat, muted: true, match: (p) => startsWithAny(p, ["/users"]) },
+    { to: "/users", label: "Users", icon: "users", show: Boolean(me.can_manage_users) && !oneSeat, muted: true, match: (p) => startsWithAny(p, ["/users"]) },
     { to: "/settings", label: "Settings", icon: "settings", show: isAdmin, muted: true, match: (p) => startsWithAny(p, ["/settings"]) },
     { to: "/log", label: "Logs", icon: "log", show: isAdmin, muted: true, match: (p) => startsWithAny(p, ["/log"]) },
     { to: "/help", label: "Help", icon: "help", show: true, muted: true, match: (p) => startsWithAny(p, ["/help"]) },

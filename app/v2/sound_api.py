@@ -19,6 +19,7 @@ from app.services import spend
 from app.models import ScriptBook, ScriptChapter
 from app.v2.api import (
     _can_edit,
+    _actor,
     _is_authenticated,
     _json_body_or_empty,
     bad_request_response,
@@ -309,7 +310,7 @@ async def api_v2_sound_run(request: Request, book_id: str):
         return error_response(blocked, status_code=409)
     if blocked:
         return bad_request_response(blocked)
-    run_id = sound_engine.enqueue_sound(found_id, mode)
+    run_id = sound_engine.enqueue_sound(found_id, mode, initiator_id=_actor(request)[0])
     if not run_id:
         return error_response("already_running", status_code=409)
     return JSONResponse(with_warning(request, {"ok": True, "run_id": run_id}))
@@ -350,7 +351,7 @@ async def api_v2_sound_chapter_run(request: Request, chapter_id: str):
         return error_response(blocked, status_code=409)
     if blocked:
         return bad_request_response(blocked)
-    run_id = sound_engine.enqueue_sound(found_book_id, "chapter", chapter_id=found_chapter_id)
+    run_id = sound_engine.enqueue_sound(found_book_id, "chapter", chapter_id=found_chapter_id, initiator_id=_actor(request)[0])
     if not run_id:
         return error_response("already_running", status_code=409)
     return JSONResponse(with_warning(request, {"ok": True, "run_id": run_id}))

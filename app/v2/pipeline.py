@@ -15,6 +15,7 @@ when the book has no characters yet.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
@@ -24,7 +25,7 @@ from typing import Callable
 
 from app.config import settings
 from app.services import spend
-from app.models import Character, LlmUsageLog, ScriptBook, ScriptChapter, ScriptJob, ScriptLog
+from app.models import BackgroundRun, Character, LlmUsageLog, ScriptBook, ScriptChapter, ScriptJob, ScriptLog, TelegramAuthAccount, User
 from app.time_utils import utcnow_naive
 from app.v2.attribute import NARRATOR
 from app.v2.models import V2Attribution, V2Run, V2Segment, V2StressMark
@@ -482,11 +483,40 @@ STEP_FUNCTIONS: dict[str, Callable] = {
 # --- the run -----------------------------------------------------------------------------
 
 
-def _notify(db, book, previous: str, detail: str = "") -> None:
+def _result_chat_ids(db, book_id: str, background_run_id: str) -> list[str]:
+    """Итог принадлежит запустившему прогон; старые задачи остаются у владельца.
+
+    Создатель книги может быть другим человеком. Берём только точную привязку
+    учётки инициатора, а пропавшую или выключенную привязку не заменяем чужой.
+    """
+    tracked = db.get(BackgroundRun, background_run_id) if background_run_id else None
+    initiator = ""
+    if tracked is not None and tracked.job_kind == "v2_pipeline" and tracked.entity_id == book_id:
+        try:
+            meta = json.loads(tracked.meta_json or "{}")
+        except (ValueError, TypeError):
+            meta = {}
+        if isinstance(meta, dict):
+            initiator = str(meta.get("by") or "").strip()
+    if not initiator:
+        owner = str(settings.owner_telegram_id or "").strip()
+        return [owner] if owner else []
+    accounts = db.query(TelegramAuthAccount).join(User, User.id == TelegramAuthAccount.user_id).filter(
+        TelegramAuthAccount.user_id == initiator,
+        TelegramAuthAccount.is_active == "true",
+        User.is_active == "true",
+    ).all()
+    return sorted({str(row.telegram_user_id).strip() for row in accounts if str(row.telegram_user_id).strip()})
+
+
+def _notify(db, book, previous: str, detail: str = "", *, background_run_id: str = "") -> None:
     try:
         from app.services.telegram import notify_book_status_change
 
-        notify_book_status_change(db, book, previous, book.status, detail=detail)
+        notify_book_status_change(
+            db, book, previous, book.status, detail=detail,
+            chat_ids=_result_chat_ids(db, book.id, background_run_id), direct=True,
+        )
     except Exception:  # noqa: BLE001 — a notification must never fail the book
         logger.warning("v2 status notification failed book=%s", book.id, exc_info=True)
 
@@ -629,6 +659,7 @@ def run_book_pipeline(
     on_progress: Callable[[str], None] | None = None,
     on_heartbeat: Callable[[], None] | None = None,
     language: str | None = None,
+    background_run_id: str = "",
 ) -> V2Run:
     """Run `steps` on the book, in the order of `STEPS`, and return the finished run row.
 
@@ -703,7 +734,8 @@ def run_book_pipeline(
             book.status = FINAL_STATUS
             _log(db, book, 'Run complete: book ready for author review')
             _touch(db, run, context, status="done", finished_at=utcnow_naive())
-            _notify(db, book, previous_status, 'Book processing complete: all chapters are annotated.')
+            _notify(db, book, previous_status, 'Book processing complete: all chapters are annotated.',
+                    background_run_id=background_run_id)
             db.commit()
         except StopRequested as exc:
             db.rollback()
@@ -720,7 +752,8 @@ def run_book_pipeline(
             error = f"{type(exc).__name__}: {str(exc)[:500]}"
             _log(db, book, f'Run failed at step {run.step}: {error}', "error")
             _touch(db, run, context, status="failed", error=error, finished_at=utcnow_naive())
-            _notify(db, book, previous_status, f"v2 · {STEP_LABELS.get(run.step, run.step)} · {error[:160]}")
+            _notify(db, book, previous_status, f"v2 · {STEP_LABELS.get(run.step, run.step)} · {error[:160]}",
+                    background_run_id=background_run_id)
             db.commit()
         db.refresh(run)
         db.expunge(run)

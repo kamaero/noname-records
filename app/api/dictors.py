@@ -1,8 +1,8 @@
 """/api/dictors — раздел «Дикторы». Логика — `app/services/dictors.py`, здесь права и ответы.
 
-Видят и правят заметку админ и автор; заводят, переименовывают, удаляют и правят демо —
-только админ (спека 2026-09-30, решение 4). Подключено напрямую в `app/main.py`, мимо
-реестра обработчиков — как маршруты v2.
+Видят и правят заметку админ и автор; демо правит админ. Создание, переименование и
+удаление меняют учётки и потому доступны только владельцу. Подключено напрямую в
+`app/main.py`, мимо реестра обработчиков — как маршруты v2.
 """
 import os
 import tempfile
@@ -14,6 +14,7 @@ from app.api._helpers import forbidden_response, not_found_response, unauthorize
 from app.auth import has_any_role, is_authenticated, is_owner_telegram, session_payload, session_roles
 from app.db import SessionLocal
 from app.services import dictors
+from app.services.access_control import can_manage_users
 from app.services.studio_calendar import studio_timezone
 from app.services.audio_storage import file_size, read_range, resolve_path
 from app.services.auditions import inline_disposition, slice_for_range
@@ -33,9 +34,13 @@ def _admin(request: Request) -> bool:
     return "admin" in session_roles(request) or is_owner_telegram(request)
 
 
-def _gate(request: Request, *, admin: bool = False):
+def _gate(request: Request, *, admin: bool = False, access_owner: bool = False):
     if not is_authenticated(request):
         return unauthorized_response()
+    if access_owner:
+        # Создание и удаление карточки меняют учётку и Telegram-вход, а не только каст.
+        with SessionLocal() as db:
+            return None if can_manage_users(db, request) else forbidden_response()
     if not (_admin(request) if admin else _viewer(request)):
         return forbidden_response()
     return None
@@ -116,7 +121,7 @@ async def api_dictor_note(request: Request, user_id: str):
 
 
 async def api_dictor_create(request: Request):
-    if (refused := _gate(request, admin=True)) is not None:
+    if (refused := _gate(request, access_owner=True)) is not None:
         return refused
     body = await _json(request)
     with SessionLocal() as db:
@@ -130,7 +135,7 @@ async def api_dictor_create(request: Request):
 
 
 async def api_dictor_rename(request: Request, user_id: str):
-    if (refused := _gate(request, admin=True)) is not None:
+    if (refused := _gate(request, access_owner=True)) is not None:
         return refused
     body = await _json(request)
     with SessionLocal() as db:
@@ -149,7 +154,7 @@ async def api_dictor_rename(request: Request, user_id: str):
 
 
 def api_dictor_delete(request: Request, user_id: str):
-    if (refused := _gate(request, admin=True)) is not None:
+    if (refused := _gate(request, access_owner=True)) is not None:
         return refused
     actor = str(session_payload(request).get("uid") or "")
     with SessionLocal() as db:

@@ -113,6 +113,7 @@ function Reach({ value }: { value: boolean | null }) {
 export function DictorsPage({ me }: { me: MeResponse }) {
   const allowed = me.roles.includes("admin") || me.roles.includes("author") || me.is_owner_telegram;
   const isAdmin = me.roles.includes("admin") || me.is_owner_telegram;
+  const canManageUsers = Boolean(me.can_manage_users);
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
   const player = useDemoPlayer();
@@ -234,7 +235,7 @@ export function DictorsPage({ me }: { me: MeResponse }) {
                 Copy invitation
               </Button>
             ) : null}
-            {isAdmin ? (
+            {canManageUsers ? (
               <Button onClick={() => setCreating(true)}>
                 <Icon name="plus" /> New voice actor
               </Button>
@@ -288,6 +289,7 @@ export function DictorsPage({ me }: { me: MeResponse }) {
         <DictorSheet
           userId={openId}
           isAdmin={isAdmin}
+          canManageUsers={canManageUsers}
           player={player}
           onClose={() => setOpenId("")}
           onChanged={() => queryClient.invalidateQueries({ queryKey: ["dictors"] })}
@@ -311,12 +313,14 @@ export function DictorsPage({ me }: { me: MeResponse }) {
 function DictorSheet({
   userId,
   isAdmin,
+  canManageUsers,
   player,
   onClose,
   onChanged,
 }: {
   userId: string;
   isAdmin: boolean;
+  canManageUsers: boolean;
   player: ReturnType<typeof useDemoPlayer>;
   onClose: () => void;
   onChanged: () => void;
@@ -479,7 +483,7 @@ function DictorSheet({
         {assigning ? (
           <DictorAssignDialog name={card.name} onClose={() => setAssigning(false)} onAssigned={refresh} />
         ) : null}
-        {isAdmin ? (
+        {canManageUsers ? (
           <section className="dic-block">
             <h3>Name</h3>
             <form
@@ -639,7 +643,7 @@ function DictorSheet({
           />
         </section>
 
-        {isAdmin ? (
+        {canManageUsers ? (
           <section className="dic-block dic-danger">
             <Button
               variant="danger"

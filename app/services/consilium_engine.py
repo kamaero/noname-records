@@ -519,7 +519,7 @@ def latest_run(db, book_id: str, kind: str = "consilium") -> dict | None:
 BUSY_STATUSES = ("processing", "char_extracting", "stopping")
 
 
-def enqueue_consilium(book_id: str, mode: str) -> str | None:
+def enqueue_consilium(book_id: str, mode: str, initiator_id: str = "") -> str | None:
     from app.db import SessionLocal
     from app.models import BackgroundRun
     from app.workers.launcher import enqueue_tracked_task
@@ -536,6 +536,7 @@ def enqueue_consilium(book_id: str, mode: str) -> str | None:
         meta={"mode": mode, "phase": "queued"},
         book_id=book_id,
         mode=mode,
+        initiator_id=initiator_id,
         profile_book_id=book_id,
     )
 

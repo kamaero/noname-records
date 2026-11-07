@@ -25,24 +25,62 @@ def _start_background_run(session_factory, run_id: str):
 
 def _fail_background_run(session_factory, run_id: str, exc: Exception):
     logger.error(f"Task failed (run_id={run_id}): {exc}", exc_info=True)
-    _finish_background_run(
-        session_factory,
-        BackgroundRun,
-        run_id,
-        "failed",
-        f"{type(exc).__name__}: {str(exc)[:220]}",
-    )
+    from sqlalchemy import update
+
+    from app.services.telegram import send_system_alert
+
+    now = utcnow_naive()
+    with session_factory() as db:
+        # Обработанный отказ уже закрыт самим прогоном и сообщён инициатору.
+        # Условная запись сохраняет его причину и не даёт повторному исключению
+        # превратить тот же результат в ещё одну административную тревогу.
+        changed = db.execute(
+            update(BackgroundRun)
+            .where(BackgroundRun.id == run_id, BackgroundRun.status.in_(("queued", "running")))
+            .values(status="failed", error_message=f"{type(exc).__name__}: {str(exc)[:220]}"[:255],
+                    finished_at=now, heartbeat_at=now)
+        ).rowcount
+        db.commit()
+    if not changed:
+        return
+    try:
+        with session_factory() as db:
+            # Исключение может содержать ключ API, адрес провайдера или текст книги.
+            # Подробности остаются в журнале; наружу уходит только безопасный факт.
+            send_system_alert(db, "⚠️ A background task encountered a system error. "
+                              "Please check the task log on the site.")
+    except Exception as notice_exc:
+        # Доставка не должна подменить исходный сбой задачи своей ошибкой.
+        logger.warning("Не удалось отправить системную тревогу: %s", type(notice_exc).__name__)
+
+
+def _manual_chapter_result(session_factory, initiator_id: str, chapter_id: str, text: str) -> None:
+    """Сбой личного письма не откатывает уже оплаченную обработку главы."""
+    if not initiator_id:
+        return
+    try:
+        from app.models import ScriptBook, ScriptChapter
+
+        with session_factory() as db:
+            chapter = db.get(ScriptChapter, chapter_id)
+            book = db.get(ScriptBook, chapter.book_id) if chapter is not None else None
+            label = " · ".join(str(value) for value in (
+                getattr(book, "title", ""), getattr(chapter, "chapter_title", "")) if value) or chapter_id
+        _initiator_notice(session_factory, initiator_id)(f"{label}\n{text}")
+    except Exception:
+        logger.exception("Не отправлен итог ручной проверки главы %s", chapter_id)
 
 
 def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
                            assembled_fingerprint: str = "", narrator_take_id: str = "",
                            narrator_input_fingerprint: str = "", force: bool = False,
-                           language: str | None = None):
+                           language: str | None = None, initiator_id: str = ""):
     """Проверяем снимок сборки и захватываем оплачиваемую задачу ровно один раз."""
     from app.services.asr_audit import run_asr_audit
     from app.services.asr_audit_lifecycle import assembled_audit_snapshot, claim_audit_run, record_payment_boundary
 
     session_factory = SessionLocal
+    personal_notice = _initiator_notice(session_factory, initiator_id)
     try:
         with session_factory() as db:
             if not claim_audit_run(db, run_id):
@@ -56,6 +94,8 @@ def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
                 record_payment_boundary(db, run_id, state="not_started", skip_reason="assembly_changed_before_payment")
                 _finish_background_run(session_factory, BackgroundRun, run_id, "skipped",
                                        "Chapter inputs changed after assembly; no payment was made")
+                _manual_chapter_result(session_factory, initiator_id, chapter_id,
+                                      "Strict check cancelled: chapter inputs changed; no payment was made.")
                 return
             record_payment_boundary(db, run_id, state="possibly_paid")
             from app.models import ScriptChapter
@@ -65,20 +105,25 @@ def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
             db.commit()
             with spend.context("asr_audit", book_id=book_id, chapter_id=chapter_id, run_id=run_id):
                 audit = run_asr_audit(db, chapter_id, expected_narrator_fingerprint=narrator_input_fingerprint,
-                                      **({"language": language} if language is not None else {}))
+                                      **({"language": language} if language is not None else {}),
+                                      **({"notify_result": personal_notice} if personal_notice is not None else {}))
             db.commit()
             if audit.status == "skipped" and audit.error_message in {"narrator_input_changed", "no_narrator_take"}:
                 record_payment_boundary(db, run_id, state="not_started", skip_reason=audit.error_message)
+                _manual_chapter_result(session_factory, initiator_id, chapter_id,
+                                      "Strict check cancelled: narrator inputs changed or are missing; no payment was made.")
             audit_status, message = audit.status, audit.error_message or "no issues"
         _finish_background_run(session_factory, BackgroundRun, run_id, audit_status,
                                f"audit {audit_status}: {message}")
     except Exception as exc:
+        _manual_chapter_result(session_factory, initiator_id, chapter_id,
+                              f"Strict check incomplete ({type(exc).__name__}). Check the chapter log.")
         _fail_background_run(session_factory, run_id, exc)
         raise
 
 
 def perform_asr_chapter_task(chapter_id: str, run_id: str = "", force: bool = False,
-                             language: str | None = None):
+                             language: str | None = None, initiator_id: str = ""):
     """Распознать дубли главы. Идёт в фоне: минута на файл — не для запроса из браузера.
 
     `force` — кнопка «Распознать» в редакторе: слышать заново все дубли. Приём файлов
@@ -88,16 +133,31 @@ def perform_asr_chapter_task(chapter_id: str, run_id: str = "", force: bool = Fa
 
     logger.info("Starting ASR for chapter %s (run_id=%s)", chapter_id, run_id)
     session_factory = SessionLocal
+    personal_notice = _initiator_notice(session_factory, initiator_id)
+    reported = False
+
+    def notify_result(text):
+        nonlocal reported
+        personal_notice(text)
+        reported = True
+
     try:
         _start_background_run(session_factory, run_id)
         with session_factory() as db:
             result = run_asr_for_chapter(db, chapter_id, force=bool(force),
-                                         **({"language": language} if language is not None else {}))
+                                         **({"language": language} if language is not None else {}),
+                                         **({"notify_result": notify_result} if personal_notice is not None else {}))
             db.commit()
         _finish_background_run(session_factory, BackgroundRun, run_id, "done",
                                f"transcribed {result['done']}, realigned {result.get('realigned', 0)}, "
                                f"failed {result['failed']}")
+        if personal_notice is not None and not reported:
+            _manual_chapter_result(session_factory, initiator_id, chapter_id,
+                f"Transcription complete: takes {result.get('takes', 0)}, transcribed {result['done']}, "
+                f"realigned {result.get('realigned', 0)}, failed {result['failed']}.")
     except Exception as exc:
+        _manual_chapter_result(session_factory, initiator_id, chapter_id,
+                              f"Transcription incomplete ({type(exc).__name__}). Check the chapter log.")
         _fail_background_run(session_factory, run_id, exc)
         raise
 
@@ -337,7 +397,27 @@ def perform_verify_chapter_task(chapter_id: str, run_id: str = ""):
         raise
 
 
-def perform_consilium_task(book_id: str, mode: str = "recheck", run_id: str = "", language: str | None = None):
+def _initiator_notice(session_factory, initiator_id):
+    """Старые задачи без инициатора сохраняют прежнюю доставку владельцу."""
+    if not initiator_id:
+        return None
+
+    def send(text):
+        from app.models import TelegramAuthAccount, User
+        from app.services.telegram import send_telegram_message
+
+        with session_factory() as db:
+            chats = (db.query(TelegramAuthAccount.telegram_user_id)
+                     .join(User, User.id == TelegramAuthAccount.user_id)
+                     .filter(User.id == initiator_id, User.is_active == "true",
+                             TelegramAuthAccount.is_active == "true").all())
+            return send_telegram_message(db, text, chat_ids=list({str(row[0]) for row in chats if row[0]}), direct=True)
+
+    return send
+
+
+def perform_consilium_task(book_id: str, mode: str = "recheck", run_id: str = "", language: str | None = None,
+                           initiator_id: str = ""):
     """Прогон консилиума по книге. Живёт в очереди `consilium` и в своей службе."""
     from app.services.consilium_engine import run_consilium
 
@@ -349,7 +429,8 @@ def perform_consilium_task(book_id: str, mode: str = "recheck", run_id: str = ""
     try:
         from app.v2.job_profile import background_run_language
         language = background_run_language(session_factory, run_id, language)
-        run_consilium(session_factory=session_factory, book_id=book_id, run_id=run_id, mode=mode, language=language)
+        run_consilium(session_factory=session_factory, book_id=book_id, run_id=run_id, mode=mode, language=language,
+                      notify=_initiator_notice(session_factory, initiator_id))
     except BaseException as exc:
         # run_consilium сам ставит failed с причиной; здесь — отметка на случай, если сбой
         # прошёл мимо него (не Exception, сбой самой отметки). Строку, уже закрытую
@@ -364,7 +445,7 @@ def perform_consilium_task(book_id: str, mode: str = "recheck", run_id: str = ""
 
 
 def perform_sound_task(book_id: str, mode: str = "rest", chapter_id: str = "", run_id: str = "",
-                       language: str | None = None):
+                       language: str | None = None, initiator_id: str = ""):
     """Звуковая разметка книги или главы. Живёт в очереди `consilium` — одна полоса долгих проходов."""
     from app.services.sound_engine import run_sound
 
@@ -376,7 +457,7 @@ def perform_sound_task(book_id: str, mode: str = "rest", chapter_id: str = "", r
         from app.v2.job_profile import background_run_language
         language = background_run_language(session_factory, run_id, language)
         run_sound(session_factory=session_factory, book_id=book_id, run_id=run_id, mode=mode,
-                  chapter_id=chapter_id, language=language)
+                  chapter_id=chapter_id, language=language, notify=_initiator_notice(session_factory, initiator_id))
     except BaseException as exc:
         logger.error(f"sound failed (book={book_id}, run_id={run_id}): {exc}", exc_info=True)
         try:
@@ -471,12 +552,16 @@ def perform_v2_pipeline_task(book_id: str, run_id: str = "", *, steps=None, forc
             provider=provider,
             model=model,
             run_id=v2_run_id,
+            background_run_id=run_id,
             on_heartbeat=heartbeat,
             language=language,
             ctx=context,
             session_factory=session_factory,
         )
         if run.status == "failed":
+            # Пайплайн уже обработал отказ и отправил результат инициатору.
+            # RQ всё равно должен видеть failed, но это не ранняя авария воркера.
+            _finish_background_run(session_factory, BackgroundRun, run_id, "failed", run.error or "v2 pipeline failed")
             raise RuntimeError(run.error or "v2 pipeline failed")
 
         _finish_background_run(session_factory, BackgroundRun, run_id, "done", "" if run.status == "done" else run.status)

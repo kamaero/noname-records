@@ -305,11 +305,11 @@ def test_run_is_queued_with_its_mode(editor_client, monkeypatch):
 
     queued = []
     monkeypatch.setattr(sound_engine, "enqueue_sound",
-                        lambda book_id, mode, chapter_id="": queued.append((book_id, mode)) or "run-1")
+                        lambda book_id, mode, chapter_id="", initiator_id="": queued.append((book_id, mode, initiator_id)) or "run-1")
 
     response = editor_client.post(f"/api/v2/books/{BOOK}/sound/run", json={"mode": "rest"})
     assert response.status_code == 200 and response.json()["run_id"] == "run-1"
-    assert queued == [(BOOK, "rest")]
+    assert queued == [(BOOK, "rest", "u1")]
 
 
 def test_run_bad_mode_is_refused(editor_client):
@@ -363,7 +363,7 @@ def test_a_consilium_run_does_not_block_a_sound_run(editor_client, api_db, monke
                              entity_type="script_book", entity_id=BOOK, status="running", meta_json="{}",
                              created_at=utcnow_naive(), updated_at=utcnow_naive()))
         db.commit()
-    monkeypatch.setattr(sound_engine, "enqueue_sound", lambda book_id, mode, chapter_id="": "run-x")
+    monkeypatch.setattr(sound_engine, "enqueue_sound", lambda book_id, mode, chapter_id="", initiator_id="": "run-x")
 
     response = editor_client.post(f"/api/v2/books/{BOOK}/sound/run", json={"mode": "all"})
     assert response.status_code == 200 and response.json()["run_id"] == "run-x"
@@ -374,7 +374,7 @@ def test_chapter_run_queues_that_chapter_only(editor_client, monkeypatch):
 
     calls = []
     monkeypatch.setattr(sound_engine, "enqueue_sound",
-                        lambda book_id, mode, chapter_id="": calls.append((book_id, mode, chapter_id)) or "run-c")
+                        lambda book_id, mode, chapter_id="", initiator_id="": calls.append((book_id, mode, chapter_id)) or "run-c")
 
     response = editor_client.post("/api/v2/chapters/c1/sound/run")
     assert response.status_code == 200 and response.json()["run_id"] == "run-c"

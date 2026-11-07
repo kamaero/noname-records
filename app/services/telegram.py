@@ -9,7 +9,7 @@ import requests
 
 from app.config import settings
 from app.constants import DICTOR_ROLES
-from app.models import Character, ScriptLog, TelegramAuthAccount
+from app.models import Character, ScriptLog, TelegramAuthAccount, User, UserRole
 from app.services import studio
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,40 @@ def telegram_target_chat_ids(db) -> list[str]:
         return configured
     rows = db.query(TelegramAuthAccount).filter(TelegramAuthAccount.is_active == "true").all()
     return [str(row.telegram_user_id) for row in rows if str(row.telegram_user_id).strip()]
+
+
+def telegram_system_chat_ids(db) -> list[str]:
+    """Системные тревоги — владельцу и явно разрешённым администраторам с Telegram.
+
+    Роль в Telegram-списке допуска служит только начальной ролью при регистрации.
+    После привязки права определяет учётка: старая роль в списке не должна давать
+    бывшему администратору доступ к служебным сообщениям.
+    """
+    targets = [str(settings.owner_telegram_id or "").strip()]
+    allowed = {value.strip() for value in (settings.telegram_system_admin_user_ids or "").split(",")
+               if value.strip()}
+    if db is not None and allowed:
+        rows = (
+            db.query(TelegramAuthAccount.telegram_user_id)
+            .join(User, User.id == TelegramAuthAccount.user_id)
+            .join(UserRole, UserRole.user_id == User.id)
+            .filter(
+                TelegramAuthAccount.is_active == "true",
+                User.is_active == "true",
+                User.id.in_(allowed),
+                UserRole.role == "admin",
+            )
+            .all()
+        )
+        targets.extend(sorted(str(row[0] or "").strip() for row in rows))
+    # Владелец может одновременно быть администратором; повторная роль или пробелы
+    # вокруг id тоже не должны превращать одну тревогу в несколько писем.
+    return list(dict.fromkeys(target for target in targets if target))
+
+
+def send_system_alert(db, text: str) -> int:
+    """Отдельный канал тревог: обычная рассылка и личные письма адресатов не меняют."""
+    return send_telegram_message(db, text, chat_ids=telegram_system_chat_ids(db), direct=True)
 
 
 def _normalize_person_name(value: str) -> str:
@@ -209,7 +243,10 @@ def call_bot_api(method: str, payload: dict) -> bool:
 _NOTIFY_STATUSES = {"failed", "author_review"}
 
 
-def notify_book_status_change(db, book, previous_status: str, new_status: str, detail: str = "") -> int:
+def notify_book_status_change(
+    db, book, previous_status: str, new_status: str, detail: str = "",
+    *, chat_ids: list[str] | None = None, direct: bool = False,
+) -> int:
     prev = str(previous_status or "").strip()
     curr = str(new_status or "").strip()
     if not book or curr not in _NOTIFY_STATUSES:
@@ -220,7 +257,7 @@ def notify_book_status_change(db, book, previous_status: str, new_status: str, d
     if str(getattr(book, "last_notified_status", "") or "") == curr:
         return 0
     text = _book_status_message(book, curr, detail)
-    sent = send_telegram_message(db, text)
+    sent = send_telegram_message(db, text, chat_ids=chat_ids, direct=direct)
     book.last_notified_status = curr
     db.add(
         ScriptLog(

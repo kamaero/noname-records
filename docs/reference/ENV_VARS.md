@@ -95,6 +95,7 @@ _Сгенерировано из коммита d1c9b32._
 | `TELEGRAM_BOT_TOKEN` | секрет — default пуст | `app/config.py:184` |  |
 | `TELEGRAM_BOT_USERNAME` | `''` | `app/config.py:183` |  |
 | `TELEGRAM_NOTIFY_CHAT_IDS` | `''` | `app/config.py:194` |  |
+| `TELEGRAM_SYSTEM_ADMIN_USER_IDS` | `''` | `app/config.py` | CSV of explicitly allowed active admin User IDs; empty means owner only. |
 | `TELEGRAM_NOTIFY_ENABLED` | `'true'` | `app/config.py:193` |  |
 | `TELEGRAM_WEBHOOK_SECRET` | секрет — default пуст | `app/config.py:189` | Секрет webhook бота (заголовок X-Telegram-Bot-Api-Secret-Token). Пусто — адрес выключен. |
 | `UPLOAD_MAX_BYTES` | `str(2 * 1024 * 1024 * 1024)` | `app/config.py:206` | Не безлимит, а щедрый потолок: тело загрузки Starlette всё равно спулит во временный файл на диске сервера, и один кривой запрос мог забить его целиком. |

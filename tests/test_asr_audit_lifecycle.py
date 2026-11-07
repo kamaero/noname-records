@@ -208,7 +208,7 @@ def test_manual_route_is_admin_only_and_requires_current_assembly(monkeypatch):
     client = TestClient(app)
     client.cookies.set("session", session_serializer.dumps({"uid": "u", "sub": "u", "roles": ["admin"]}))
     assert client.post("/api/v2/chapters/chapter/audit").status_code == 200
-    assert calls == [("chapter", {"force": True})]
+    assert calls == [("chapter", {"force": True, "initiator_id": "u"})]
     monkeypatch.setattr(lifecycle, "assembled_audit_snapshot", lambda db, cid: None)
     response = client.post("/api/v2/chapters/chapter/audit")
     assert response.status_code == 409

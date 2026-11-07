@@ -192,6 +192,9 @@ class Settings:
     telegram_auth_whitelist_default_access_scope: str = os.getenv("TELEGRAM_AUTH_WHITELIST_DEFAULT_ACCESS_SCOPE", "full")
     telegram_notify_enabled: bool = os.getenv("TELEGRAM_NOTIFY_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
     telegram_notify_chat_ids: str = os.getenv("TELEGRAM_NOTIFY_CHAT_IDS", "")
+    # Роль admin сама по себе не подписывает на служебные тревоги: адресаты
+    # задаются явно стабильными user_id, а их права перепроверяются при отправке.
+    telegram_system_admin_user_ids: str = os.getenv("TELEGRAM_SYSTEM_ADMIN_USER_IDS", "")
     owner_telegram_id: str = os.getenv("OWNER_TELEGRAM_ID", "")
     # Base stress dictionary for the v2 stress step (app/v2/stress_dict.py).
     stress_base_dict_path: str = os.getenv("STRESS_BASE_DICT_PATH", "")

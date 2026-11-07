@@ -142,6 +142,7 @@ def test_automatic_queue_captures_language_before_worker_start(db, monkeypatch):
 
 
 def test_manual_paid_queue_captures_language_before_worker_start(db, monkeypatch):
+    from app.auth import session_serializer
     from app.v2 import api
     chapter = _english_chapter(db)
     monkeypatch.setattr(api, "SessionLocal", lambda: db)
@@ -150,9 +151,13 @@ def test_manual_paid_queue_captures_language_before_worker_start(db, monkeypatch
     monkeypatch.setattr(api, "chapter_recording_status", lambda *a: {"roles": [{"files": ["take"]}]})
     seen = []
     monkeypatch.setattr(api, "enqueue_tracked_task", lambda **kw: seen.append(kw) or "job")
-    assert api.api_v2_chapter_asr(SimpleNamespace(), chapter).status_code == 200
+    request = SimpleNamespace(cookies={"session": session_serializer.dumps({
+        "uid": "manual-editor", "sub": "Test Editor", "roles": ["admin"],
+    })})
+    assert api.api_v2_chapter_asr(request, chapter).status_code == 200
     assert seen[0]["language"] == seen[0]["meta"]["language"] == "en"
     assert seen[0]["force"] is True
+    assert seen[0]["initiator_id"] == seen[0]["meta"]["by"] == "manual-editor"
 
 
 def test_worker_uses_queued_language_instead_of_current_book(monkeypatch):

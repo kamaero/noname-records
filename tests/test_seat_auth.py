@@ -93,3 +93,12 @@ def test_owner_account_is_created_once(one_seat):
     with seat_api.SessionLocal() as db:
         assert db.query(User).count() == 1
         assert {r.role for r in db.query(UserRole)} == {"admin", "author"}
+
+
+def test_local_owner_keeps_dictor_cards_while_accounts_remain_hidden(one_seat):
+    client = _client()
+    assert client.get(f"/seat?token={TOKEN}", follow_redirects=False).status_code == 302
+    assert client.get("/api/me").json()["can_manage_users"] is True
+    assert client.get("/api/users").status_code == 404
+    assert client.post("/api/users", json={"display_name": "Local Actor", "roles": ["admin"]}).status_code == 404
+    assert client.post("/api/dictors", json={"name": "Local Actor"}).status_code == 200

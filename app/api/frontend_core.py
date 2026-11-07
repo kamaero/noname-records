@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 # where every new name has to be declared at four levels before it arrives here.
 from app.seat import one_seat
 from app.services import onboarding, user_admin
+from app.services.access_control import can_manage_users
 from app.time_utils import utcnow_naive
 
 
@@ -54,6 +55,16 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
             return forbidden()
         return None
 
+    def require_access_owner(request: Request):
+        auth_error = require_authenticated(request)
+        if auth_error:
+            return auth_error
+        # Администратор ведёт производство, но доступы и пароли остаются у владельца.
+        with session_local() as db:
+            if not can_manage_users(db, request):
+                return forbidden()
+        return None
+
     def _bot_reachable_for(request: Request, *, fresh: bool = False):
         """`None` — вход по паролю (нечего проверять) или Telegram не ответил."""
         if session_auth_source(request) != "telegram":
@@ -78,6 +89,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
                     "full_access": False,
                     "bot_reachable": None,
                     "show_onboarding": False,
+                    "can_manage_users": False,
                 },
                 status_code=status.HTTP_401_UNAUTHORIZED,
             )
@@ -87,6 +99,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
         is_dictor = "dictor" in roles
         with session_local() as db:
             user = db.query(user_model).filter(user_model.id == uid).first()
+            manages_users = can_manage_users(db, request)
         shown_at = user.onboarding_shown_at if user is not None else None
         # Достижимость бота нужна только дикторам — окно есть только у них. Не-диктору
         # (в том числе владельцу, который чаще всех входит через Telegram) это стоило бы
@@ -107,6 +120,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
             "roles": sorted(roles),
             "auth_source": auth_source,
             "is_owner_telegram": is_owner_telegram(request),
+            "can_manage_users": manages_users,
             "workspace_tabs": [{"id": tab_id, "label": workspace_tabs[tab_id]["label"]} for tab_id in workspace_tabs_for_request(request)],
             "full_access": has_workspace_full_access(request),
             "bot_reachable": reachable,
@@ -149,7 +163,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
 
     async def api_attach_telegram(request: Request, user_id: str):
         """Привязать телеграм к учётке — там, где владелец на неё и смотрит."""
-        access_error = require_owner_api(request)
+        access_error = require_access_owner(request)
         if access_error:
             return access_error
         payload = await request.json()
@@ -166,7 +180,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
 
     def api_bot_reach(request: Request):
         """Кому бот может написать. Вход через виджет и письма бота — разные каналы."""
-        access_error = require_owner_api(request)
+        access_error = require_access_owner(request)
         if access_error:
             return access_error
         from app.services.bot_reach import check_bot_reach
@@ -177,7 +191,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
 
     def api_users_export(request: Request):
         """Реестр доступов текстом. Паролей в нём нет — их нет и в системе."""
-        access_error = require_owner_api(request)
+        access_error = require_access_owner(request)
         if access_error:
             return access_error
         with session_local() as db:
@@ -193,7 +207,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
         Тем, у кого пароль есть, новый не выдаётся: люди им пользуются, и «выдать всем
         новые» означало бы запереть их снаружи.
         """
-        access_error = require_owner_api(request)
+        access_error = require_access_owner(request)
         if access_error:
             return access_error
         with session_local() as db:
@@ -204,7 +218,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
         return JSONResponse({"ok": True, "issued": len(issued), "roster": text})
 
     def api_users(request: Request):
-        access_error = require_owner_api(request)
+        access_error = require_access_owner(request)
         if access_error:
             return access_error
         with session_local() as db:
@@ -230,7 +244,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
 
     async def api_create_user(request: Request):
         """A new account. The generated password comes back once and is never readable again."""
-        access_error = require_owner_api(request)
+        access_error = require_access_owner(request)
         if access_error:
             return access_error
         body = await request.json()
@@ -249,7 +263,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
             return JSONResponse({"ok": True, "user": made["user"], "password": made["password"]})
 
     async def api_update_user(request: Request, user_id: str):
-        access_error = require_owner_api(request)
+        access_error = require_access_owner(request)
         if access_error:
             return access_error
         body = await request.json() or {}
@@ -271,7 +285,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
             return JSONResponse({"ok": True, "user": row})
 
     async def api_reset_user_password(request: Request, user_id: str):
-        access_error = require_owner_api(request)
+        access_error = require_access_owner(request)
         if access_error:
             return access_error
         with session_local() as db:
@@ -285,7 +299,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
             return JSONResponse({"ok": True, "password": password})
 
     async def api_delete_user(request: Request, user_id: str):
-        access_error = require_owner_api(request)
+        access_error = require_access_owner(request)
         if access_error:
             return access_error
         with session_local() as db:
@@ -300,7 +314,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
 
     async def api_merge_users(request: Request):
         """Two accounts of one person become one. The keeper is named by the caller."""
-        access_error = require_owner_api(request)
+        access_error = require_access_owner(request)
         if access_error:
             return access_error
         body = await request.json() or {}
@@ -321,7 +335,7 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
 
     async def api_bulk_user_roles(request: Request):
         """One role for many accounts — the 49 dictors who were all given `author`."""
-        access_error = require_owner_api(request)
+        access_error = require_access_owner(request)
         if access_error:
             return access_error
         body = await request.json() or {}
@@ -344,11 +358,9 @@ def build_frontend_core_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
             return JSONResponse({"ok": True, "changed": changed})
 
     async def api_save_telegram_whitelist(request: Request):
-        auth_error = require_authenticated(request)
-        if auth_error:
-            return auth_error
-        if not is_owner_telegram(request):
-            return forbidden()
+        access_error = require_access_owner(request)
+        if access_error:
+            return access_error
         payload = await request.json()
         entry_id = str((payload or {}).get("entry_id") or "").strip()
         telegram_user_id = str((payload or {}).get("telegram_user_id") or "").strip()

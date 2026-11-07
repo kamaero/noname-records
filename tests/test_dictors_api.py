@@ -7,14 +7,16 @@ from sqlalchemy.pool import StaticPool
 
 from app.api import dictors as dictors_api
 from app.auth import session_serializer
+from app.config import settings
 from app.db import Base
 from app.main import app
-from app.models import DictorDemo, DictorProfile, User, UserRole
+from app.models import DictorDemo, DictorProfile, TelegramAuthAccount, User, UserRole
 from app.services import audio_storage
 
 
 @pytest.fixture()
 def factory(monkeypatch):
+    monkeypatch.setattr(settings, "owner_telegram_id", "11")
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False)
@@ -22,6 +24,7 @@ def factory(monkeypatch):
     with factory() as db:
         db.add(User(id="admin", login="admin", password_hash="x", display_name="Админ", is_active="true"))
         db.add(UserRole(user_id="admin", role="admin"))
+        db.add(TelegramAuthAccount(telegram_user_id="11", role="admin", user_id="admin", is_active="true"))
         db.add(User(id="u1", login="olga", password_hash="x", display_name="Ветрова Ольга", is_active="true"))
         db.add(UserRole(user_id="u1", role="dictor"))
         audio_storage.write_file("demos/u1/d1.mp3", b"0123456789")
@@ -147,3 +150,18 @@ def test_download_uses_an_english_fallback_without_rewriting_saved_title_or_key(
     with factory() as db:
         demo = db.get(DictorDemo, "d1")
         assert demo.title == title and demo.stored_key == key
+
+
+def test_a_second_admin_cannot_change_accounts_through_dictor_cards(factory):
+    with factory() as db:
+        db.add(User(id="second", login="second", password_hash="x", display_name="Второй админ", is_active="true"))
+        db.add(UserRole(user_id="second", role="admin"))
+        db.commit()
+    api = _client(["admin"], uid="second")
+    assert api.post("/api/dictors", json={"name": "Новый Диктор", "telegram_user_id": "77"}).status_code == 403
+    assert api.patch("/api/dictors/u1", json={"name": "Другое Имя"}).status_code == 403
+    assert api.delete("/api/dictors/u1").status_code == 403
+    assert api.post("/api/dictors/u1/main-demo", json={"demo_id": "d1"}).status_code == 200
+    with factory() as db:
+        assert db.get(User, "u1").display_name == "Ветрова Ольга"
+        assert db.query(TelegramAuthAccount).filter_by(telegram_user_id="77").first() is None

@@ -57,7 +57,7 @@ function fold(value: string): string {
 export function UsersPage({ me }: { me: MeResponse }) {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
-  const allowed = me.roles.includes("admin") || me.is_owner_telegram;
+  const allowed = Boolean(me.can_manage_users);
 
   const [query, setQuery] = useState("");
   /** a password just generated: shown once, then gone */
@@ -378,7 +378,7 @@ export function UsersPage({ me }: { me: MeResponse }) {
     },
   ];
 
-  if (!allowed) return <div className="panel panel-pad">This page is available to the owner and administrators only.</div>;
+  if (!allowed) return <div className="panel panel-pad">This page is available to the owner only.</div>;
   if (usersQuery.isError) {
     return <div className="panel panel-pad">{describeApiError(usersQuery.error, "Could not load users.")}</div>;
   }

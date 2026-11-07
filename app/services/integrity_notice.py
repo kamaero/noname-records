@@ -17,11 +17,11 @@ def integrity_notice(chapter_label: str, rows: list[dict]) -> str:
 
 
 def notify_integrity_problem(db, chapter_id: str) -> bool:
-    """Сообщить владельцу о битых файлах главы. `False` — сообщать не о чем."""
+    """Сообщить администраторам о битых файлах главы. `False` — сообщать не о чем."""
     from app.models import ScriptChapter
     from app.services.audio_integrity import MISMATCH, MISSING, chapter_files
     from app.services.chapter_delivery import _chapter_label
-    from app.services.telegram import send_telegram_message
+    from app.services.telegram import send_system_alert
 
     chapter = db.get(ScriptChapter, str(chapter_id or "").strip())
     if chapter is None:
@@ -39,7 +39,7 @@ def notify_integrity_problem(db, chapter_id: str) -> bool:
     text = integrity_notice(_chapter_label(chapter), rows)
     if not text:
         return False
-    send_telegram_message(db, text)
+    send_system_alert(db, text)
     return True
 
 
@@ -65,7 +65,7 @@ def mirror_notice(chapter_label: str, rows: list[dict]) -> str:
 
 
 def notify_mirror_problem(db, chapter_id: str) -> bool:
-    """Сообщить владельцу о копиях главы на NAS, не сошедшихся по сумме.
+    """Сообщить администраторам о копиях главы на NAS, не сошедшихся по сумме.
 
     `False` — сообщать не о чем.
     """
@@ -73,7 +73,7 @@ def notify_mirror_problem(db, chapter_id: str) -> bool:
     from app.services.audio_integrity import chapter_files
     from app.services.audio_mirror import MISMATCH
     from app.services.chapter_delivery import _chapter_label
-    from app.services.telegram import send_telegram_message
+    from app.services.telegram import send_system_alert
 
     chapter = db.get(ScriptChapter, str(chapter_id or "").strip())
     if chapter is None:
@@ -90,5 +90,5 @@ def notify_mirror_problem(db, chapter_id: str) -> bool:
     text = mirror_notice(_chapter_label(chapter), rows)
     if not text:
         return False
-    send_telegram_message(db, text)
+    send_system_alert(db, text)
     return True

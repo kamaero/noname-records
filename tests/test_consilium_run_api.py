@@ -34,7 +34,7 @@ def api_db(monkeypatch, tmp_path):
     monkeypatch.setattr("app.services.consilium_engine.read_credits", lambda log=None: 5000.0)
     queued = []
     monkeypatch.setattr("app.services.consilium_engine.enqueue_consilium",
-                        lambda book_id, mode: queued.append((book_id, mode)) or "run-x")
+                        lambda book_id, mode, initiator_id="": queued.append((book_id, mode, initiator_id)) or "run-x")
     with factory() as db:
         build_book(db)
     return factory, queued
@@ -58,7 +58,7 @@ def test_run_is_queued_with_its_mode(api_db):
     _factory, queued = api_db
     response = _client(["author"]).post(f"/api/v2/books/{BOOK}/consilium/run", json={"mode": "reread"})
     assert response.status_code == 200 and response.json()["run_id"] == "run-x"
-    assert queued == [(BOOK, "reread")]
+    assert queued == [(BOOK, "reread", "u1")]
 
 
 def test_run_estimates_off_the_event_loop(api_db, monkeypatch):
@@ -170,7 +170,7 @@ def test_a_dead_run_does_not_block_the_buttons_forever(api_db):
     with factory() as db:
         assert db.get(BackgroundRun, "r1").status == "failed"  # отметка записана, а не только показана
     assert client.post(f"/api/v2/books/{BOOK}/consilium/run", json={"mode": "recheck"}).status_code == 200
-    assert queued == [(BOOK, "recheck")]
+    assert queued == [(BOOK, "recheck", "u1")]
 
 
 def test_a_dead_run_is_recorded_even_when_only_the_list_is_opened(api_db):

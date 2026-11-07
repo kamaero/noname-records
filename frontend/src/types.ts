@@ -21,6 +21,8 @@ export type MeResponse = {
   seat_mode?: "studio" | "one";
   /** раздел «Смета» — только учётке владельца */
   can_see_payouts?: boolean;
+  /** учётки, пароли и Telegram-доступы — только владельцу */
+  can_manage_users?: boolean;
 };
 
 /** «Смета». */

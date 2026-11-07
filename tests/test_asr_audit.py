@@ -938,7 +938,8 @@ def test_batch_fingerprint_matches_session_input(db, change):
         chapter_id: asr_audit.narrator_input_fingerprint(db, chapter_id)}
 
 
-def test_latest_audits_checks_many_chapters_with_bounded_queries(db):
+@pytest.mark.parametrize("cached_chapters", [None, 0, 1, 20])
+def test_latest_audits_checks_many_chapters_with_bounded_queries(db, cached_chapters):
     from app.models import AudioFile, AsrJob
     from sqlalchemy import event
 
@@ -960,26 +961,36 @@ def test_latest_audits_checks_many_chapters_with_bounded_queries(db):
         db.add(AsrAudit(chapter_id=cid, status="done", lines_json=json.dumps({
             "narrator_input_fingerprint": asr_audit.narrator_input_fingerprint(db, cid)})))
     db.flush()
+    chapter_map = None if cached_chapters is None else {
+        row.id: row for row in db.query(ScriptChapter).filter(
+            ScriptChapter.id.in_(chapter_ids[:cached_chapters])).all()}
+    extra = {} if chapter_map is None else {"chapters_by_id": chapter_map}
     queries = []
-    def count_queries(*args):
+    chapter_queries = []
+    def count_queries(conn, cursor, statement, *args):
         queries.append(1)
+        if "FROM script_chapters" in statement:
+            chapter_queries.append(statement)
     event.listen(db.get_bind(), "before_cursor_execute", count_queries)
     try:
-        current = asr_audit.latest_audits(db, chapter_ids)
+        current = asr_audit.latest_audits(db, chapter_ids, **extra)
         assert all(current[cid]["status"] == "done" for cid in chapter_ids)
         assert len(queries) <= 10
+        assert len(chapter_queries) == (0 if cached_chapters == 20 else 1)
         segment = db.get(V2Segment, f"{chapter_ids[0]}:00000")
         segment.text = "Сценарий изменился."
         db.flush()
         queries.clear()
-        current = asr_audit.latest_audits(db, chapter_ids)
+        chapter_queries.clear()
+        current = asr_audit.latest_audits(db, chapter_ids, **extra)
         assert current[chapter_ids[0]]["status"] == "stale"
         assert all(current[cid]["status"] == "done" for cid in chapter_ids[1:])
         assert len(queries) <= 10
+        assert len(chapter_queries) == (0 if cached_chapters == 20 else 1)
         job = db.query(AsrJob).filter(AsrJob.audio_file_id == "audio-1").one()
         job.alignment_json = "[]"
         db.flush()
-        current = asr_audit.latest_audits(db, chapter_ids)
+        current = asr_audit.latest_audits(db, chapter_ids, **extra)
         assert current[chapter_ids[1]]["status"] == "stale"
         assert all(current[cid]["status"] == "done" for cid in chapter_ids[2:])
     finally:

@@ -98,7 +98,8 @@ def test_real_queue_to_worker_uses_saved_profile_without_mutating_book(queued, m
     monkeypatch.setattr(pipeline, "_ruaccent_layer", lambda: resources.append("ruaccent") or None)
     monkeypatch.setattr(pipeline.Resolver, "default", lambda **k: resources.append("dictionary") or pipeline.Resolver())
     monkeypatch.setattr(pipeline, "_settle_book", lambda *a: None)
-    monkeypatch.setattr(pipeline, "_notify", lambda *a: None)
+    notifications = []
+    monkeypatch.setattr(pipeline, "_notify", lambda *a, **kwargs: notifications.append(kwargs))
     response = client().post("/api/v2/books/book/run", json={"force": True})
     assert response.status_code == 200, response.text
     rid = response.json()["run_id"]
@@ -114,6 +115,7 @@ def test_real_queue_to_worker_uses_saved_profile_without_mutating_book(queued, m
     if restored:
         jobs[0][1].pop("language")
     run_job(jobs[0])
+    assert notifications == [{"background_run_id": jobs[0][1]["run_id"]}]
     assert {item[0] for item in captures} == {"cast", "attribute"}
     cast = next(item for item in captures if item[0] == "cast")
     if original == "en":
@@ -126,7 +128,9 @@ def test_real_queue_to_worker_uses_saved_profile_without_mutating_book(queued, m
         assert db.get(V2Run, rid).status == "done"
         assert db.get(ScriptBook, "book").language == changed
         assert db.get(ScriptChapter, "chapter").source_text == '“Hello,” Aster said.'
-        assert json.loads(db.get(BackgroundRun, jobs[0][1]["run_id"]).meta_json)["language"] == original
+        background_meta = json.loads(db.get(BackgroundRun, jobs[0][1]["run_id"]).meta_json)
+        assert background_meta["language"] == original
+        assert background_meta["by"] == "editor"
 
 
 @pytest.mark.parametrize("original,changed", [("en", "ru"), ("ru", "en")])

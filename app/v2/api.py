@@ -312,7 +312,7 @@ async def api_v2_consilium_run(request: Request, book_id: str):
         return error_response(blocked, status_code=409)
     if blocked:
         return bad_request_response(blocked)
-    run_id = consilium_engine.enqueue_consilium(found_id, mode)
+    run_id = consilium_engine.enqueue_consilium(found_id, mode, initiator_id=_actor(request)[0])
     if not run_id:
         return error_response("already_running", status_code=409)
     return JSONResponse(with_warning(request, {"ok": True, "run_id": run_id}))
@@ -589,12 +589,13 @@ def api_v2_chapter_asr(request: Request, chapter_id: str):
         entity_type="script_chapter",
         entity_id=str(chapter_id or "").strip(),
         run_key=f"asr:{chapter_id}",
-        meta={"chapter_id": str(chapter_id or "").strip(), "force": True, "language": language},
+        meta={"chapter_id": str(chapter_id or "").strip(), "force": True, "language": language, "by": _actor(request)[0]},
         chapter_id=str(chapter_id or "").strip(),
         language=language,
         # Кнопка обещает распознать заново — и платит за это; приём файлов ставит ту же
         # задачу без `force` и пересчитывает уже услышанное бесплатно.
         force=True,
+        initiator_id=_actor(request)[0],
     )
     if not job_id:
         return error_response("already_queued", status_code=409)
@@ -620,7 +621,7 @@ def api_v2_chapter_audit(request: Request, chapter_id: str):
         if assembled_audit_snapshot(db, chapter_id) is None:
             return error_response("chapter_not_assembled", status_code=409)
     try:
-        job_id = enqueue_asr_audit(chapter_id, force=True)
+        job_id = enqueue_asr_audit(chapter_id, force=True, initiator_id=_actor(request)[0])
     except AuditUnavailable as exc:
         return error_response(str(exc), status_code=409)
     if not job_id:

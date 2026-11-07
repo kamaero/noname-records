@@ -281,7 +281,7 @@ def narrator_input_fingerprint(db, chapter_id: str) -> str:
     return _narrator_snapshot(db, chapter_id)["fingerprint"]
 
 
-def _narrator_fingerprints(db, chapter_ids: list[str], *, identities_by_book=None) -> dict[str, str]:
+def _narrator_fingerprints(db, chapter_ids: list[str], *, identities_by_book=None, chapters_by_id=None) -> dict[str, str]:
     """Таблица ASR проверяет главы одним чтением входов, без полной сборки каждой.
 
     Кэш живёт только в этом вызове: правка сценария или выравнивания должна сразу
@@ -297,7 +297,15 @@ def _narrator_fingerprints(db, chapter_ids: list[str], *, identities_by_book=Non
 
     if not chapter_ids:
         return {}
-    chapters = db.query(ScriptChapter).filter(ScriptChapter.id.in_(chapter_ids)).all()
+    # Таблица записи уже загрузила главы. Переиспользуем только её локальный
+    # снимок; самостоятельному вызову и неполной карте дочитываем всё одним SELECT.
+    requested_chapters = set(chapter_ids)
+    chapters_by_id = {cid: chapter for cid, chapter in (chapters_by_id or {}).items() if cid in requested_chapters}
+    missing_chapters = requested_chapters - chapters_by_id.keys()
+    if missing_chapters:
+        chapters_by_id.update({chapter.id: chapter for chapter in db.query(ScriptChapter).filter(
+            ScriptChapter.id.in_(missing_chapters)).all()})
+    chapters = list(chapters_by_id.values())
     if not chapters:
         return {}
     books = {bid: identities._book for bid, identities in (identities_by_book or {}).items() if identities._book is not None}
@@ -795,7 +803,7 @@ def _confirm_flags(*, flags: list[dict], source_path: str = "", judge,
 
 def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
                   confirm_transcribe=None, expected_narrator_fingerprint: str = "",
-                  language: str | None = None) -> "object":
+                  language: str | None = None, notify_result=None) -> "object":
     """Снимок входа и результат фиксируются короткими транзакциями.
 
     Платные вызовы могут идти минуты: незакрытый flush на SQLite блокировал бы
@@ -945,7 +953,7 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
     db.commit()
     try:
         _notify_owner(db, chapter=chapter, book=book, audit=notice_audit, lines=lines,
-                      flags=flags, confirmed=confirmed)
+                      flags=flags, confirmed=confirmed, **({"notify_result": notify_result} if notify_result is not None else {}))
         db.commit()
     except Exception:
         db.rollback()
@@ -989,7 +997,7 @@ def _chapter_link(book_id: str, chapter_id: str) -> str:
 
 
 def _notify_owner(db, *, chapter, book, audit, lines: dict, flags: list[dict],
-                  confirmed: list[dict]) -> None:
+                  confirmed: list[dict], notify_result=None) -> None:
     """Отчёт владельцу — всегда: чистый результат тоже новость, он закрывает контур."""
     from app.services.telegram import send_telegram_message
 
@@ -1027,7 +1035,10 @@ def _notify_owner(db, *, chapter, book, audit, lines: dict, flags: list[dict],
         boundary = min(len(remaining), 3500)
         if boundary < len(remaining):
             boundary = remaining.rfind("\n", 0, boundary) or boundary
-        send_telegram_message(db, remaining[:boundary])
+        if notify_result is None:
+            send_telegram_message(db, remaining[:boundary])
+        else:
+            notify_result(remaining[:boundary])
         remaining = remaining[boundary:].lstrip("\n")
 
 
@@ -1051,7 +1062,7 @@ def _notify_narrator(db, *, chapter, book, take, confirmed: list[dict]) -> dict 
     )
 
 
-def latest_audits(db, chapter_ids: list[str], *, identities_by_book=None) -> "dict[str, dict]":
+def latest_audits(db, chapter_ids: list[str], *, identities_by_book=None, chapters_by_id=None) -> "dict[str, dict]":
     """Последний прогон аудита на каждую главу — для бейджа на экране `/asr`."""
     from app.models import AsrAudit, BackgroundRun
 
@@ -1078,7 +1089,8 @@ def latest_audits(db, chapter_ids: list[str], *, identities_by_book=None) -> "di
         except (TypeError, ValueError):
             pass
     try:
-        fingerprints = _narrator_fingerprints(db, check_ids, identities_by_book=identities_by_book)
+        fingerprints = _narrator_fingerprints(
+            db, check_ids, identities_by_book=identities_by_book, chapters_by_id=chapters_by_id)
     except Exception:
         logger.debug("Не удалось загрузить входы аудитов", exc_info=True)
         fingerprints = {}
@@ -1147,7 +1159,7 @@ def enqueue_asr_audit_if_due(db, chapter_id: str) -> str | None:
     return enqueue_asr_audit(chapter_id)
 
 
-def enqueue_asr_audit(chapter_id: str, *, force: bool = False) -> str | None:
+def enqueue_asr_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "") -> str | None:
     from app.services.asr_audit_lifecycle import enqueue_audit
 
-    return enqueue_audit(chapter_id, force=force)
+    return enqueue_audit(chapter_id, force=force, **({"initiator_id": initiator_id} if initiator_id else {}))

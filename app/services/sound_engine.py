@@ -109,7 +109,7 @@ def estimate(db, book_id: str, root: str | None = None, chapter_id: str = "", *,
     }
 
 
-def enqueue_sound(book_id: str, mode: str, chapter_id: str = "") -> str | None:
+def enqueue_sound(book_id: str, mode: str, chapter_id: str = "", initiator_id: str = "") -> str | None:
     from app.db import SessionLocal
     from app.models import BackgroundRun
     from app.workers.launcher import enqueue_tracked_task
@@ -127,6 +127,7 @@ def enqueue_sound(book_id: str, mode: str, chapter_id: str = "") -> str | None:
         book_id=book_id,
         mode=mode,
         chapter_id=chapter_id,
+        initiator_id=initiator_id,
         profile_book_id=book_id,
     )
 

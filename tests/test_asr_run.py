@@ -526,6 +526,7 @@ class TestTheEditorButtonEnqueuesForce:
         enqueued = {}
         monkeypatch.setattr(v2_api, "_is_authenticated", lambda request: True)
         monkeypatch.setattr(v2_api, "_can_edit", lambda request: True)
+        monkeypatch.setattr(v2_api, "_actor", lambda request: ("admin-1", "Admin"))
         monkeypatch.setattr(v2_api, "chapter_recording_status", lambda db, cid: {"roles": [{"files": [1]}]})
         monkeypatch.setattr(v2_api, "enqueue_tracked_task", lambda **kw: enqueued.update(kw) or "job-1")
         monkeypatch.setattr(v2_api, "SessionLocal", lambda: _NullSession())
@@ -535,6 +536,7 @@ class TestTheEditorButtonEnqueuesForce:
 
         assert response.status_code == 200
         assert enqueued["force"] is True
+        assert enqueued["initiator_id"] == enqueued["meta"]["by"] == "admin-1"
 
         seen = {}
 

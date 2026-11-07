@@ -525,7 +525,7 @@ def chapter_take_fingerprint(db, chapter_id: str) -> str:
 
 
 def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = False,
-                        language: str | None = None) -> dict:
+                        language: str | None = None, notify_result=None) -> dict:
     """Распознать дубли главы. Один упавший файл не отменяет остальные.
 
     Распознавание платное и невоспроизводимое (см. память `project_asr_heard_replay`):
@@ -615,7 +615,7 @@ def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = F
     # и письма о ней не будет.
     after_new_takes(
         db, chapter, take_ids=[str(take.id) for take in takes], lost_takes=lost_takes,
-        outdated=bool(done_jobs),
+        outdated=bool(done_jobs), notify_result=notify_result,
     )
     for job in done_jobs:
         try:
@@ -628,7 +628,7 @@ def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = F
     }
 
 
-def after_new_takes(db, chapter, *, take_ids, lost_takes=None, outdated: bool = True) -> None:
+def after_new_takes(db, chapter, *, take_ids, lost_takes=None, outdated: bool = True, notify_result=None) -> None:
     """Всё, что глава делает, когда в ней появились распознанные дубли, — кроме писем диктору.
 
     Общая часть для прогона главы (`run_asr_for_chapter`) и для дубля из бота
@@ -665,12 +665,12 @@ def after_new_takes(db, chapter, *, take_ids, lost_takes=None, outdated: bool = 
     # Отчёт владельцу — здесь, а не в ручке приёма: там распознавание ещё не
     # начиналось, и отчитываться было бы не о чем.
     try:
-        _report_chapter_if_assembled(db, chapter, take_ids=take_ids, lost_takes=lost_takes)
+        _report_chapter_if_assembled(db, chapter, take_ids=take_ids, lost_takes=lost_takes, notify_result=notify_result)
     except Exception:
         logger.exception("Не удалось отправить отчёт по главе %s", chapter.id)
 
 
-def _report_chapter_if_assembled(db, chapter, *, take_ids, lost_takes=None) -> bool:
+def _report_chapter_if_assembled(db, chapter, *, take_ids, lost_takes=None, notify_result=None) -> bool:
     """Отправить владельцу отчёт, если глава собралась и по этому составу его не было.
 
     `take_ids` — идентификаторы тех дублей, которые прогон действительно разобрал,
@@ -692,11 +692,16 @@ def _report_chapter_if_assembled(db, chapter, *, take_ids, lost_takes=None) -> b
     if not chapter_is_ready(db, str(chapter.id)):
         return False
     fingerprint = takes_fingerprint(take_ids)
-    if not fingerprint or fingerprint == str(chapter.coverage_reported_takes or ""):
+    if not fingerprint or (notify_result is None and fingerprint == str(chapter.coverage_reported_takes or "")):
         return False
     text = render_chapter_report(build_chapter_report(db, str(chapter.id), lost_takes=lost_takes))
     if not text:
         return False
+    if notify_result is not None:
+        # Ручной повтор принадлежит инициатору: общий маркер относится к письму
+        # владельцу и не должен ни глушить этот отчёт, ни считаться его доставкой.
+        notify_result(text)
+        return True
     # Без `direct`: в этом режиме `send_telegram_message` нарочно подменяет
     # адресата владельцем — ровно то, что здесь нужно.
     delivered = send_telegram_message(db, text)
