@@ -95,8 +95,12 @@
   line-height: 14px; white-space: nowrap;
   padding-left: 6px;
   font-size: 11px;
-  color: var(--text-dim);
+  color: #fff;
 }
+
+.asr-bar-value.asr-holes { color: #fff; }
+:root[data-theme="light"] .asr-bar-value,
+:root[data-theme="light"] .asr-bar-value.asr-holes { color: var(--text); }
 
 .asr-get {
   font-size: 12px;
