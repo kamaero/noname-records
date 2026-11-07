@@ -11,6 +11,7 @@
  * changes itself and preselect «моя роль».
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { markFirstStepsSeen } from "../utils/firstStepsSeen";
 import { Link, Navigate, useNavigate, useParams, useSearchParams, type NavigateFunction } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -118,6 +119,10 @@ function RemarkSelectionButton({ rect, pending, onPick }: { rect: DOMRect; pendi
 }
 
 export type ScriptReaderProps = {
+  /** Хост переносит действующий вход в реплики, не создавая вторую кнопку с отдельной логикой. */
+  roleActionHost?: HTMLElement | null;
+  /** Доступная книга из workspace сохраняет поиск ролей при недоступной главе. */
+  roleActionBookId?: string;
   chapterId: string;
   /**
    * Embedded hosts route chapter changes themselves: the rail, prev/next and the
@@ -198,6 +203,8 @@ export function ScriptReaderPage() {
 }
 
 export function ScriptReader({
+  roleActionHost,
+  roleActionBookId,
   chapterId,
   onChapterChange,
   embedded = false,
@@ -643,7 +650,8 @@ export function ScriptReader({
 
   // The book's whole cast, not this chapter's: the roles a dictor is looking for are
   // usually the ones absent from the chapter he happens to have open.
-  const bookCast = useBookCast(bookId, Boolean(bookId));
+  const roleBookId = data?.book.id ?? roleActionBookId ?? "";
+  const bookCast = useBookCast(roleBookId, Boolean(roleBookId));
   const myRoles = useMemo(
     () => (bookCast.data?.characters ?? []).filter((entry) => entry.mine && entry.lines_count > 0),
     [bookCast.data],
@@ -672,16 +680,45 @@ export function ScriptReader({
   // One own role is not a choice — go straight to it; the finder stays a click away.
   const openRoleScript = useCallback(() => {
     if (myRoles.length === 1) {
-      navigate(roleScriptHref(bookId, myRoles[0].name, roleScriptBase, roleScriptSearch));
+      navigate(roleScriptHref(roleBookId, myRoles[0].name, roleScriptBase, roleScriptSearch));
       return;
     }
     setFindRole(true);
-  }, [myRoles, bookId, navigate, roleScriptBase, roleScriptSearch]);
+  }, [myRoles, roleBookId, navigate, roleScriptBase, roleScriptSearch]);
+
+  const roleEntry = (
+    <>
+      {roleActionHost && roleBookId ? createPortal(
+        <button
+          type="button"
+          className="btn btn-primary v2r-btn v2r-mine script-bar-mine"
+          onClick={openRoleScript}
+          title="All your lines throughout the book, in reading order, with context"
+        >
+          <Icon name="doc" />
+          My lines
+        </button>,
+        roleActionHost,
+      ) : null}
+      {findRole ? (
+        <RoleFinder
+          bookId={roleBookId}
+          cast={bookCast.data?.characters ?? []}
+          loading={bookCast.isLoading}
+          onClose={() => setFindRole(false)}
+          roleScriptBase={roleScriptBase}
+          roleScriptSearch={roleScriptSearch}
+        />
+      ) : null}
+    </>
+  );
 
   if (!chapterId) return embedded ? null : <Navigate to="/reader" replace />;
-  if (chapterQuery.isLoading) return <SkeletonPanel label="Loading chapter…" lines={6} />;
+  if (chapterQuery.isLoading) return <>{roleEntry}<SkeletonPanel label="Loading chapter…" lines={6} /></>;
   if (chapterQuery.isError || !data) {
     return (
+      <>
+      {roleEntry}
       <div className="panel panel-pad v2r-empty">
         <p>{describeApiError(chapterQuery.error, "Could not load chapter.")}</p>
         {embedded ? null : (
@@ -690,6 +727,7 @@ export function ScriptReader({
           </Link>
         )}
       </div>
+      </>
     );
   }
 
@@ -897,7 +935,9 @@ export function ScriptReader({
       className={rootClass}
       style={compare && split.bodyHeight ? ({ "--v2r-avail": `${split.bodyHeight}px` } as CSSProperties) : undefined}
     >
+      {roleEntry}
       <ReaderToolbar
+        hideRoleAction={roleActionHost !== undefined}
         compact={isMobile}
         onFindRole={openRoleScript}
         myRoleCount={myRoles.length}
@@ -1101,16 +1141,6 @@ export function ScriptReader({
         <Sheet title="Chapter cast" subtitle={castSubtitle} onClose={() => setCastSheet(false)}>
           {castLegend}
         </Sheet>
-      ) : null}
-      {findRole ? (
-        <RoleFinder
-          bookId={bookId}
-          cast={bookCast.data?.characters ?? []}
-          loading={bookCast.isLoading}
-          onClose={() => setFindRole(false)}
-          roleScriptBase={roleScriptBase}
-          roleScriptSearch={roleScriptSearch}
-        />
       ) : null}
       {canVoice && editor.sheet === "queue" ? (
         <StressQueue bookId={bookId} onClose={() => editor.setSheet(null)} onPick={editor.jumpTo} />

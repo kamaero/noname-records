@@ -2,9 +2,8 @@ import { roleLabel } from "../v2/types";
 /**
  * Сценарий `/app/recording?book_id=&chapter_id=&role=`
  *
- * The v2 reader embedded in «моя роль» mode (the actor's own lines with context), the
- * whole width of the page. Above it — one quiet line: book (only when there is a
- * choice), role, «все реплики роли», and the way to «Загрузка» with the same pick.
+ * Выбор роли и переход к своим репликам живут над Читалкой: они остаются доступны,
+ * даже если текст текущей главы не загрузился. Загрузка сохраняет тот же выбор.
  * The upload form lived in a sticky panel on the right until 29.10; the owner moved it
  * to its own section so the page dictors read from carries only the text.
  *
@@ -12,7 +11,7 @@ import { roleLabel } from "../v2/types";
  * not published yet: the chapter list falls back to the book's v2-marked chapters
  * and the cast to the reader's payload.
  */
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { describeApiError } from "../api/client";
 import { Icon } from "../components/Icon";
@@ -25,6 +24,7 @@ import "../components/recording/recording.css";
 
 export function RecordingPage() {
   const sel = useRecordingSelection({ rememberPosition: true });
+  const [roleActionHost, setRoleActionHost] = useState<HTMLDivElement | null>(null);
   const { searchParams, setSearchParams } = sel;
   const openStressQueue = searchParams.get("stress") === "1";
 
@@ -99,58 +99,63 @@ export function RecordingPage() {
   return (
     <div className="script-page">
       <div className="script-bar" role="toolbar" aria-label="Reading selection">
-        {sel.panelBooks.length > 1 ? (
-          <label className="script-bar-field">
-            <span className="rec-label">Book</span>
-            <select className="ui-input rec-select" value={sel.bookId} onChange={(event) => sel.goToBook(event.target.value)}>
-              {sel.panelBooks.map((book) => (
-                <option key={book.id} value={book.id}>
-                  {book.title}
-                </option>
-              ))}
+        <div className="script-bar-selection">
+          {sel.panelBooks.length > 1 ? (
+            <label className="script-bar-field">
+              <span className="rec-label">Book</span>
+              <select className="ui-input rec-select" value={sel.bookId} onChange={(event) => sel.goToBook(event.target.value)}>
+                {sel.panelBooks.map((book) => (
+                  <option key={book.id} value={book.id}>
+                    {book.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <div className="script-bar-field">
+            <label className="rec-label" htmlFor="script-role">Role</label>
+            <select id="script-role" className="ui-input rec-select" value={sel.role} onChange={(event) => sel.chooseRole(event.target.value)}>
+              <option value="">{sel.myRoles.length ? "— all my roles —" : "— choose a role —"}</option>
+              {sel.myRoles.length ? (
+                <optgroup label="My roles">
+                  {sel.myRoles.map((item) => (
+                    <option key={item.name} value={item.name}>
+                      {roleLabel(item.name)} · {item.lines}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {others.length ? (
+                <optgroup label={sel.myRoles.length ? "Other roles" : "Book roles"}>
+                  {others.map((item) => (
+                    <option key={item.name} value={item.name}>
+                      {roleLabel(item.name)} · {item.lines}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
             </select>
-          </label>
-        ) : null}
-        <label className="script-bar-field">
-          <span className="rec-label">Role</span>
-          <select className="ui-input rec-select" value={sel.role} onChange={(event) => sel.chooseRole(event.target.value)}>
-            <option value="">{sel.myRoles.length ? "— all my roles —" : "— choose a role —"}</option>
-            {sel.myRoles.length ? (
-              <optgroup label="My roles">
-                {sel.myRoles.map((item) => (
-                  <option key={item.name} value={item.name}>
-                    {roleLabel(item.name)} · {item.lines}
-                  </option>
-                ))}
-              </optgroup>
+            {sel.role && sel.bookId ? (
+              <Link
+                className="script-bar-role-link"
+                to={roleScriptHref(sel.bookId, sel.role, "/recording/role", searchParams.toString())}
+                title="All lines for the selected role throughout the book, with context"
+              >
+                Selected role script →
+              </Link>
             ) : null}
-            {others.length ? (
-              <optgroup label={sel.myRoles.length ? "Other roles" : "Book roles"}>
-                {others.map((item) => (
-                  <option key={item.name} value={item.name}>
-                    {roleLabel(item.name)} · {item.lines}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-          </select>
-        </label>
-        {sel.role && sel.bookId ? (
-          <Link
-            className="script-bar-link"
-            to={roleScriptHref(sel.bookId, sel.role, "/recording/role", searchParams.toString())}
-            title="All lines for this role throughout the book, with context"
-          >
-            All lines for this role →
-          </Link>
-        ) : null}
-        <LinkButton className="script-bar-upload" variant="primary" size="sm" to={takesHref} icon={<Icon name="upload" />}>
+          </div>
+        </div>
+        <div className="script-bar-role-action" ref={setRoleActionHost} />
+        <LinkButton className="script-bar-upload" variant="secondary" size="sm" to={takesHref} icon={<Icon name="upload" />}>
           Upload take
         </LinkButton>
       </div>
       <ScriptReader
         key={sel.bookId}
         embedded
+        roleActionHost={roleActionHost}
+        roleActionBookId={sel.bookId}
         chapterId={sel.chapterId}
         onChapterChange={sel.goToChapter}
         initialRoles={readerRoles}

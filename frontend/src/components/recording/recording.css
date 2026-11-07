@@ -8,14 +8,25 @@
 
 .script-page { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .script-bar {
-  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px;
-  padding: 10px var(--pad);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px;
+  padding: 12px var(--pad);
   border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
 }
-.script-bar-field { display: flex; flex-direction: column; gap: 4px; min-width: 200px; max-width: 320px; flex: 0 1 260px; }
+.script-bar-selection { display: flex; flex-wrap: wrap; gap: 10px 16px; min-width: 0; }
+.script-bar-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 320px; flex: 1 1 200px; }
 .script-bar-field .rec-label { margin: 0; }
-.script-bar-link { font-size: 13px; padding-bottom: 8px; }
-.script-bar-upload { margin-left: auto; }
+.script-bar-role-link { font-size: 12px; color: var(--accent); }
+.script-bar-role-action { display: flex; justify-content: center; }
+.script-bar-mine { min-height: 44px; padding: 10px 24px; font-size: 14px; font-weight: 600; }
+.script-bar-upload { justify-self: end; }
+
+/* На телефоне переход к репликам остаётся отдельной видимой строкой. */
+@media (max-width: 760px) {
+  .script-bar { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .script-bar-selection, .script-bar-field { max-width: none; }
+  .script-bar-mine { width: 100%; }
+  .script-bar-upload { justify-self: end; }
+}
 
 /* embedded reader: no book line, no top prev/next, no print, no radius — search / stress / font stay */
 .v2r--embedded { --v2r-rail-w: 220px; }
@@ -101,7 +112,6 @@
 /* ---------- narrow: the two columns of «Загрузка» stack ---------- */
 @media (max-width: 899px) {
   .rec-panel { grid-template-columns: minmax(0, 1fr); }
-  .script-bar-upload { margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .rec-drop { transition: none; }

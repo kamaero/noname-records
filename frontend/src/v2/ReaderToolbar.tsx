@@ -5,6 +5,7 @@ import { StressToggle } from "./StressToggle";
 import type { FontSize, ReaderPrefs } from "./useReaderPrefs";
 
 type ReaderToolbarProps = {
+  hideRoleAction?: boolean;
   bookTitle: string;
   chapterIndex: number;
   chapterTitle: string;
@@ -94,7 +95,7 @@ const FONTS: Array<[FontSize, string]> = [
 ];
 
 export function ReaderToolbar(props: ReaderToolbarProps) {
-  const { bookTitle, chapterIndex, chapterTitle, remarkCount = 0, onPrev, onNext, prefs, onPrefs, query, onQuery, onPrint, onToggleRail, railOpen, cast, approval, sound, lore, compare, editor, compact = false, onFindRole, myRoleCount = 0 } = props;
+  const { hideRoleAction = false, bookTitle, chapterIndex, chapterTitle, remarkCount = 0, onPrev, onNext, prefs, onPrefs, query, onQuery, onPrint, onToggleRail, railOpen, cast, approval, sound, lore, compare, editor, compact = false, onFindRole, myRoleCount = 0 } = props;
   const filtering = cast.selected.length > 0;
   const [more, setMore] = useState(false);
   // on a wide screen there is nothing to unfold: everything is already on the row
@@ -162,15 +163,17 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
           {filtering ? `My role: ${cast.selected.map(roleLabel).join(", ")}` : `Chapter cast`}
           <span className="v2r-legend-count num">{filtering ? cast.selected.length : cast.count}</span>
         </button>
-        <button
-          type="button"
-          className="btn btn-sm v2r-btn v2r-mine"
-          onClick={onFindRole}
-          title="All lines for this role throughout the book, in reading order, with context"
-        >
-          <Icon name="doc" />
-          {myRoleCount > 0 ? "My lines" : "All lines for role"}
-        </button>
+        {!hideRoleAction ? (
+          <button
+            type="button"
+            className="btn btn-sm v2r-btn v2r-mine"
+            onClick={onFindRole}
+            title="All lines for this role throughout the book, in reading order, with context"
+          >
+            <Icon name="doc" />
+            {myRoleCount > 0 ? "My lines" : "All lines for role"}
+          </button>
+        ) : null}
         {filtering && cast.cursor ? (
           <span className="v2r-cursor" role="group" aria-label="Role line navigation">
             <button
