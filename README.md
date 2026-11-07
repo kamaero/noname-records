@@ -4,7 +4,16 @@ Noname Records is a self-hosted workspace for full-cast audiobook production. Im
 
 Your studio runs its own copy. AI services use your own provider keys and may charge for requests. Check provider terms, estimates and prices before starting a job. Book text and audio are sent only to the services you choose for that work. The software is free under the [AGPL-3.0 license](LICENSE).
 
-[Русская документация](README.ru.md)
+**English** · [Русский](README.ru.md)
+
+## What you can do
+
+- Import `.txt`, `.docx`, `.fb2` and `.epub` books in English or Russian. Choose the book language when uploading; the interface is in English.
+- Find characters, review speaker attribution in the reader, and organize the cast.
+- Publish chapters to actors, collect takes and compare recordings with the script using speech recognition.
+- Download chapter projects for Adobe Audition. Optional tools include sound and ambient work and Telegram notifications.
+
+AI results need human review. Provider availability, model quality and costs depend on your configuration.
 
 ## Requirements
 
@@ -57,7 +66,7 @@ The installer configures Docker and HTTPS. Sign in at your domain. The optional 
 
 ## Maintenance
 
-Run commands from the installation directory (`~/noname-records` on Mac/Linux or `$HOME\\noname-records` in Windows PowerShell):
+Run commands from the installation directory (`~/noname-records` on Mac/Linux or `$HOME\noname-records` in Windows PowerShell):
 
 | Task | Mac / Linux | Windows PowerShell |
 |---|---|---|
