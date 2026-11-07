@@ -8,16 +8,16 @@ from app.models import AuditLog
 
 
 AUDIT_ACTION_LABELS = {
-    "login_password": "Вход по паролю",
-    "login_telegram": "Вход через Telegram",
-    "upload_and_enqueue": "Запуск авторазметки",
-    "stop_pipeline": "Остановка пайплайна",
-    "pause_pipeline": "Пауза пайплайна",
-    "continue_pipeline": "Продолжение пайплайна",
-    "delete_book": "Удаление книги",
-    "create_whitelist": "Добавление в whitelist",
-    "update_whitelist": "Изменение whitelist",
-    "password_issued_by_bot": "Пароль выдан ботом",
+    "login_password": "Password sign-in",
+    "login_telegram": "Telegram sign-in",
+    "upload_and_enqueue": "Book processing started",
+    "stop_pipeline": "Book processing stopped",
+    "pause_pipeline": "Book processing paused",
+    "continue_pipeline": "Book processing resumed",
+    "delete_book": "Book deleted",
+    "create_whitelist": "Access granted",
+    "update_whitelist": "Access changed",
+    "password_issued_by_bot": "Password issued by bot",
 }
 
 

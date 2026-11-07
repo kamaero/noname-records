@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from app.config import settings
 from app.models import ModelPrice, SpendEntry
 from app.time_utils import utcnow_naive
+from app.services.studio_calendar import local_time, midnight_utc, studio_timezone
 
 
 @dataclass(frozen=True)
@@ -98,15 +99,15 @@ def record(db, *, step: str, provider: str, model: str, unit: str, input_units: 
     return row
 
 
-def month_key(now: datetime) -> str:
+def month_key(now: datetime, *, timezone: str = "") -> str:
     """Календарный месяц по Москве: 23:30 МСК 31-го и 00:10 МСК 1-го — разные месяцы."""
-    return (now + MSK).strftime("%Y-%m")
+    return local_time(now, timezone).strftime("%Y-%m")
 
 
-def month_bounds(key: str) -> tuple[datetime, datetime]:
+def month_bounds(key: str, *, timezone: str = "") -> tuple[datetime, datetime]:
     year, month = (int(part) for part in key.split("-"))
-    start = datetime(year, month, 1) - MSK
-    end = (datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)) - MSK
+    start = midnight_utc(datetime(year, month, 1).date(), timezone)
+    end = midnight_utc((datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)).date(), timezone)
     return start, end
 
 
@@ -118,7 +119,7 @@ def month_summary(db, key: str) -> dict:
     from app.services.studio_settings import studio_settings
 
     drain_spool()
-    start, end = month_bounds(key)
+    start, end = month_bounds(key, timezone=studio_timezone(db))
     in_month = (SpendEntry.created_at >= start, SpendEntry.created_at < end)
     unknown = func.sum(case((SpendEntry.rub.is_(None), 1), else_=0))
 
@@ -142,6 +143,7 @@ def month_summary(db, key: str) -> dict:
     limit = int(studio_settings(db).monthly_limit_rub or 0)
     return {
         "month": key, "total_rub": round(total, 2),
+        "calendar_timezone": studio_timezone(db) or "legacy:UTC+03:00",
         "unknown_calls": sum(item["unknown_calls"] for item in by_step.values()),
         "limit_rub": limit, "left_rub": max(0.0, round(limit - total, 2)) if limit else None,
         "by_step": by_step, "by_provider": by_provider,
@@ -342,7 +344,8 @@ def _held(db, now: datetime) -> float:
     считаются второй раз: что прогон уже потратил, сидит в сумме месяца."""
     from sqlalchemy import func
 
-    since = max(now - timedelta(hours=HOLD_HOURS), month_bounds(month_key(now))[0])
+    timezone = studio_timezone(db)
+    since = max(now - timedelta(hours=HOLD_HOURS), month_bounds(month_key(now, timezone=timezone), timezone=timezone)[0])
     holds = (db.query(SpendHold.created_at, SpendHold.estimate_rub).filter(SpendHold.created_at >= since)
              .order_by(SpendHold.created_at).all())
     if not holds:
@@ -370,10 +373,11 @@ def check_start(db, *, estimate_rub: float, unknown_price: bool, override: bool,
     """Можно ли начать платный прогон. Начатые лимитом не останавливаются (решение владельца):
     сверяется только старт. «Сверх лимита» — только администратор и всегда в журнал."""
     if override and not is_admin:
-        raise PermissionError("сверх лимита запускает только администратор")
+        raise PermissionError("Only an administrator can start runs over the limit")
     now = now or utcnow_naive()
     with _START_LOCK:
-        summary = month_summary(db, month_key(now))
+        timezone = studio_timezone(db)
+        summary = month_summary(db, month_key(now, timezone=timezone))
         limit = int(summary["limit_rub"] or 0)
         estimate = float(estimate_rub or 0)
         if not limit:
@@ -386,7 +390,7 @@ def check_start(db, *, estimate_rub: float, unknown_price: bool, override: bool,
         if not decision.allowed and not override:
             return decision
         if not decision.allowed:
-            db.add(AuditLog(user_id=actor_uid, entity_type="spend_limit", entity_id=month_key(now),
+            db.add(AuditLog(user_id=actor_uid, entity_type="spend_limit", entity_id=month_key(now, timezone=timezone),
                             action="override",
                             payload_json=json.dumps({"what": what, **decision.payload()}, ensure_ascii=False)))
         db.add(SpendHold(created_at=now, estimate_rub=estimate, what=str(what or "")[:80]))
@@ -401,7 +405,7 @@ def warn_thresholds(db, now: datetime, send) -> int:
     from app.services.studio_settings import studio_settings
 
     row = studio_settings(db)
-    key = month_key(now)
+    key = month_key(now, timezone=studio_timezone(db))
     summary = month_summary(db, key)
     limit = int(summary["limit_rub"] or 0)
     if not limit:
@@ -412,10 +416,10 @@ def warn_thresholds(db, now: datetime, send) -> int:
     already = int(done or 0) if month == key else 0
     if reached <= already:
         return 0
-    text = (f"Траты на нейросети за месяц — {summary['total_rub']:,.0f} ₽ из {limit:,} ₽ ({reached} % лимита)."
+    text = (f"Monthly AI spending: {summary['total_rub']:,.0f} ₽ of {limit:,} ₽ ({reached}% of the limit)."
             .replace(",", " "))
     if reached >= 100:
-        text += " Новые платные прогоны не запустятся без «сверх лимита»."
+        text += " New paid runs require the over-limit option."
     if not send(text):
         return 0  # бот не ответил — попробуем следующим проходом, а не забудем порог
     row.spend_warned_month = f"{key}:{reached}"
@@ -528,11 +532,12 @@ def months(db) -> list[str]:
     from sqlalchemy import func
 
     first = db.query(func.min(SpendEntry.created_at)).scalar()
-    current = month_key(utcnow_naive())
+    timezone = studio_timezone(db)
+    current = month_key(utcnow_naive(), timezone=timezone)
     if first is None:
         return [current]
     out, key = [], current
-    stop = month_key(first)
+    stop = month_key(first, timezone=timezone)
     while True:
         out.append(key)
         if key <= stop or len(out) >= 120:

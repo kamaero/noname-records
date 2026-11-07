@@ -58,7 +58,7 @@ def test_a_dictor_gets_the_status_button(db):
 def test_the_status_button_shows_the_status(db):
     _person(db, "41", roles=("dictor",))
     out = handle_update(db, _msg(STATUS_BUTTON, "41"), now=NOW)
-    assert "Ваш статус в" in out[0].payload["text"]
+    assert "Your status at" in out[0].payload["text"]
 
 
 @pytest.mark.parametrize("roles,tg_role", [(("author",), None), (("agent",), None), (("dictor",), "agent")])
@@ -83,13 +83,13 @@ def _press(data, tid):
 def test_staff_get_the_overview(db, text):
     _person(db, "50", roles=("author",))
     out = handle_update(db, _msg(text, "50"), now=NOW)
-    assert "Студия —" in out[0].payload["text"] and out[0].payload["reply_markup"]["inline_keyboard"]
+    assert "Studio —" in out[0].payload["text"] and out[0].payload["reply_markup"]["inline_keyboard"]
 
 
 def test_a_dictor_gets_no_overview(db):
     _person(db, "41", roles=("dictor",))
     out = handle_update(db, _msg("/studiostatus", "41"), now=NOW)
-    assert "Студия —" not in out[0].payload["text"] and "/status" in out[0].payload["text"]
+    assert "Studio —" not in out[0].payload["text"] and "/status" in out[0].payload["text"]
     pressed = handle_update(db, _press("ss:p", "41"), now=NOW)
     assert [o.method for o in pressed] == ["answerCallbackQuery"]
 
@@ -97,7 +97,7 @@ def test_a_dictor_gets_no_overview(db):
 def test_a_section_button_sends_the_section(db):
     _person(db, "11", roles=("admin",))
     out = handle_update(db, _press("ss:p", "11"), now=NOW)
-    assert out[0].method == "answerCallbackQuery" and "Пробы ждут решения" in out[1].payload["text"]
+    assert out[0].method == "answerCallbackQuery" and "Auditions awaiting a decision" in out[1].payload["text"]
 
 
 @pytest.mark.parametrize("text", ["/dictor Человек 41", "/диктор Человек 41"])
@@ -122,4 +122,4 @@ def test_only_the_agent_role_is_taken_from_the_telegram_row(db):
     только `agent`, как `agent_chat_ids`."""
     _person(db, "60", roles=("dictor",), tg_role="author")
     out = handle_update(db, _msg("/studiostatus", "60"), now=NOW)
-    assert "Студия —" not in out[0].payload["text"]
+    assert "Studio —" not in out[0].payload["text"]

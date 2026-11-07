@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+from app.services.studio_calendar import studio_timezone
+
 import html
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -95,26 +97,23 @@ def owner_by_name(name: str) -> Callable[[str], bool]:
 def _account_lines(user: User | None, *, admin: bool) -> list[str]:
     if user is None:
         return []
-    lines = [f"Учётка: {_esc(user.display_name or user.login)} (логин <code>{_esc(user.login)}</code>)"]
+    lines = [f"Account: {_esc(user.display_name or user.login)} (login <code>{_esc(user.login)}</code>)"]
     if not admin:
         if str(user.password_hash or "") == TELEGRAM_PASSWORD_HASH:
-            lines.append("Пароля нет — вход через Telegram или кнопка «🔑 Логин и пароль».")
+            lines.append("No password is set. Use Telegram sign-in or 🔑 Login and password.")
         else:
-            lines.append("Пароль выдан. Забыли — кнопка «🔑 Логин и пароль».")
-    lines.append(f"Вход: {LOGIN_URL}")
+            lines.append("A password has been issued. If forgotten, select 🔑 Login and password.")
+    lines.append(f"Sign in: {LOGIN_URL}")
     return lines
 
 
 def _chapters(n: int) -> str:
-    mod10, mod100 = n % 10, n % 100
-    if mod10 == 1 and mod100 != 11:
-        return "главы"
-    return "глав"
+    return "chapter" if n == 1 else "chapters"
 
 
 def person_lines(db, owns: Callable[[str], bool], *, now: datetime, you: bool = True) -> PersonLines:
     """Роли, пробы и отказы человека. `you=False` — карточка глазами админа: «ждём пробу»."""
-    wait = f"ждём {'вашу ' if you else ''}пробу"
+    wait = f"awaiting {'your ' if you else ''}audition"
     # Озвученная книга в сводке диктора не показывается: ролей в ней больше нет.
     books = {b.id: b for b in db.query(ScriptBook).filter(ScriptBook.voiced_at.is_(None)).all()}
     by_code = {derive_book_code(str(b.title or "")): b for b in books.values()}
@@ -147,13 +146,13 @@ def person_lines(db, owns: Callable[[str], bool], *, now: datetime, you: bool = 
         done, total = role_progress(db, ch, name)
         line = f"• «{_esc(str(ch.name or ''))}» — «{title(ch.book_id)}»"
         if total:
-            line += f": сдано {done} из {total} {_chapters(total)}"
+            line += f": completed {done} of {total} {_chapters(total)}"
         deadline = open_deadlines.get(ch.id)
         if total and done >= total:
             line += " ✓"
         elif deadline is not None and deadline.kind == "role":
-            late = " — срок вышел" if deadline.due_at < now else ""
-            line += f", срок до {format_due(deadline.due_at, kind='role')}{late}"
+            late = " — overdue" if deadline.due_at < now else ""
+            line += f", due {format_due(deadline.due_at, kind='role', timezone=studio_timezone(db))}{late}"
         roles.append(line)
 
     rejected: list[str] = []
@@ -161,7 +160,7 @@ def person_lines(db, owns: Callable[[str], bool], *, now: datetime, you: bool = 
     for rej in db.query(AuditionRejection).filter(AuditionRejection.status == SENT).all():
         if rej.book_id in books and owns(rej.actor_name):
             rejected_keys.add((rej.book_id, normalize_name(rej.role)))
-            rejected.append(f"• «{_esc(rej.role)}» — «{title(rej.book_id)}»: выбран другой исполнитель")
+            rejected.append(f"• «{_esc(rej.role)}» — «{title(rej.book_id)}»: another actor was selected")
 
     rejected.sort(key=lambda line: line.lower())
 
@@ -191,16 +190,16 @@ def person_lines(db, owns: Callable[[str], bool], *, now: datetime, you: bool = 
         ch = invited.get(key)
         line = f"• «{_esc(shown_name[key])}» — «{title(key[0])}»: "
         if key in uploaded:
-            line += "проба загружена, ждёт решения"
+            line += "audition uploaded; awaiting a decision"
         else:
             deadline = open_deadlines.get(ch.id)
             if deadline is not None and deadline.kind == "audition" and deadline.accepted_at is not None:
                 # «✅ Беру» в боте (пакет B): человек ответил — не «ждём», а «взята»
-                line += "проба взята — срок вышел" if deadline.due_at < now else \
-                    f"проба взята, ждём до {format_due(deadline.due_at, kind='time')}"
+                line += "audition accepted; overdue" if deadline.due_at < now else \
+                    f"audition accepted; due {format_due(deadline.due_at, kind='time', timezone=studio_timezone(db))}"
             elif deadline is not None and deadline.kind == "audition":
-                line += f"{wait} — срок вышел" if deadline.due_at < now else \
-                    f"{wait} до {format_due(deadline.due_at, kind='time')}"
+                line += f"{wait} — overdue" if deadline.due_at < now else \
+                    f"{wait} by {format_due(deadline.due_at, kind='time', timezone=studio_timezone(db))}"
             else:
                 line += wait
         auditions.append(line)
@@ -211,14 +210,14 @@ def person_lines(db, owns: Callable[[str], bool], *, now: datetime, you: bool = 
 def status_text(db, tid: str, user: User | None, *, admin: bool, now: datetime) -> str:
     """Сводка для `/status`. HTML-разметка Telegram (`parse_mode=HTML`)."""
     lines = person_lines(db, owner_by_chat(db, tid, user), now=now)
-    parts = [f"📋 <b>Ваш статус в {html.escape(studio.name())}</b>", ""]
+    parts = [f"📋 <b>Your status at {html.escape(studio.name())}</b>", ""]
     parts += _account_lines(user, admin=admin)
-    parts += ["", "🎬 <b>Утверждённые роли</b>"] + (lines.roles or ["Пока нет."])
-    parts += ["", "🎙 <b>Пробы</b>"] + (lines.auditions or ["Приглашений на пробу сейчас нет."])
+    parts += ["", "🎬 <b>Approved roles</b>"] + (lines.roles or ["None yet."])
+    parts += ["", "🎙 <b>Auditions</b>"] + (lines.auditions or ["No current audition invitations."])
     if lines.rejected:
-        parts += ["", "✉️ <b>Отказы</b>"] + lines.rejected
-    parts += ["", f"Записи — на сайте, раздел «Загрузка». По книге, которая сейчас в работе студии, дубль можно "
-              f"прислать и файлом в бот. Вопросы и продление срока — {studio.write_to()}."]
+        parts += ["", "✉️ <b>Other selections</b>"] + lines.rejected
+    parts += ["", "Upload recordings on the website. For the book currently being recorded, you can also "
+              f"send a file to the bot. For questions or more time, {studio.write_to()}."]
     return _fit(parts)
 
 
@@ -232,4 +231,4 @@ def _fit(parts: list[str]) -> str:
         if len("\n".join(kept + [part])) > TEXT_LIMIT:
             break
         kept.append(part)
-    return "\n".join(kept + ["", f"…список длинный, полностью — на сайте: {LOGIN_URL}"])
+    return "\n".join(kept + ["", f"…the full list is on the website: {LOGIN_URL}"])

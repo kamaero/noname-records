@@ -1,6 +1,6 @@
 """Who may do what, after the studio settled on four roles.
 
-`admin` is Max Ray, `author` is Primerodin, everyone else is `dictor`. Что роль ровно
+`admin` is Max Ray, `author` is primerov, everyone else is `dictor`. Что роль ровно
 одна — в `test_one_dictor_role.py`; здесь про то, что она даёт.
 
 Четвёртая роль — `agent`, кастинг-директор. Она законна ровно потому, чем были

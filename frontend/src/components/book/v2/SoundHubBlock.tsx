@@ -13,32 +13,32 @@ import type { SoundEstimate, SoundMode, SoundRun } from "../../../v2/types";
 type SoundBlock = SoundEstimate["blocked"][SoundMode];
 
 const BLOCK_TEXT: Record<Exclude<SoundBlock, "">, string> = {
-  no_credits: "не хватает денег на балансе RouterAI",
-  book_busy: "книга сейчас размечается",
-  already_running: "прогон уже идёт",
+  no_credits: "insufficient RouterAI balance",
+  book_busy: "book annotation is running",
+  already_running: "a run is already in progress",
 };
 
-const MODE_LABEL: Record<SoundMode, string> = { rest: "Доразметить", all: "Разметить заново" };
+const MODE_LABEL: Record<SoundMode, string> = { rest: "Annotate remaining chapters", all: "Annotate again" };
 
-const rub = (value: number) => Math.round(value).toLocaleString("ru-RU");
+const rub = (value: number) => Math.round(value).toLocaleString("en-US");
 
 function progressLine(run: SoundRun): string {
-  if (run.status === "queued" || run.phase === "queued") return "Звуковая разметка: в очереди…";
-  const money = `потрачено ${rub(run.spent_rub)} ₽ из ≈ ${rub(run.estimate_rub)}`;
-  if (run.phase === "places") return `Звуковая разметка: сверяю места книги · ${money}`;
+  if (run.status === "queued" || run.phase === "queued") return "Sound annotation: queued…";
+  const money = `spent ${rub(run.spent_rub)} RUB of ≈ ${rub(run.estimate_rub)}`;
+  if (run.phase === "places") return `Sound annotation: checking locations · ${money}`;
   const current = Math.min(run.chapters_done + 1, run.chapters_total);
-  return `Звуковая разметка: глава ${current} из ${run.chapters_total} · ${money}`;
+  return `Sound annotation: chapter ${current} of ${run.chapters_total} · ${money}`;
 }
 
 function outcomeLine(run: SoundRun, places: number, pairs: number): string {
   if (run.status === "done") {
     const day = run.finished_at ? ` ${run.finished_at.slice(8, 10)}.${run.finished_at.slice(5, 7)}` : "";
     const markers = Number(run.result?.markers ?? 0);
-    const incomplete = run.chapters_incomplete > 0 ? ` · неполных глав ${run.chapters_incomplete}` : "";
-    return `Звуковая разметка${day}: новых маркеров ${markers}, мест ${places}, пар на решение ${pairs}${incomplete}`;
+    const incomplete = run.chapters_incomplete > 0 ? ` · incomplete chapters ${run.chapters_incomplete}` : "";
+    return `Sound annotation${day}: new markers ${markers}, locations ${places}, pairs to review ${pairs}${incomplete}`;
   }
-  if (run.status === "stopped") return `Звуковая разметка остановлена: ${run.error || "без причины"}`;
-  if (run.status === "failed") return `Звуковая разметка упала: ${run.error || "без подробностей"}`;
+  if (run.status === "stopped") return `Sound annotation stopped: ${run.error || "no reason given"}`;
+  if (run.status === "failed") return `Sound annotation failed: ${run.error || "no details"}`;
   return "";
 }
 
@@ -61,11 +61,11 @@ export function SoundHubBlock({ bookId, soundTo }: { bookId: string; soundTo: st
     mutationFn: (mode: SoundMode) => startSound(bookId, mode),
     onSuccess: async () => {
       setConfirming(false);
-      pushToast({ tone: "success", title: "Звуковая разметка запущена", detail: "Ход виден здесь; по завершении придёт сообщение в Telegram." });
+      pushToast({ tone: "success", title: "Sound annotation started", detail: "Track progress here. You will receive a Telegram message when it finishes." });
       await refresh();
     },
     onError: async (error) => {
-      pushToast({ tone: "error", title: "Звуковая разметка не запущена", detail: describeSoundError(error) });
+      pushToast({ tone: "error", title: "Sound annotation not started", detail: describeSoundError(error) });
       await refresh();
     },
   });
@@ -73,10 +73,10 @@ export function SoundHubBlock({ bookId, soundTo }: { bookId: string; soundTo: st
   const stop = useMutation({
     mutationFn: () => stopSound(bookId),
     onSuccess: async () => {
-      pushToast({ tone: "success", title: "Остановка запрошена", detail: "Текущая глава доделается и сохранится." });
+      pushToast({ tone: "success", title: "Stop requested", detail: "The current chapter will finish and be saved." });
       await refresh();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не остановилась", detail: describeSoundError(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Could not stop", detail: describeSoundError(error) }),
   });
 
   if (active && run) {
@@ -88,7 +88,7 @@ export function SoundHubBlock({ bookId, soundTo }: { bookId: string; soundTo: st
         </div>
         <span className="hub-consilium-line">{progressLine(run)}</span>
         <Button size="sm" variant="ghost" loading={stop.isPending} disabled={run.stop_requested} onClick={() => stop.mutate()}>
-          {run.stop_requested ? "останавливается…" : "остановить"}
+          {run.stop_requested ? "stopping…" : "stop"}
         </Button>
       </div>
     );
@@ -103,7 +103,7 @@ export function SoundHubBlock({ bookId, soundTo }: { bookId: string; soundTo: st
       {!confirming ? (
         <div className="hub-consilium-row">
           <Button size="sm" variant="secondary" onClick={() => setConfirming(true)}>
-            {failed ? "Продолжить звуковую разметку" : "Звуковая разметка"}
+            {failed ? "Resume sound annotation" : "Sound annotation"}
           </Button>
           {outcome ? (
             run?.status === "done" ? (
@@ -114,22 +114,21 @@ export function SoundHubBlock({ bookId, soundTo }: { bookId: string; soundTo: st
           ) : null}
         </div>
       ) : (
-        <div className="hub-confirm" role="group" aria-label="Запуск звуковой разметки">
-          {estimate.isLoading ? <p>Считаю смету…</p> : null}
-          {estimate.isError ? <p>{describeSoundError(estimate.error, "Смета не посчиталась.")}</p> : null}
+        <div className="hub-confirm" role="group" aria-label="Start sound annotation">
+          {estimate.isLoading ? <p>Calculating estimate…</p> : null}
+          {estimate.isError ? <p>{describeSoundError(estimate.error, "Could not calculate estimate.")}</p> : null}
           {plan ? (
             <>
               <p>
-                ИИ читает главы по порядку и отмечает сцены, переходы и значимые звуки; ваши правки прогон не трогает.
-                Глав всего {plan.chapters_total}, ещё не размечено: {plan.chapters_to_read.rest}.
-                {plan.credits !== null ? ` Баланс RouterAI: ${rub(plan.credits)} ₽.` : " Баланс RouterAI не прочитан."}
+                AI reads chapters in order and marks scenes, transitions and significant sounds. Your edits are preserved. Total chapters: {plan.chapters_total}, not yet annotated: {plan.chapters_to_read.rest}.
+                {plan.credits !== null ? ` RouterAI balance: ${rub(plan.credits)} ₽.` : " RouterAI balance unavailable."}
               </p>
               <div className="hub-confirm-actions">
                 {(["rest", "all"] as SoundMode[]).map((mode) => {
                   const blocked = plan.blocked[mode];
                   const nothing = plan.chapters_to_read[mode] === 0;
                   // неизвестный код блокировки — тоже блокировка, а не повод разрешить запуск
-                  const why = blocked ? BLOCK_TEXT[blocked] ?? "запуск сейчас недоступен" : nothing ? "все главы уже размечены" : "";
+                  const why = blocked ? BLOCK_TEXT[blocked] ?? "cannot start right now" : nothing ? "all chapters are annotated" : "";
                   return (
                     <Button
                       key={mode}
@@ -146,7 +145,7 @@ export function SoundHubBlock({ bookId, soundTo }: { bookId: string; soundTo: st
                   );
                 })}
                 <Button size="sm" variant="ghost" disabled={start.isPending} onClick={() => setConfirming(false)}>
-                  Отмена
+                  Cancel
                 </Button>
               </div>
             </>

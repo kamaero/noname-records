@@ -16,14 +16,14 @@ export function PaletteWarning({ conflicts }: { conflicts: PaletteConflict[] }) 
   const rest = conflicts.length - shown.length;
   return (
     <>
-      <strong>Похожий цвет у ролей из тех же глав — на распечатке их можно спутать:</strong>
+      <strong>Roles with similar colors in the same chapters may be hard to distinguish in print:</strong>
       <ul>
         {shown.map((item) => (
           <li key={item.rightId}>
-            {item.rightName} — {item.chapters.length > 3 ? `главы ${item.chapters.slice(0, 3).join(", ")}…` : `главы ${item.chapters.join(", ")}`}
+            {item.rightName} — {item.chapters.length > 3 ? `chapters ${item.chapters.slice(0, 3).join(", ")}…` : `chapters ${item.chapters.join(", ")}`}
           </li>
         ))}
-        {rest > 0 ? <li>…и ещё {rest}</li> : null}
+        {rest > 0 ? <li>…and {rest}</li> : null}
       </ul>
     </>
   );

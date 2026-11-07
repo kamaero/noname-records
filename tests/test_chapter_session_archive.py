@@ -658,7 +658,7 @@ class TestAnOutdatedSessionIsRebuilt:
             assert result["rebuilt"] == 1
             assert len(names) == 2
             assert any(" до " in name for name in names)
-            assert len(letters) == 1 and letters[0].startswith("🎬 Глава 5: сессия пересобрана.")
+            assert len(letters) == 1 and letters[0].startswith("🎬 Chapter 5: session rebuilt.")
             assert db.get(ScriptChapter, chapter_id).session_outdated_at is None
 
     def test_a_taken_backup_name_gets_a_number(self, roots, monkeypatch):
@@ -721,3 +721,23 @@ def test_the_backup_name_uses_ufa_time_not_utc(roots):
     name = _backup_key("KP/Глава 5/KP_Ch05.sesx", datetime(2026, 9, 15, 10, 42))
 
     assert name == "KP/Глава 5/KP_Ch05 до 2026-09-15 15-42.sesx"
+
+
+def test_backup_name_uses_selected_iana_timezone_for_new_copy(roots):
+    from datetime import datetime
+    from app.services.chapter_delivery import _backup_key
+    assert _backup_key("SW/Chapter 1/SW_Ch01.sesx", datetime(2026, 9, 15, 10, 42),
+                       studio_timezone="America/New_York") == "SW/Chapter 1/SW_Ch01 до 2026-09-15 06-42.sesx"
+
+
+def test_archive_passes_configured_timezone_to_new_backup(roots, monkeypatch):
+    from app.models import StudioCalendarProfile
+    with _sessions()() as db:
+        chapter_id = TestAnOutdatedSessionIsRebuilt()._archived(db, monkeypatch, roots)
+        db.add(StudioCalendarProfile(id="default", timezone="America/New_York"))
+        chapter = db.get(ScriptChapter, chapter_id)
+        chapter.session_archived_at = datetime(2026, 9, 15, 10, 42)
+        chapter.session_sha256 = "changed"
+        db.commit()
+        result = archive_chapter_session(db, chapter_id)
+        assert result["replaced"].endswith(" до 2026-09-15 06-42.sesx")

@@ -69,7 +69,7 @@ async function throwApiError(response: Response): Promise<never> {
 export function describeApiError(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
     if (error.errorCode === "publish_gate" && error.issues.length > 0) {
-      return `Publish gate блокирует approve: ${error.issues.join("; ")}.`;
+      return `Publication gate prevents approval: ${error.issues.join("; ")}.`;
     }
     if (error.message.trim()) {
       return error.message.trim();
@@ -187,8 +187,8 @@ export function apiUploadForm<T>(
         if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
       };
     }
-    xhr.onerror = () => reject(new ApiError("Сеть недоступна", { status: 0 }));
-    xhr.onabort = () => reject(new ApiError("Загрузка прервана", { status: 0 }));
+    xhr.onerror = () => reject(new ApiError("Network unavailable", { status: 0 }));
+    xhr.onabort = () => reject(new ApiError("Upload interrupted", { status: 0 }));
     xhr.onload = () => {
       let payload: ApiErrorPayload & Record<string, unknown> = {};
       try {

@@ -34,7 +34,7 @@ def _session():
 
 
 def _seed(db, *, notes="", book_chars=(), profile_chars=(), pronunciations=()):
-    db.add(Author(id=AUTHOR, name="Александр Примеродин", slug="primerodin"))
+    db.add(Author(id=AUTHOR, name="Алексей Примеров", slug="primerov"))
     db.add(ScriptBook(
         id=BOOK, title="Вторая книга", display_title="Вторая книга",
         source_filename="x.docx", source_format="docx", total_chars=0,
@@ -56,7 +56,7 @@ def _seed(db, *, notes="", book_chars=(), profile_chars=(), pronunciations=()):
 
 
 def test_the_profile_colour_reaches_a_new_book():
-    """Дгарнин must look the same in every Primerodin book."""
+    """Дгарнин must look the same in every primerov book."""
     SessionLocal = _session()
     with SessionLocal() as db:
         book = _seed(db,

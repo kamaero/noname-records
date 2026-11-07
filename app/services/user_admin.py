@@ -495,30 +495,30 @@ def export_roster(db, *, issued: list[dict] | None = None) -> str:
     users = db.query(User).order_by(User.display_name.asc()).all()
 
     lines = [
-        f"Доступы студии — {utcnow_naive().strftime('%d.%m.%Y %H:%M')}",
-        f"Учёток: {len(users)}",
+        f'Studio access — {utcnow_naive().strftime('%d.%m.%Y %H:%M')}',
+        f'Accounts: {len(users)}',
         "",
-        "Паролей в этом файле нет: они хранятся односторонними хешами и не читаются",
-        "обратно никем, включая систему. Пароль появляется здесь только в момент выдачи.",
-        "Забытый пароль не восстанавливается — выдаётся новый на экране «Пользователи».",
+        'Existing passwords are not included: they are stored as one-way hashes and cannot be recovered',
+        'by anyone, including the system. A password appears here only when it is issued.',
+        'A forgotten password cannot be recovered; issue a new one on the Users page.',
         "",
-        "имя\tлогин\tпароль\ttelegram\tроли\tвход",
+        'name\tlogin\tpassword\ttelegram\troles\tsign-in',
     ]
     for user in users:
         telegram = linked.get(str(user.id), "")
         ways = []
         if str(user.password_hash or "") != "telegram-login":
-            ways.append("пароль")
+            ways.append('password')
         if telegram:
             ways.append("telegram")
-        password = fresh.get(str(user.id)) or ("— выдать на экране" if not ways or ways == ["telegram"] else "— задан ранее")
-        state = "" if str(user.is_active or "").lower() == "true" else "  [выключена]"
+        password = fresh.get(str(user.id)) or ('— issue on the Users page' if not ways or ways == ["telegram"] else '— set previously')
+        state = "" if str(user.is_active or "").lower() == "true" else '  [disabled]'
         lines.append(
             f"{user.display_name or user.login}\t{user.login}\t{password}\t{telegram or '—'}\t"
             f"{','.join(_roles_of(db, user.id)) or '—'}\t{'+'.join(ways) or '—'}{state}"
         )
     if fresh:
-        lines += ["", f"Новых паролей выдано: {len(fresh)}. Другого случая их увидеть не будет."]
+        lines += ["", f'New passwords issued: {len(fresh)}. This is the only time they can be viewed.']
     return "\n".join(lines) + "\n"
 
 

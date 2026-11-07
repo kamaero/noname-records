@@ -117,7 +117,7 @@ def main(argv=None) -> int:
     data_dir.mkdir(parents=True, exist_ok=True)
     lock = acquire_lock(data_dir)
     if lock is None:
-        print("Noname Records уже запущен с этой папкой данных.", file=sys.stderr)
+        print('Noname Records is already running with this data folder.', file=sys.stderr)
         return EXIT_ALREADY_RUNNING
     found = load_or_create_secrets(data_dir)
     db_file = data_dir / "noname.db"
@@ -146,7 +146,7 @@ def main(argv=None) -> int:
     while not server.started and thread.is_alive():
         threading.Event().wait(0.05)
     if not server.started:
-        print("Noname Records не смог запустить сервер.", file=sys.stderr)
+        print('Noname Records could not start the server.', file=sys.stderr)
         return 1
     print(f"NONAME_READY http://127.0.0.1:{port}", flush=True)
 

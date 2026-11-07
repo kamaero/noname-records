@@ -108,7 +108,7 @@ def test_текст_чистого_отчёта_короток_и_говорит
         "missing": [], "weak": [], "markup": [], "link": "",
     })
     assert "Глава 7" in text
-    assert "всё на месте" in text.lower()
+    assert "all lines present" in text.lower()
 
 
 def test_текст_отчёта_называет_роль_и_первые_слова():
@@ -144,7 +144,7 @@ def test_текст_отчёта_с_упавшим_распознаванием_
         "failed": [{"role": "Гамук", "error": "stream_timeout"}],
         "link": "",
     })
-    assert "всё на месте" not in text.lower()
+    assert "all lines present" not in text.lower()
     assert "Гамук" in text
 
 
@@ -187,7 +187,7 @@ def test_упавший_до_создания_задания_дубль_идёт
     report = build_chapter_report(db, "ch-1", lost_takes=[{"role": "Тупуг", "error": "chapter_not_found"}])
 
     assert report["failed"] == [{"role": "Тупуг", "error": "chapter_not_found"}]
-    assert "всё на месте" not in render_chapter_report(report).lower()
+    assert "all lines present" not in render_chapter_report(report).lower()
 
 
 def test_упавшие_с_заданием_и_без_идут_вместе(db):

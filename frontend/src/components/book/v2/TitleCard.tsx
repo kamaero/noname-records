@@ -53,13 +53,13 @@ export function TitleCard({ bookId, title, author }: TitleCardProps) {
     onSuccess: async (result) => {
       setClash(null);
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Название не сохранено", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Title not saved", detail: result.error || "The server returned no details." });
         return;
       }
       pushToast({
         tone: "success",
-        title: "Книга переименована",
-        detail: `«${result.display_title || preview(nextAuthor, nextTitle)}». Код для имён файлов — ${result.book_code || "—"}.`,
+        title: "Book renamed",
+        detail: `«${result.display_title || preview(nextAuthor, nextTitle)}». Filename code: ${result.book_code || "—"}.`,
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["books"] }),
@@ -76,30 +76,30 @@ export function TitleCard({ bookId, title, author }: TitleCardProps) {
         });
         return;
       }
-      pushToast({ tone: "error", title: "Название не сохранено", detail: describeApiError(error, "Не удалось сохранить название.") });
+      pushToast({ tone: "error", title: "Title not saved", detail: describeApiError(error, "Could not save the title.") });
     },
   });
 
   return (
     <section className="panel hub-card" aria-labelledby="hub-title-title">
       <header className="hub-card-head">
-        <h2 id="hub-title-title" className="hub-card-title">Название книги</h2>
+        <h2 id="hub-title-title" className="hub-card-title">Book title</h2>
         <span className="hub-dim">{preview(nextAuthor, nextTitle)}</span>
       </header>
       <div className="hub-title-fields">
-        <Field label="Автор" hint="Как подписывать книгу в списке: «Иванов»">
+        <Field label="Author" hint="Author name shown in the book list">
           {(props) => (
             <input
               {...props}
               className="ui-input"
               value={nextAuthor}
               disabled={save.isPending}
-              placeholder="Без автора"
+              placeholder="No author"
               onChange={(event) => { setClash(null); setNextAuthor(event.target.value); }}
             />
           )}
         </Field>
-        <Field label="Название" hint="Без автора: из названия складывается код для имён файлов актёров">
+        <Field label="Title" hint="Title only: used to generate the book code in recording filenames">
           {(props) => (
             <input
               {...props}
@@ -113,8 +113,7 @@ export function TitleCard({ bookId, title, author }: TitleCardProps) {
       </div>
       {clash ? (
         <p className="ui-note ui-note--error" role="alert">
-          Новое название меняет код книги: <strong>{clash.wasCode}</strong> → <strong>{clash.code}</strong>. Под прежним кодом
-          сдано файлов: {clash.files} — по новому коду они находиться перестанут. Переименовывать?
+          The new title changes the book code: <strong>{clash.wasCode}</strong> → <strong>{clash.code}</strong>. Files submitted under the old code: {clash.files} — these will no longer be found under the new code. Rename anyway?
         </p>
       ) : null}
       <div className="hub-title-actions">
@@ -125,11 +124,11 @@ export function TitleCard({ bookId, title, author }: TitleCardProps) {
           loading={save.isPending}
           onClick={() => save.mutate(Boolean(clash))}
         >
-          {clash ? "Да, переименовать" : "Сохранить"}
+          {clash ? "Yes, rename" : "Save"}
         </Button>
         {dirty ? (
           <Button size="sm" variant="ghost" disabled={save.isPending} onClick={() => { setNextTitle(title); setNextAuthor(author); setClash(null); }}>
-            Отмена
+            Cancel
           </Button>
         ) : null}
       </div>

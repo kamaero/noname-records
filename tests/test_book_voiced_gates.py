@@ -85,7 +85,7 @@ def _post(sessions, *, roles, book_code=CODE):
 def test_batch_upload_into_a_voiced_book_is_refused_for_an_agent(sessions):
     status, body = _post(sessions, roles={"agent"})
     assert status == 409
-    assert body == {"ok": False, "error": "book_voiced", "message": "Книга озвучена — загрузка закрыта."}
+    assert body == {"ok": False, "error": "book_voiced", "message": "The book is complete; uploads are closed."}
     with sessions() as db:
         assert db.query(AudioFile).count() == 0
 

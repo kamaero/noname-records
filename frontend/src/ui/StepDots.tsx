@@ -3,14 +3,14 @@ export type StepState = "done" | "running" | "pending" | "failed" | "skipped";
 export type StepDot = { key?: string; label?: string; state: StepState };
 
 /** The six v2 steps, in pipeline order. Used as labels when the server sends none. */
-export const V2_STEP_LABELS = ["Сегментация", "Персонажи", "Роли", "Ударения", "Проверка", "Публикация"];
+export const V2_STEP_LABELS = ["Segmentation", "Characters", "Roles", "Word stress", "Review", "Publication"];
 
 const STATE_WORD: Record<StepState, string> = {
-  done: "готово",
-  running: "идёт",
-  pending: "ждёт",
-  failed: "ошибка",
-  skipped: "пропущено",
+  done: "done",
+  running: "running",
+  pending: "pending",
+  failed: "error",
+  skipped: "skipped",
 };
 
 type StepDotsProps = {
@@ -23,7 +23,7 @@ type StepDotsProps = {
 
 export function StepDots({ steps, count = 6, size = "sm", className }: StepDotsProps) {
   const padded: StepDot[] = Array.from({ length: Math.max(count, steps.length) }, (_, i) => steps[i] ?? { state: "pending" });
-  const summary = padded.map((s, i) => `${s.label || V2_STEP_LABELS[i] || `Шаг ${i + 1}`}: ${STATE_WORD[s.state]}`).join(", ");
+  const summary = padded.map((s, i) => `${s.label || V2_STEP_LABELS[i] || `Step ${i + 1}`}: ${STATE_WORD[s.state]}`).join(", ");
   return (
     <span
       className={["ui-steps", size === "lg" ? "ui-steps--lg" : "", className || ""].filter(Boolean).join(" ")}

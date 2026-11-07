@@ -72,8 +72,10 @@ class Settings:
     app_name: str = os.getenv("APP_NAME", "Noname Records")
     # Название студии в письмах бота и подписях; по умолчанию — имя системы.
     studio_name: str = os.getenv("STUDIO_NAME", os.getenv("APP_NAME", "Noname Records"))
-    # Кому писать «нужно больше времени» и прочее: «напишите Ольге». Пусто — «напишите в студию».
+    # Контакт для вопросов и переноса сроков. Пусто — обращение к студии без имени.
     studio_contact_name: str = os.getenv("STUDIO_CONTACT_NAME", "")
+    # Выверенный канон подключается только явно выбранному автору; личных примеров нет.
+    canon_author_slug: str = os.getenv("CANON_AUTHOR_SLUG", "")
     app_base_url: str = os.getenv("APP_BASE_URL", "http://localhost:8080")
     secret_key: str = os.getenv("SECRET_KEY", "change-me")
     # Ключ шифрования ключей нейросетей в базе (Fernet). Пусто — выводится из SECRET_KEY.
@@ -165,10 +167,9 @@ class Settings:
     llm_processing_stale_minutes: int = int(os.getenv("LLM_PROCESSING_STALE_MINUTES", "35"))
     pipeline_hotfix_max_manual_actions_24h: int = int(os.getenv("PIPELINE_HOTFIX_MAX_MANUAL_ACTIONS_24H", "6"))
     llm_max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "8000"))
-    # Char-map gate thresholds. In Primerodin's universe a character normally carries
-    # 2 aliases, 4 at most (Вохпкогамкиуб = Тёмный Господин = Кор = малыш Кор), so
-    # 6+ aliases is almost always a merge artifact — threshold lowered 8->6 to catch
-    # residual snowballs early. Env-tunable per deployment.
+    # Слишком много алиасов может означать ошибочное слияние разных персонажей.
+    # Порог позволяет отправить такие группы на проверку до применения карты;
+    # настраивается под книгу и не требует примеров из частных текстов.
     char_map_new_ratio_gate: float = float(os.getenv("CHAR_MAP_NEW_RATIO_GATE", "0.40"))
     char_map_suspect_aliases: int = int(os.getenv("CHAR_MAP_SUSPECT_ALIASES", "6"))
     default_genre_guidelines: str = os.getenv(

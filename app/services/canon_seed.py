@@ -1,6 +1,6 @@
 """K3: feed the verified canon roster into char_extraction for canon authors.
 
-When a book is bound to the canon author (Примеродин), char_extraction gets the
+When a book is bound to the explicitly configured canon author, char_extraction gets the
 confirmed canon roster (human-verified canonical names + aliases) so new books of
 the universe are parsed with consistent naming. Sourced from the isolated
 canon_kb.sqlite (built by the council + author review). Read-only, graceful if
@@ -16,12 +16,17 @@ def canon_db_path() -> str:
     """Выверенный канон — файл, который кладёт оператор; в папке данных, а не в пакете."""
     from app.paths import data_path
     return str(data_path("canon_kb.sqlite"))
-CANON_AUTHOR_SLUG = "primerodin"
 
 _INSTRUCTION = (
     "ВЫВЕРЕННЫЙ КАНОН ВСЕЛЕННОЙ (выверен автором; используй эти канонические имена и "
     "написания; объединяй указанные алиасы в одну личность; НЕ выдумывай появления "
     "персонажей, которых нет в тексте — список лишь для единообразия имён уже присутствующих):"
+)
+_INSTRUCTION_EN = (
+    "VERIFIED UNIVERSE CANON (reviewed by the author; use these canonical names and "
+    "spellings, and merge the listed aliases into one identity. Do NOT invent appearances "
+    "of characters absent from the source text: this roster only standardizes names of "
+    "characters already present):"
 )
 
 
@@ -56,15 +61,21 @@ def _is_canon_author(db, author_id: str) -> bool:
     if not author_id:
         return False
     from app.models import Author
+    from app.config import settings
+
+    configured_slug = str(settings.canon_author_slug or "").strip().lower()
+    if not configured_slug:
+        return False
 
     a = db.query(Author).filter(Author.id == author_id).first()
-    return bool(a and (a.slug or "").strip().lower() == CANON_AUTHOR_SLUG)
+    return bool(a and (a.slug or "").strip().lower() == configured_slug)
 
 
-def canon_roster_system_suffix(db, book, db_path: str | None = None) -> str:
+def canon_roster_system_suffix(db, book, db_path: str | None = None, *, language: str | None = None) -> str:
     if not _is_canon_author(db, str(getattr(book, "author_id", "") or "")):
         return ""
     roster = build_canon_roster(db_path)
     if not roster:
         return ""
-    return f"\n\n{_INSTRUCTION}\n{roster}"
+    instruction = _INSTRUCTION_EN if (language or getattr(book, "language", "ru")) == "en" else _INSTRUCTION
+    return f"\n\n{instruction}\n{roster}"

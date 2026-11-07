@@ -80,7 +80,7 @@ def api_v2_book_thanks(book_id: str, request: Request):
         if error is not None:
             return error
         people = book_thanks.recipients(db, book_id)
-        sample = people["people"][0] if people["people"] else {"actor": "Тестова Лада", "roles": ["Учебный персонаж"]}
+        sample = people["people"][0] if people["people"] else {"actor": 'Sample Actor', "roles": ['Practice character']}
         preview = book_thanks.render(book_thanks.DEFAULT_TEXT, name=book_thanks.first_name(sample["actor"]),
                                      roles=sample["roles"], book=str(book.display_title or book.title or ""))
     return {"ok": True, "text": book_thanks.DEFAULT_TEXT, "preview": preview, **people}

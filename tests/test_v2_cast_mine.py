@@ -2,8 +2,8 @@
 
 A dictor opens the reader to find where his own character speaks. The cast knows the
 actor of every role, the session knows who is logged in, and the two are written by
-different hands: the cast says «Примеродин Александр», the account says «Александр
-Примеродин». Deciding they are the same person is `names_match`'s job — the same rule
+different hands: the cast says «Примеров Алексей», the account says «Александр
+Примеров». Deciding they are the same person is `names_match`'s job — the same rule
 the recording panel already uses — so the answer is computed here, next to the cast,
 rather than re-derived in the browser where the rule would quietly drift.
 
@@ -34,7 +34,7 @@ def _session():
 def _seed(db):
     db.add(ScriptBook(id=BOOK, title="Карта", source_filename="k.txt", source_format="txt"))
     db.add(ScriptChapter(id=CH, book_id=BOOK, chapter_index=1, chapter_title="Глава 1"))
-    db.add(Character(id="c1", book_id=BOOK, name="Дгарнин", actor_name="Примеродин Александр"))
+    db.add(Character(id="c1", book_id=BOOK, name="Дгарнин", actor_name="Примеров Алексей"))
     db.add(Character(id="c2", book_id=BOOK, name="Пупип", actor_name="Жукова Виктория"))
     db.add(Character(id="c3", book_id=BOOK, name="Молчун", actor_name=""))
     db.add(Character(id="c4", book_id=BOOK, name="Кысяти", actor_name="Фёдоров Пётр"))
@@ -51,11 +51,11 @@ def _mine(rows) -> list[str]:
 
 
 def test_the_reader_owns_the_role_whose_actor_is_him_however_the_name_is_ordered():
-    """The cast writes «Примеродин Александр»; the account says «Александр Примеродин»."""
+    """The cast writes «Примеров Алексей»; the account says «Алексей Примеров»."""
     with _session()() as db:
         _seed(db)
 
-        rows = book_cast(db, BOOK, actor_name="Александр Примеродин")
+        rows = book_cast(db, BOOK, actor_name="Алексей Примеров")
 
         assert _mine(rows) == ["Дгарнин"]
 
@@ -64,7 +64,7 @@ def test_a_role_cast_to_someone_else_is_not_mine():
     with _session()() as db:
         _seed(db)
 
-        rows = book_cast(db, BOOK, actor_name="Александр Примеродин")
+        rows = book_cast(db, BOOK, actor_name="Алексей Примеров")
 
         assert not next(row for row in rows if row["name"] == "Пупип")["mine"]
 
@@ -73,7 +73,7 @@ def test_a_role_with_no_actor_belongs_to_nobody():
     with _session()() as db:
         _seed(db)
 
-        rows = book_cast(db, BOOK, actor_name="Александр Примеродин")
+        rows = book_cast(db, BOOK, actor_name="Алексей Примеров")
 
         assert not next(row for row in rows if row["name"] == "Молчун")["mine"]
 
@@ -120,7 +120,7 @@ def test_the_cast_endpoint_answers_for_whoever_is_logged_in(monkeypatch):
         _seed(db)
     monkeypatch.setattr(api, "SessionLocal", SessionLocal)
     monkeypatch.setattr(api, "_is_authenticated", lambda request: True)
-    monkeypatch.setattr(api, "session_payload", lambda request: {"uid": "u1", "display_name": "Александр Примеродин"})
+    monkeypatch.setattr(api, "session_payload", lambda request: {"uid": "u1", "display_name": "Алексей Примеров"})
 
     response = api.api_v2_cast(object(), BOOK)
     payload = json.loads(bytes(response.body).decode())

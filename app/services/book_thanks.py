@@ -13,12 +13,9 @@ from app.time_utils import iso_utc, utcnow_naive
 
 #: Тон — владельца: тепло, без восклицательных знаков россыпью, с клиффхэнгером в конце.
 DEFAULT_TEXT = (
-    "{name}, спасибо вам огромное за участие в озвучке книги «{book}». "
-    "Ваш голос — {roles} — это нечто особенное, и книга без него была бы другой. "
-    "Работа с вами была настоящим удовольствием.\n\n"
-    "У нас впереди ещё как минимум три книги, готовые к озвучке. Если на следующей "
-    "краудфандинговой кампании я соберу средства, мы вернёмся к озвучке — и очень "
-    "рассчитываю услышать вас снова."
+    "{name}, thank you for bringing «{book}» to life. "
+    "Your work on {roles} helped shape this audiobook, and it was a pleasure working with you.\n\n"
+    "We hope to work with you again on future projects."
 )
 
 
@@ -31,7 +28,7 @@ def first_name(actor: str) -> str:
 def _join_roles(roles: list[str]) -> str:
     if len(roles) <= 1:
         return "".join(roles)
-    return ", ".join(roles[:-1]) + " и " + roles[-1]
+    return ", ".join(roles[:-1]) + " and " + roles[-1]
 
 
 def render(text: str, *, name: str, roles: list[str], book: str = "") -> str:

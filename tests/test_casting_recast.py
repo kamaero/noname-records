@@ -21,8 +21,8 @@ def db():
 
 
 def _approve(db, character, actor):
-    cast_role_vote(db, character=character, voter_uid="u", voter_name="Примеродин", weight=2, actor_name=actor)
-    casting.propagate_approval(db, character, voter_uid="u", voter_name="Примеродин", weight=2)
+    cast_role_vote(db, character=character, voter_uid="u", voter_name="Примеров", weight=2, actor_name=actor)
+    casting.propagate_approval(db, character, voter_uid="u", voter_name="Примеров", weight=2)
     db.commit()
 
 
@@ -31,7 +31,7 @@ def test_a_recast_moves_forward_and_keeps_recorded_books(db):
     _approve(db, cycle["kuybu"][0], "Сомов Роман")
     record_take(db, cycle["books"][0], "Куйбу Гудисди", "Сомов Роман")
     out = casting.recast(db, cycle["kuybu"][1], to_actor="Иванов Иван", reason="left", comment="уехал",
-                         voter_uid="u", voter_name="Примеродин", weight=2)
+                         voter_uid="u", voter_name="Примеров", weight=2)
     db.commit()
     assert db.get(Character, "c1").actor_name == "Сомов Роман"
     assert db.get(Character, "c2").actor_name == "Иванов Иван"
@@ -126,7 +126,7 @@ def test_a_recast_writes_one_letter_for_all_changed_books(api_db, monkeypatch):
 
 def test_a_recast_outvoted_in_a_sibling_is_not_journalled_as_changed(db):
     cycle = build_cycle(db)
-    cast_role_vote(db, character=cycle["kuybu"][1], voter_uid="u-author", voter_name="Примеродин",
+    cast_role_vote(db, character=cycle["kuybu"][1], voter_uid="u-author", voter_name="Примеров",
                    weight=2, actor_name="Сомов Роман")
     db.commit()
     out = casting.recast(db, cycle["kuybu"][0], to_actor="Иванов Иван", reason="left", comment="",
@@ -143,7 +143,7 @@ def test_the_narrator_is_never_recast_cycle_wide(db):
     db.commit()
     with pytest.raises(ValueError, match="narrator"):
         casting.recast(db, db.get(Character, "c1"), to_actor="Иванов Иван", reason="left", comment="",
-                       voter_uid="u", voter_name="Примеродин", weight=2)
+                       voter_uid="u", voter_name="Примеров", weight=2)
 
 
 def test_a_recorded_book_kept_by_a_recast_is_not_a_discrepancy(db):
@@ -151,7 +151,7 @@ def test_a_recorded_book_kept_by_a_recast_is_not_a_discrepancy(db):
     _approve(db, cycle["kuybu"][0], "Сомов Роман")
     record_take(db, cycle["books"][0], "Куйбу Гудисди", "Сомов Роман")
     casting.recast(db, db.get(Character, "c1"), to_actor="Иванов Иван", reason="left", comment="",
-                   voter_uid="u", voter_name="Примеродин", weight=2)
+                   voter_uid="u", voter_name="Примеров", weight=2)
     db.commit()
     assert db.get(Character, "c1").actor_name == "Сомов Роман"
     assert casting.cycle_discrepancies(db, "auth-1") == []

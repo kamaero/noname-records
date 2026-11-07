@@ -1,3 +1,4 @@
+import { roleLabel as displayRoleName } from "../v2/types";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -16,39 +17,39 @@ import "./PayoutsPage.css";
    ============================================================ */
 
 const REFUSALS: Record<string, string> = {
-  nothing_to_pay: "По роли нечего выплачивать.",
-  bad_amount: "Сумма больше остатка по роли или не число.",
-  no_fee: "Сумма роли не посчитана — откройте смету книги.",
-  not_in_progress: "Аванс — только по роли в работе.",
-  role_not_found: "Роль не найдена — обновите страницу.",
-  person_not_found: "Диктор не найден — обновите страницу.",
-  not_found: "Запись уже отменена.",
-  advance_offset: "Этот аванс уже зачтён в роли — сначала отмените зачёт.",
+  nothing_to_pay: "Nothing to pay for this role.",
+  bad_amount: "The amount is invalid or exceeds the remaining role balance.",
+  no_fee: "The role amount has not been calculated. Open the book budget.",
+  not_in_progress: "Advances are available only for roles in progress.",
+  role_not_found: "Role not found. Refresh the page.",
+  person_not_found: "Voice actor not found. Refresh the page.",
+  not_found: "This entry has already been cancelled.",
+  advance_offset: "This advance has already been applied to a role. Undo that application first.",
 };
 
 const KIND_WORDS: Record<string, string> = {
-  advance: "аванс",
-  final: "выплата",
-  offset: "зачёт аванса",
-  person_advance: "аванс без роли",
+  advance: "advance",
+  final: "payment",
+  offset: "advance applied",
+  person_advance: "unassigned advance",
 };
 
 function rub(value: number): string {
-  return `${Math.round(value || 0).toLocaleString("ru-RU")} ₽`;
+  return `${Math.round(value || 0).toLocaleString("en-US")} ₽`;
 }
 
 function day(iso: string): string {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("en-US", { day: "numeric", month: "long" });
 }
 
 function refusal(error: unknown): string {
   if (error instanceof ApiError && REFUSALS[error.errorCode]) return REFUSALS[error.errorCode];
-  return describeApiError(error, "Не получилось сохранить.");
+  return describeApiError(error, "Could not save.");
 }
 
 function roleLabel(person: PayoutPerson, role: PayoutRole): string {
-  return `${person.name}, «${role.role_name}» («${role.book_title}»)`;
+  return `${person.name}, «${displayRoleName(role.role_name)}» («${role.book_title}»)`;
 }
 
 /** Остаток сданной роли и сколько из него закроет незачтённый аванс — только для текста вопроса. */
@@ -59,20 +60,20 @@ function finalParts(person: PayoutPerson, role: PayoutRole): { offset: number; m
 }
 
 function RoleState({ role }: { role: PayoutRole }) {
-  if (role.state === "past") return <span className="pay-state is-muted">прошлая роль (снята или книга удалена) · выплачено {rub(role.paid)}</span>;
-  if (role.state === "no_chapters") return <span className="pay-state is-muted">нет глав</span>;
-  if (role.state === "no_fee") return <span className="pay-state is-muted">сумма не посчитана — откройте смету книги</span>;
+  if (role.state === "past") return <span className="pay-state is-muted">past role (unassigned or book deleted) · paid {rub(role.paid)}</span>;
+  if (role.state === "no_chapters") return <span className="pay-state is-muted">no chapters</span>;
+  if (role.state === "no_fee") return <span className="pay-state is-muted">amount not calculated; open the book budget</span>;
   if (role.state === "in_progress") {
     return (
       <span className="pay-state is-muted">
-        в работе
-        {role.paid > 0 ? ` · аванс ${rub(role.paid)} из ${rub(role.fee || 0)}` : ""}
+        in progress
+        {role.paid > 0 ? ` · advance ${rub(role.paid)} of ${rub(role.fee || 0)}` : ""}
       </span>
     );
   }
-  if (role.owed > 0) return <span className="pay-state is-due">к оплате {rub(role.owed)}</span>;
-  if (role.overpaid > 0) return <span className="pay-state is-warn">переплата {rub(role.overpaid)}</span>;
-  return <span className="pay-state is-ok">оплачено полностью</span>;
+  if (role.owed > 0) return <span className="pay-state is-due">due {rub(role.owed)}</span>;
+  if (role.overpaid > 0) return <span className="pay-state is-warn">overpaid {rub(role.overpaid)}</span>;
+  return <span className="pay-state is-ok">paid in full</span>;
 }
 
 /** Оплаченная роль — денежных дел по ней не осталось: сдана и закрыта ровно, либо это прошлая
@@ -108,7 +109,7 @@ export function PayoutsPage() {
   const written = (response: unknown) => {
     const parts = ((response as { written?: { kind: string; amount_rub: number }[] }).written || [])
       .map((item) => `${KIND_WORDS[item.kind] || item.kind} ${rub(item.amount_rub)}`);
-    return parts.length ? `Записано: ${parts.join(", ")}.` : "Записано.";
+    return parts.length ? `Recorded: ${parts.join(", ")}.` : "Recorded.";
   };
 
   const pay = useMutation({
@@ -123,7 +124,7 @@ export function PayoutsPage() {
   });
   const cancel = useMutation({
     mutationFn: (paymentId: string) => apiPostJson("/api/payouts/cancel", { payment_id: paymentId }),
-    onSuccess: async () => { pushToast({ tone: "success", title: "Запись отменена." }); await done(); },
+    onSuccess: async () => { pushToast({ tone: "success", title: "Entry cancelled." }); await done(); },
     onError,
   });
 
@@ -131,8 +132,8 @@ export function PayoutsPage() {
     const forbidden = query.error instanceof ApiError && query.error.status === 403;
     return (
       <div className="pay">
-        <PageHeader title="Смета" />
-        <EmptyState text={forbidden ? "Раздел доступен только владельцу студии." : describeApiError(query.error, "Не получилось загрузить смету.")} />
+        <PageHeader title="Budget" />
+        <EmptyState text={forbidden ? "This section is available to the studio owner only." : describeApiError(query.error, "Could not load the budget.")} />
       </div>
     );
   }
@@ -141,15 +142,15 @@ export function PayoutsPage() {
   const payFinal = (person: PayoutPerson, role: PayoutRole) => {
     const { offset, money } = finalParts(person, role);
     const what = offset > 0
-      ? `Зачесть аванс ${rub(offset)}${money > 0 ? ` и выплатить ${rub(money)}` : ""}`
-      : `Отметить выплату ${rub(money)}`;
+      ? `Apply advance ${rub(offset)}${money > 0 ? ` and pay ${rub(money)}` : ""}`
+      : `Record payment ${rub(money)}`;
     if (!window.confirm(`${what} — ${roleLabel(person, role)}?`)) return;
     pay.mutate({ book_id: role.book_id, role_key: role.role_key, actor_name: role.actor_name, kind: "final" });
   };
 
   const askCancel = (person: PayoutPerson, payment: PayoutPayment, role: PayoutRole | null) => {
     const where = role ? roleLabel(person, role) : person.name;
-    if (!window.confirm(`Отменить «${KIND_WORDS[payment.kind] || payment.kind}» ${rub(payment.amount_rub)} от ${day(payment.paid_at)} — ${where}?`)) return;
+    if (!window.confirm(`Cancel «${KIND_WORDS[payment.kind] || payment.kind}» ${rub(payment.amount_rub)} dated ${day(payment.paid_at)} — ${where}?`)) return;
     cancel.mutate(payment.id);
   };
 
@@ -163,11 +164,11 @@ export function PayoutsPage() {
     if (!advance) return;
     const value = Number(amount.replace(/\s/g, ""));
     if (!Number.isInteger(value) || value <= 0) {
-      pushToast({ tone: "error", title: "Сумма — целое число больше нуля." });
+      pushToast({ tone: "error", title: "Enter a whole number greater than zero." });
       return;
     }
-    const where = advance.role ? roleLabel(advance.person, advance.role) : `${advance.person.name}, без роли`;
-    if (!window.confirm(`Записать аванс ${rub(value)} — ${where}?`)) return;
+    const where = advance.role ? roleLabel(advance.person, advance.role) : `${advance.person.name}, without a role`;
+    if (!window.confirm(`Record advance ${rub(value)} — ${where}?`)) return;
     if (advance.role) {
       pay.mutate({ book_id: advance.role.book_id, role_key: advance.role.role_key, actor_name: advance.role.actor_name,
         kind: "advance", amount_rub: value });
@@ -201,47 +202,47 @@ export function PayoutsPage() {
   return (
     <div className="pay">
       <PageHeader
-        title="Смета"
-        subtitle={data ? `К оплате ${rub(data.totals.owed)} · выплачено ${rub(data.totals.paid)} · авансы ${rub(data.totals.advances)} · в работе ${rub(data.totals.in_work)}` : "Загрузка…"}
+        title="Budget"
+        subtitle={data ? `Due ${rub(data.totals.owed)} · paid ${rub(data.totals.paid)} · advances ${rub(data.totals.advances)} · in progress ${rub(data.totals.in_work)}` : "Loading…"}
         actions={
           <>
             {settledCount > 0 && !needle ? (
               <Button onClick={() => setShowPaid((value) => !value)} aria-pressed={showPaid}>
-                {showPaid ? "Скрыть оплаченные" : `Показать оплаченные (${settledCount})`}
+                {showPaid ? "Hide paid" : `Show paid (${settledCount})`}
               </Button>
             ) : null}
             <a className="ui-btn ui-btn--secondary" href="/api/payouts/export.xlsx" download>
-              Выгрузить в Excel
+              Export to Excel
             </a>
           </>
         }
       />
-      {data && data.people.length === 0 ? <EmptyState text="Пока никого: нет утверждённых ролей." /> : null}
+      {data && data.people.length === 0 ? <EmptyState text="No approved roles yet." /> : null}
       {data && data.people.length > 0 ? (
         <label className="pay-search">
           <Icon name="search" />
-          <input type="search" value={search} placeholder="Диктор, роль или книга" aria-label="Найти в смете"
+          <input type="search" value={search} placeholder="Voice actor, role or book" aria-label="Search budget"
             onChange={(e) => setSearch(e.target.value)} />
         </label>
       ) : null}
       {data && data.people.length > 0 && people.length === 0
-        ? <EmptyState text={needle ? "Ничего не найдено." : "Всё оплачено."} /> : null}
+        ? <EmptyState text={needle ? "Nothing found." : "Everything is paid."} /> : null}
       {people.map(({ person, roles }) => (
         <section key={person.key} className="pay-card">
           <header className="pay-card-head">
             <div className="pay-who">
               <h2>{person.name}</h2>
               {person.telegram_url ? (
-                <a href={person.telegram_url} target="_blank" rel="noreferrer">Написать в Telegram</a>
+                <a href={person.telegram_url} target="_blank" rel="noreferrer">Message in Telegram</a>
               ) : (
-                <span className="pay-muted">Telegram не привязан</span>
+                <span className="pay-muted">Telegram not linked</span>
               )}
             </div>
             <dl className="pay-sums">
-              <div><dt>К оплате</dt><dd className={person.owed > 0 ? "is-due" : ""}>{rub(person.owed)}</dd></div>
-              <div><dt>Выплачено</dt><dd>{rub(person.paid)}</dd></div>
-              <div><dt>Авансы</dt><dd>{rub(person.advances)}</dd></div>
-              <div><dt>В работе</dt><dd>{rub(person.in_work)}</dd></div>
+              <div><dt>Due</dt><dd className={person.owed > 0 ? "is-due" : ""}>{rub(person.owed)}</dd></div>
+              <div><dt>Paid</dt><dd>{rub(person.paid)}</dd></div>
+              <div><dt>Advances</dt><dd>{rub(person.advances)}</dd></div>
+              <div><dt>In progress</dt><dd>{rub(person.in_work)}</dd></div>
             </dl>
           </header>
 
@@ -249,18 +250,18 @@ export function PayoutsPage() {
             {/* строка — только у тех, кому аванс выдавали: иначе девяносто одинаковых нулей */}
             {person.person_advances.length ? (
               <span>
-                Аванс без роли: выдано {rub(person.person_advances.reduce((sum, a) => sum + a.amount_rub, 0))}, не зачтено {rub(person.credit)}
-                {person.unearned > 0 ? <strong className="pay-warn"> · аванс не отработан: {rub(person.unearned)}</strong> : null}
+                Unassigned advances: issued {rub(person.person_advances.reduce((sum, a) => sum + a.amount_rub, 0))}, unapplied {rub(person.credit)}
+                {person.unearned > 0 ? <strong className="pay-warn"> · unearned advance: {rub(person.unearned)}</strong> : null}
               </span>
             ) : <span />}
-            <Button size="sm" onClick={() => openAdvance(person, null)} disabled={busy}>Аванс без роли</Button>
+            <Button size="sm" onClick={() => openAdvance(person, null)} disabled={busy}>Unassigned advance</Button>
           </div>
           {person.person_advances.length ? (
             <ul className="pay-payments">
               {person.person_advances.map((payment) => (
                 <li key={payment.id}>
                   {KIND_WORDS[payment.kind]} {rub(payment.amount_rub)}, {day(payment.paid_at)}{payment.note ? ` — ${payment.note}` : ""}
-                  <button type="button" className="pay-link" onClick={() => askCancel(person, payment, null)} disabled={busy}>Отменить</button>
+                  <button type="button" className="pay-link" onClick={() => askCancel(person, payment, null)} disabled={busy}>Cancel</button>
                 </li>
               ))}
             </ul>
@@ -271,20 +272,20 @@ export function PayoutsPage() {
               <li key={`${role.book_id}:${role.role_key}`} className="pay-role">
                 <div className="pay-role-main">
                   <div className="pay-role-name">
-                    <strong>«{role.role_name}»</strong> <span className="pay-muted">{role.book_title}</span>
+                    <strong>«{displayRoleName(role.role_name)}»</strong> <span className="pay-muted">{role.book_title}</span>
                   </div>
                   <div className="pay-role-meta">
-                    {role.total > 0 ? <span>сдано {role.done} из {role.total}</span> : null}
+                    {role.total > 0 ? <span>delivered {role.done} of {role.total}</span> : null}
                     {role.fee ? <span>{rub(role.fee)}</span> : null}
                     <RoleState role={role} />
                   </div>
                 </div>
                 <div className="pay-role-actions">
                   {role.state === "done" && role.owed > 0 ? (
-                    <Button size="sm" variant="primary" onClick={() => payFinal(person, role)} disabled={busy}>Выплачено</Button>
+                    <Button size="sm" variant="primary" onClick={() => payFinal(person, role)} disabled={busy}>Paid</Button>
                   ) : null}
                   {role.state === "in_progress" && role.fee && role.fee - role.paid > 0 ? (
-                    <Button size="sm" onClick={() => openAdvance(person, role)} disabled={busy}>Аванс</Button>
+                    <Button size="sm" onClick={() => openAdvance(person, role)} disabled={busy}>Advance</Button>
                   ) : null}
                 </div>
                 {role.payments.length ? (
@@ -292,7 +293,7 @@ export function PayoutsPage() {
                     {role.payments.map((payment) => (
                       <li key={payment.id}>
                         {KIND_WORDS[payment.kind]} {rub(payment.amount_rub)}, {day(payment.paid_at)}
-                        <button type="button" className="pay-link" onClick={() => askCancel(person, payment, role)} disabled={busy}>Отменить</button>
+                        <button type="button" className="pay-link" onClick={() => askCancel(person, payment, role)} disabled={busy}>Cancel</button>
                       </li>
                     ))}
                   </ul>
@@ -305,21 +306,21 @@ export function PayoutsPage() {
 
       {advance ? (
         <Dialog
-          title={advance.role ? `Аванс — «${advance.role.role_name}»` : "Аванс без роли"}
-          subtitle={advance.role ? `${advance.person.name}, остаток по роли ${rub(Math.max(0, (advance.role.fee || 0) - advance.role.paid))}` : advance.person.name}
+          title={advance.role ? `Advance — «${displayRoleName(advance.role.role_name)}»` : "Unassigned advance"}
+          subtitle={advance.role ? `${advance.person.name}, remaining role balance ${rub(Math.max(0, (advance.role.fee || 0) - advance.role.paid))}` : advance.person.name}
           onClose={() => setAdvance(null)}
           footer={
             <>
-              <Button onClick={() => setAdvance(null)}>Отмена</Button>
-              <Button variant="primary" onClick={submitAdvance}>Записать</Button>
+              <Button onClick={() => setAdvance(null)}>Cancel</Button>
+              <Button variant="primary" onClick={submitAdvance}>Record</Button>
             </>
           }
         >
-          <Field label="Сумма, ₽">
+          <Field label="Amount, RUB">
             {(props) => <input {...props} className="ui-input" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} />}
           </Field>
           {!advance.role ? (
-            <Field label="За что (необязательно)">
+            <Field label="Description (optional)">
               {(props) => <input {...props} className="ui-input" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />}
             </Field>
           ) : null}

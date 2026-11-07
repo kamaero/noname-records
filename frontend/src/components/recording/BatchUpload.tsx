@@ -11,17 +11,17 @@ import type { UploadStatus } from "./useRecordingUploads";
 const ACCEPT = ".wav,.mp3,.m4a,.flac,.ogg,.aac,.opus,.webm,audio/*";
 
 const ERROR_TEXT: Record<string, string> = {
-  chapter_required: "не указана глава",
-  role_required: "не указана роль",
-  duplicate_in_batch: "в пачке два одинаковых файла",
-  duplicate_in_storage: "этот же файл уже загружен",
-  chapter_mismatch: "глава в имени файла не совпадает с выбранной",
+  chapter_required: "chapter not specified",
+  role_required: "role not specified",
+  duplicate_in_batch: "duplicate files in this batch",
+  duplicate_in_storage: "this file was already uploaded",
+  chapter_mismatch: "filename chapter does not match your selection",
 };
 
 /* Предупреждение — не отказ. Роман выбрал в форме «Сатухух», а прислал `03-Za'Lur.wav`,
    и до сих пор форма и файл могли расходиться молча. Решает всё равно диктор. */
 const WARNING_TEXT: Record<string, string> = {
-  role_name_mismatch: "в имени файла другая роль — проверьте выбор",
+  role_name_mismatch: "filename role differs; check your selection",
 };
 
 function describeErrors(errors: string[] | undefined): string {
@@ -115,7 +115,7 @@ export function BatchUpload({
       >
         <Icon name="upload" />
         <span className="rec-drop-text">
-          {disabled && disabledReason ? disabledReason : "Перетащите аудиофайлы сюда или нажмите, чтобы выбрать"}
+          {disabled && disabledReason ? disabledReason : "Drop audio files here or click to choose"}
         </span>
         <input
           ref={inputRef}
@@ -132,7 +132,7 @@ export function BatchUpload({
       </div>
 
       {files.length > 0 ? (
-        <ul className="rec-files" aria-label="Файлы к загрузке">
+        <ul className="rec-files" aria-label="Files to upload">
           {files.map((file) => {
             const item = previewByName.get(file.name);
             const bad = item ? !item.ok : false;
@@ -161,16 +161,16 @@ export function BatchUpload({
                 checked={confirmChapter}
                 onChange={(event) => onConfirmChapter(event.target.checked)}
               />
-              <span>Глава выбрана верно, в имени файла номер другой</span>
+              <span>The selected chapter is correct; the filename number is different</span>
             </label>
           ) : null}
           <div className="rec-upload-actions">
             <Button variant="primary" onClick={onUpload} loading={isUploading} disabled={!files.length || blocked}>
-              {files.length ? `Загрузить файлы (${files.length})` : "Загрузить файлы"}
+              {files.length ? `Upload files (${files.length})` : "Upload files"}
             </Button>
             {files.length ? (
               <Button variant="ghost" onClick={onClear} disabled={isUploading}>
-                Очистить список
+                Clear list
               </Button>
             ) : null}
           </div>

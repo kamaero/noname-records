@@ -45,7 +45,7 @@ export function useRecordingBook() {
       queryClient.setQueryData(hubKeys.recordingBook, result);
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Не удалось переключить", detail: describeApiError(error, "сервер не ответил") });
+      pushToast({ tone: "error", title: "Could not switch", detail: describeApiError(error, "the server did not respond") });
     },
   });
   return { activeBookId: query.data?.book_id ?? "", loading: query.isLoading, switching: mutation.isPending, set: mutation.mutate };
@@ -80,7 +80,7 @@ export type RunBody = { steps?: HubStepKey[]; force?: boolean };
 type OkResponse = { ok: boolean; error?: string } & Record<string, unknown>;
 
 function stepsText(body: RunBody): string {
-  if (!body.steps?.length) return "все шаги";
+  if (!body.steps?.length) return "all steps";
   return body.steps.map((key) => HUB_STEP_LABELS[key] || key).join(", ");
 }
 
@@ -99,18 +99,18 @@ export function useHubActions(bookId: string, options: { onDeleted?: () => void 
     mutationFn: (body: RunBody) => postWithLimit<OkResponse>(`${v2(bookId)}/run`, body),
     onSuccess: async (result, body) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Разметка не запущена", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Annotation not started", detail: result.error || "The server returned no details." });
         return;
       }
-      pushToast({ tone: "success", title: "Разметка поставлена в очередь", detail: `${stepsText(body)}${body.force ? " · заново" : ""}` });
+      pushToast({ tone: "success", title: "Annotation queued", detail: `${stepsText(body)}${body.force ? " · fresh run" : ""}` });
       await refresh();
     },
     onError: (error) => {
       const busy = error instanceof ApiError && error.status === 409;
       pushToast({
         tone: "error",
-        title: busy ? "Разметка уже идёт" : "Не удалось запустить разметку",
-        detail: busy ? "Дождитесь конца прогона или остановите его." : describeApiError(error, "Сервер не ответил."),
+        title: busy ? "Annotation already running" : "Could not start annotation",
+        detail: busy ? "Wait for the current run to finish or stop it." : describeApiError(error, "The server did not respond."),
       });
     },
   });
@@ -118,39 +118,39 @@ export function useHubActions(bookId: string, options: { onDeleted?: () => void 
   const stop = useMutation({
     mutationFn: () => apiPostJson<OkResponse>(`${v2(bookId)}/stop`, {}),
     onSuccess: async () => {
-      pushToast({ tone: "info", title: "Остановка запрошена", detail: "Текущая глава закончится, потом прогон остановится." });
+      pushToast({ tone: "info", title: "Stop requested", detail: "The run will stop after the current chapter finishes." });
       await refresh();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не удалось остановить", detail: describeApiError(error, "Сервер не ответил.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Could not stop", detail: describeApiError(error, "The server did not respond.") }),
   });
 
   /** v1 operator actions for books still on the old pipeline. */
   const repair = useMutation({
     mutationFn: (actionType: "stop_pipeline" | "continue_pipeline") =>
-      apiPostJson<OkResponse>(`${v1(bookId)}/repair`, { action_type: actionType, reason: "Хаб книги: действие оператора" }),
+      apiPostJson<OkResponse>(`${v1(bookId)}/repair`, { action_type: actionType, reason: "Book hub: operator action" }),
     onSuccess: async (result, actionType) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Действие не выполнено", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Action failed", detail: result.error || "The server returned no details." });
         return;
       }
-      pushToast({ tone: "success", title: actionType === "stop_pipeline" ? "Остановка v1 запрошена" : "Пайплайн v1 продолжен" });
+      pushToast({ tone: "success", title: actionType === "stop_pipeline" ? "v1 stop requested" : "v1 pipeline resumed" });
       await refresh();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Действие не выполнено", detail: describeApiError(error, "Сервер не ответил.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Action failed", detail: describeApiError(error, "The server did not respond.") }),
   });
 
   const remove = useMutation({
     mutationFn: () => apiPostJson<OkResponse>(`${v1(bookId)}/delete`, {}),
     onSuccess: async (result) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Книга не удалена", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Book not deleted", detail: result.error || "The server returned no details." });
         return;
       }
-      pushToast({ tone: "success", title: "Книга удалена" });
+      pushToast({ tone: "success", title: "Book deleted" });
       await queryClient.invalidateQueries({ queryKey: ["books"] });
       options.onDeleted?.();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Книга не удалена", detail: describeApiError(error, "Сервер не ответил.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Book not deleted", detail: describeApiError(error, "The server did not respond.") }),
   });
 
   // «Прочитал всё»: the author's mark on every marked-up chapter at once.
@@ -158,17 +158,17 @@ export function useHubActions(bookId: string, options: { onDeleted?: () => void 
     mutationFn: () => apiPostJson<OkResponse & { approved_now?: number; approved?: number; attributed?: number }>(`${v2(bookId)}/approve-all`, {}),
     onSuccess: async (result) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Не отмечено", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Not marked", detail: result.error || "The server returned no details." });
         return;
       }
       pushToast({
         tone: "success",
-        title: `Проверено глав: ${result.approved ?? 0}`,
-        detail: result.approved_now ? `отмечено сейчас: ${result.approved_now}` : "все главы уже были отмечены",
+        title: `Chapters reviewed: ${result.approved ?? 0}`,
+        detail: result.approved_now ? `marked now: ${result.approved_now}` : "all chapters already marked",
       });
       await refresh();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не отмечено", detail: describeApiError(error, "Не удалось отметить главы.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Not marked", detail: describeApiError(error, "Could not mark chapters.") }),
   });
 
   // Open every approved chapter at once, without waiting for the button.
@@ -176,43 +176,43 @@ export function useHubActions(bookId: string, options: { onDeleted?: () => void 
     mutationFn: (enabled: boolean) => apiPostJson<OkResponse>(`${v2(bookId)}/auto-publish`, { enabled }),
     onSuccess: async (result, enabled) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Не сохранилось", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Not saved", detail: result.error || "The server returned no details." });
         return;
       }
       pushToast({
         tone: "success",
-        title: enabled ? "Главы будут открываться сразу после одобрения" : "Автопубликация выключена",
-        detail: enabled ? "Дикторы получат одно уведомление на первую открытую главу." : undefined,
+        title: enabled ? "Chapters will be published immediately after approval" : "Automatic publication disabled",
+        detail: enabled ? "Voice actors will receive one notification for the first published chapter." : undefined,
       });
       await refresh();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не сохранилось", detail: describeApiError(error, "Не удалось переключить.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Not saved", detail: describeApiError(error, "Could not switch.") }),
   });
 
   const publish = useMutation({
     mutationFn: () => apiPostJson<OkResponse & { published?: number; skipped?: number; notified?: number; gated_by_approval?: boolean }>(`${v2(bookId)}/publish`, {}),
     onSuccess: async (result) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Книга не опубликована", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Book not published", detail: result.error || "The server returned no details." });
         return;
       }
-      const parts = [`глав опубликовано ${result.published ?? 0}`];
-      if (result.gated_by_approval) parts.push("только проверенные");
-      if (result.skipped) parts.push(`без разметки ${result.skipped}`);
-      if (result.notified) parts.push(`уведомлено дикторов ${result.notified}`);
-      pushToast({ tone: "success", title: "Книга опубликована дикторам", detail: parts.join(" · ") });
+      const parts = [`chapters published ${result.published ?? 0}`];
+      if (result.gated_by_approval) parts.push("reviewed only");
+      if (result.skipped) parts.push(`unannotated ${result.skipped}`);
+      if (result.notified) parts.push(`voice actors notified ${result.notified}`);
+      pushToast({ tone: "success", title: "Book published to voice actors", detail: parts.join(" · ") });
       await refresh();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Книга не опубликована", detail: describeApiError(error, "Сервер не ответил.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Book not published", detail: describeApiError(error, "The server did not respond.") }),
   });
 
   const unpublish = useMutation({
     mutationFn: () => apiPostJson<OkResponse>(`${v2(bookId)}/unpublish`, {}),
     onSuccess: async () => {
-      pushToast({ tone: "info", title: "Книга возвращена на проверку" });
+      pushToast({ tone: "info", title: "Book returned to review" });
       await refresh();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не удалось вернуть на проверку", detail: describeApiError(error, "Сервер не ответил.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Could not return to review", detail: describeApiError(error, "The server did not respond.") }),
   });
 
   return { run, stop, repair, remove, approveAll, autoPublish, publish, unpublish };
@@ -234,16 +234,16 @@ export type HubActions = ReturnType<typeof useHubActions>;
  * — единственное поле, которое сервер здесь присылает).
  */
 const CHARACTER_MAP_ERRORS: Record<string, string> = {
-  speaks: "У этого имени есть реплики — его нельзя удалить, только слить.",
-  target_not_in_cast: "Слить можно только в имя, которое есть в карте. Сначала заведите его в карте, потом сливайте.",
-  has_audio: "На это имя записаны дубли.",
-  placeholder: "Это служебная метка разметки, а не персонаж.",
-  not_found: "Такого имени нет ни в карте, ни в разметке.",
-  same_name: "Это одно и то же имя.",
-  does_not_speak: "Это имя ничего не говорит — заводить в карте нечего.",
-  narrator_is_not_a_role: "Это синоним рассказчика. В карте он один — второго заводить нельзя.",
-  nothing_to_merge: "У этого имени нет реплик — сливать нечего, это удаление под видом слияния.",
-  bad_json: "Не удалось разобрать запрос.",
+  speaks: "This role has lines. Merge it instead of deleting it.",
+  target_not_in_cast: "The target role must exist in the cast. Create it first, then merge.",
+  has_audio: "Takes are recorded under this name.",
+  placeholder: "This is an annotation marker, not a character.",
+  not_found: "This name is absent from both cast and annotation.",
+  same_name: "These names are identical.",
+  does_not_speak: "This role has no lines to add to the cast.",
+  narrator_is_not_a_role: "This is an alias of the narrator. Only one narrator is allowed.",
+  nothing_to_merge: "This role has no lines to merge. Use deletion instead.",
+  bad_json: "Could not parse the request.",
 };
 
 function describeCharacterMapError(error: unknown, fallback: string): string {
@@ -255,7 +255,7 @@ function describeCharacterMapError(error: unknown, fallback: string): string {
 
 /** Тот же перевод для отказа, пришедшего 200-м ответом с `ok: false` (защита по образцу соседних действий). */
 function characterMapErrorText(code: string | undefined): string {
-  return (code && CHARACTER_MAP_ERRORS[code]) || code || "Сервер ответил без подробностей.";
+  return (code && CHARACTER_MAP_ERRORS[code]) || code || "The server returned no details.";
 }
 
 export function useCharacterMapActions(bookId: string) {
@@ -274,30 +274,30 @@ export function useCharacterMapActions(bookId: string) {
     mutationFn: (name: string) => apiPostJson<OkResponse & { deleted?: number }>(`${v2(bookId)}/character-map/delete`, { name }),
     onSuccess: async (result, name) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Не удалено", detail: characterMapErrorText(result.error) });
+        pushToast({ tone: "error", title: "Not deleted", detail: characterMapErrorText(result.error) });
         return;
       }
-      pushToast({ tone: "success", title: "Удалено", detail: `«${name}» убран из карты.` });
+      pushToast({ tone: "success", title: "Deleted", detail: `«${name}» removed from cast.` });
       await refresh(false);
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не удалено", detail: describeCharacterMapError(error, "Сервер не ответил.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Not deleted", detail: describeCharacterMapError(error, "The server did not respond.") }),
   });
 
   const adopt = useMutation({
     mutationFn: (name: string) => apiPostJson<OkResponse & { created?: number }>(`${v2(bookId)}/character-map/adopt`, { name }),
     onSuccess: async (result, name) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Не заведено", detail: characterMapErrorText(result.error) });
+        pushToast({ tone: "error", title: "Not created", detail: characterMapErrorText(result.error) });
         return;
       }
       pushToast({
         tone: "success",
-        title: result.created ? "Заведено в карте" : "Уже в карте",
-        detail: result.created ? `«${name}» появился в карте персонажей.` : `«${name}» и так уже был в карте.`,
+        title: result.created ? "Added to cast" : "Already in cast",
+        detail: result.created ? `«${name}» added to the character cast.` : `«${name}» was already in the cast.`,
       });
       await refresh(false);
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не заведено", detail: describeCharacterMapError(error, "Сервер не ответил.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Not created", detail: describeCharacterMapError(error, "The server did not respond.") }),
   });
 
   const merge = useMutation({
@@ -305,7 +305,7 @@ export function useCharacterMapActions(bookId: string) {
       apiPostJson<CharacterMapMergeResponse>(`${v2(bookId)}/character-map/merge`, body),
     onSuccess: async (result, body) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Не слито", detail: characterMapErrorText(result.error) });
+        pushToast({ tone: "error", title: "Not merged", detail: characterMapErrorText(result.error) });
         return;
       }
       // Лист обещал «переедет N реплик» — тост обязан отчитаться в тех же
@@ -313,12 +313,12 @@ export function useCharacterMapActions(bookId: string) {
       const lines = result.lines ?? 0;
       pushToast({
         tone: "success",
-        title: `Слито в «${result.target ?? body.target}»`,
-        detail: `«${result.source ?? body.source}» перенёс сюда ${lines} ${plural(lines, "реплика", "реплики", "реплик")} и убран из карты.`,
+        title: `Merged into «${result.target ?? body.target}»`,
+        detail: `«${result.source ?? body.source}» moved here ${lines} ${plural(lines, "line", "lines", "lines")} and was removed from the cast.`,
       });
       await refresh(true);
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не слито", detail: describeCharacterMapError(error, "Сервер не ответил.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Not merged", detail: describeCharacterMapError(error, "The server did not respond.") }),
   });
 
   return { deleteRow, adopt, merge };

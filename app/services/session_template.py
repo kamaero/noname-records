@@ -93,10 +93,10 @@ def _is_compressor(slot: str) -> bool:
 
 def parse_template(xml: str) -> Template:
     if "<sesx" not in xml or "<audioTrack" not in xml:
-        raise TemplateError("Это не сессия Audition (.sesx) — в файле нет дорожек.")
+        raise TemplateError("This is not an Audition session (.sesx); no tracks were found.")
     if "<!ENTITY" in xml:
         # Audition сущностей не пишет; файл с ними — не его
-        raise TemplateError("В файле есть объявления XML-сущностей — это не сессия Audition.")
+        raise TemplateError("The file contains XML entity declarations and cannot be used as an Audition session.")
     template = Template()
     for block in _TRACK_RE.findall(xml):
         name_match, rack_match = _NAME_RE.search(block), _RACK_RE.search(block)
@@ -124,7 +124,7 @@ def parse_template(xml: str) -> Template:
             if found:
                 template.voice_over, template.voice_over_rack = found, rack
     if not template.racks and template.any_voice is None:
-        raise TemplateError("В сессии нет дорожек с эффектами — повесьте пресеты на дорожки ролей.")
+        raise TemplateError("The session has no tracks with effects. Add presets to the role tracks.")
     return template
 
 
@@ -180,11 +180,11 @@ def save_template(data: bytes, *, path: str | None = None) -> Template:
     """Проверить и положить шаблон. Негодный файл прежний не трогает."""
     path = path or TEMPLATE_PATH
     if len(data) > MAX_TEMPLATE_BYTES:
-        raise TemplateError("Файл слишком большой для шаблона — сохраните сессию без клипов.")
+        raise TemplateError("The template file is too large. Save the session without clips.")
     try:
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
-        raise TemplateError("Это не сессия Audition (.sesx) — файл не текстовый.") from exc
+        raise TemplateError("This is not an Audition session (.sesx); the file is not text.") from exc
     template = parse_template(text)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = f"{path}.tmp"
@@ -219,8 +219,8 @@ def receive(chat_id, doc: dict) -> list:
     from app.services.bot_out import Outgoing, send
 
     if doc["file_size"] > MAX_TEMPLATE_BYTES:
-        return [send(chat_id, "Файл слишком большой для шаблона — сохраните сессию без клипов и пришлите снова.")]
-    return [send(chat_id, "Шаблон сессии получил, проверяю."),
+        return [send(chat_id, "The template file is too large. Save the session without clips and send it again.")]
+    return [send(chat_id, "Session template received; checking it."),
             Outgoing("enqueue_session_template", {"file_id": doc["file_id"], "chat_id": chat_id})]
 
 
@@ -238,19 +238,19 @@ def enqueue_store_template(file_id: str, chat_id) -> str | None:
 
 def _summary(template: Template, known_roles: list[str] | None = None) -> str:
     roles = ", ".join(template.roles)
-    lines = [f"Шаблон сессии принят. Пресеты для ролей ({len(template.roles)}): {roles}."]
+    lines = [f"Session template accepted. Role presets ({len(template.roles)}): {roles}."]
     if template.any_voice is not None:
-        lines.append(f"«{ANY_VOICE}» — для ролей без своего пресета.")
+        lines.append(f"«{ANY_VOICE}» is used for roles without their own preset.")
     if template.voice_over:
-        lines.append("Voice Over найден: он встанет первым на каждую голосовую дорожку"
-                     + ("." if template.any_voice is not None else ", а роли без своего пресета получат только его."))
+        lines.append("Voice Over was found and will be first on every voice track"
+                     + ("." if template.any_voice is not None else "; roles without their own preset will receive only Voice Over."))
     else:
-        lines.append("Voice Over (Single-band Compressor) в шаблоне не нашёл — первым его не поставлю.")
+        lines.append("Voice Over (Single-band Compressor) was not found in the template; it will not be inserted first.")
     missing = unknown_roles(template, known_roles) if known_roles else []
     if missing:
-        lines.append(f"Таких ролей нет ни в одной книге: {', '.join(missing)} — проверьте написание "
-                     "или ждите книгу, где они есть.")
-    lines.append("Пресеты будут в каждом архиве главы, скачанном с этой минуты.")
+        lines.append(f"These roles do not occur in any book: {', '.join(missing)} — check the spelling "
+                     "or wait for a book containing them.")
+    lines.append("Presets will be included in chapter archives downloaded from now on.")
     return "\n".join(lines)
 
 
@@ -260,12 +260,12 @@ def store_from_telegram(file_id: str, chat_id, *, fetch, send_text, known_roles:
         with fetch(file_id) as handle:
             data = handle.read(MAX_TEMPLATE_BYTES + 1)
     except Exception:  # noqa: BLE001 — владелец должен узнать, что файл не дошёл
-        send_text(chat_id, "Не получилось скачать шаблон — пришлите его ещё раз.")
-        return "не скачан"
+        send_text(chat_id, "Could not download the template. Send it again.")
+        return 'download failed'
     try:
         template = save_template(data)
     except TemplateError as exc:
-        send_text(chat_id, f"Шаблон не принят: {exc} Прежний шаблон остался.")
-        return "отклонён"
+        send_text(chat_id, f"Template not accepted: {exc} The previous template has been preserved.")
+        return 'rejected'
     send_text(chat_id, _summary(template, known_roles))
-    return f"ролей {len(template.roles)}"
+    return f'roles {len(template.roles)}'

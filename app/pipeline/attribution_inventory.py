@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from app.models import Character, ScriptChapter
+from app.models import Character, ScriptBook, ScriptChapter
 from app.pipeline.attribution_evidence import (
     NARRATOR, PROVEN_KINDS, classify_chapter, consecutive_same_speaker,
 )
@@ -37,6 +37,7 @@ def _chapter_paragraphs(db, chapter_id: str) -> list[dict]:
 
 
 def build_inventory(db, *, book_id: str) -> dict:
+    language = getattr(db.get(ScriptBook, book_id), "language", "ru")
     cast = _cast(db, book_id)
     names = build_cast_index([(row.name, [a.strip() for a in (row.aliases or "").split(",")
                                           if a.strip()]) for row in cast])
@@ -53,7 +54,7 @@ def build_inventory(db, *, book_id: str) -> dict:
     for chapter in chapters:
         index = int(chapter.chapter_index or 0)
         paragraphs = _chapter_paragraphs(db, str(chapter.id))
-        evidence = classify_chapter(paragraphs, names=names)
+        evidence = classify_chapter(paragraphs, names=names, language=language)
         counts = dict.fromkeys(KINDS, 0)
         by_paragraph = {int(p["paragraph"]): p for p in paragraphs}
         # Ярлык берётся из разметки, а не из вердикта: у доказанных отрезков вердикт

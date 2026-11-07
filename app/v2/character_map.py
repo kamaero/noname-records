@@ -320,10 +320,12 @@ def adopt_speaker(db, book_id: str, name: str) -> dict:
     схлопывает (см. докстроку модуля) — завести его значило бы родить второго
     рассказчика, которого резолвер бюджета однажды может выбрать вместо первого.
     """
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
     row = _row(db, book_id, name)
     if row["is_placeholder"]:
         raise CharacterMapError("placeholder")
-    if is_narrator_name(row["name"]):
+    if identities.is_narrator(row["name"]):
         raise CharacterMapError("narrator_is_not_a_role")
     if not row["in_markup"]:
         raise CharacterMapError("does_not_speak")
@@ -351,6 +353,8 @@ def merge_speaker(db, *, book_id: str, source: str, target: str,
     и «ДРАКОН» — две строки и два предпросмотра; сличай их `normalize_name`, и
     слияние одной списало бы реплики обеих — лист обещал N, уехало бы больше.
     """
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
     from app.v2.reader import effective_book_rows
     from app.v2.models import V2Attribution
     from app.v2.store import record_operator_intervention, store_attributions
@@ -365,7 +369,7 @@ def merge_speaker(db, *, book_id: str, source: str, target: str,
     # докстринг модуля), а не то же самое, что бюджетный резолвер схлопывает
     # сам. `adopt_speaker` и `rename_role` уже отбивают рассказчика этим кодом —
     # у слияния цена ошибки выше их обоих, а защиты не было вовсе.
-    if is_narrator_name(from_row["name"]) or is_narrator_name(to_row["name"]):
+    if identities.is_narrator(from_row["name"]) or identities.is_narrator(to_row["name"]):
         raise CharacterMapError("narrator_is_not_a_role")
     if from_row["name"] == to_row["name"]:
         raise CharacterMapError("same_name")
@@ -470,6 +474,8 @@ def rename_role(db, *, book_id: str, name: str, new_name: str,
     проверки честный `needs_consent` называл бы настоящую цену и переносил
     тысячи реплик рассказчика на новое имя по-настоящему.
     """
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
     from app.v2.reader import effective_book_rows
     from app.v2.models import V2Attribution
     from app.v2.store import record_operator_intervention, store_attributions
@@ -486,7 +492,7 @@ def rename_role(db, *, book_id: str, name: str, new_name: str,
     # значит без этой проверки экран называет реальную цену и переносит
     # реплики рассказчика на новое имя по-настоящему. Проверка ДО `needs_consent`
     # и до всякой записи — источнику нельзя дать даже спросить согласие.
-    if is_narrator_name(row["name"]):
+    if identities.is_narrator(row["name"]):
         raise CharacterMapError("narrator_is_not_a_role")
     if not target:
         raise CharacterMapError("empty_name")
@@ -494,7 +500,7 @@ def rename_role(db, *, book_id: str, name: str, new_name: str,
         raise CharacterMapError("same_name")
     if is_placeholder_name(target):
         raise CharacterMapError("placeholder")
-    if is_narrator_name(target):
+    if identities.is_narrator(target):
         raise CharacterMapError("narrator_is_not_a_role")
 
     cast_rows = db.query(Character).filter(Character.book_id == book_id).all()

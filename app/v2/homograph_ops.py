@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import collections
 
-from app.models import ScriptChapter
+from app.models import ScriptBook, ScriptChapter
 from app.v2.stress import ACUTE, default_dict_lookup
 from app.v2.stress_ops import _book_segments, _effective_marks_for
 
@@ -39,6 +39,8 @@ def stressed_form(word: str, vowel_offset: int) -> str:
 
 def _collect(db, book_id: str, dict_lookup=None):
     """Every context-marked occurrence of an ambiguous word, with its segment."""
+    if getattr(db.get(ScriptBook, book_id), "language", "ru") == "en":
+        return []
     lookup = dict_lookup or default_dict_lookup
     segments = _book_segments(db, book_id)
     text_of = {segment_id: text for segment_id, _chapter_id, text in segments}

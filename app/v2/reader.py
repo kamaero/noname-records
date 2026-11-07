@@ -99,12 +99,16 @@ def effective_book_rows(db, model, book_id: str, *columns) -> list:
     return db.execute(stmt).all()
 
 
-def effective_book_attributions(db, book_id: str) -> list:
+def effective_book_attributions(db, book_id: str, *, identities=None) -> list:
     """`(segment_id, span_start, span_end, speaker, source)` for the book's effective spans."""
-    return effective_book_rows(
+    from app.services.role_identity import book_roles
+    identities = identities or book_roles(db, book_id)
+    rows = effective_book_rows(
         db, V2Attribution, book_id,
-        V2Attribution.span_start, V2Attribution.span_end, V2Attribution.speaker, V2Attribution.source,
+        V2Attribution.span_start, V2Attribution.span_end, V2Attribution.speaker, V2Attribution.source, V2Attribution.role_ref,
     )
+    return [(sid, start, end, identities.name(ref, speaker), source)
+            for sid, start, end, speaker, source, ref in rows]
 
 
 def _chapters_with_v2(db, chapter_ids: list[str]) -> set[str]:
@@ -136,7 +140,7 @@ def build_book_chapters(db, book_id: str) -> dict | None:
     )
     with_v2 = _chapters_with_v2(db, [row.id for row in chapters])
     return {
-        "book": {"id": book.id, "title": _book_title(book)},
+        "book": {"id": book.id, "title": _book_title(book), "language": book.language or "ru"},
         "chapters": [
             {
                 "id": row.id,
@@ -152,11 +156,13 @@ def build_book_chapters(db, book_id: str) -> dict | None:
 
 
 def _narrator_actor(db, book_id: str, characters: list[Character]) -> str:
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
     for character in characters:
         if str(character.name or "").strip() == NARRATOR and str(character.actor_name or "").strip():
             return str(character.actor_name).strip()
     for character in characters:
-        if str(character.narrator_role or "").strip() and str(character.actor_name or "").strip():
+        if not identities.typed and str(character.narrator_role or "").strip() and str(character.actor_name or "").strip():
             return str(character.actor_name).strip()
     budget = db.query(BookBudget).filter(BookBudget.book_id == book_id).first()
     if budget is not None:
@@ -165,6 +171,8 @@ def _narrator_actor(db, book_id: str, characters: list[Character]) -> str:
 
 
 def _build_cast(db, book_id: str, characters: list[Character], line_counts: dict[str, int]) -> list[dict]:
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
     bg_map, text_map, weight_map, style_map = build_character_style_maps(characters, extra_names=[NARRATOR, UNSURE])
     actors = {str(c.name or "").strip(): str(c.actor_name or "").strip() for c in characters if str(c.name or "").strip()}
     actors[NARRATOR] = _narrator_actor(db, book_id, characters)
@@ -190,6 +198,8 @@ def _build_cast(db, book_id: str, characters: list[Character], line_counts: dict
         bg, fg, weight, style = style_of(name)
         return {
             "name": name,
+            "role_ref": identities.ref(name),
+            "role_kind": identities.kind(name),
             "character_id": ids.get(name, ""),
             "actor": actors.get(name, ""),
             "color": bg,
@@ -211,7 +221,7 @@ def _build_cast(db, book_id: str, characters: list[Character], line_counts: dict
     return cast
 
 
-def segments_payload(segments, attributions: dict, stress: dict, line_counts=None) -> list[dict]:
+def segments_payload(segments, attributions: dict, stress: dict, line_counts=None, *, identities=None) -> list[dict]:
     """Segments as the reader draws them: text, attribution spans, stress marks.
 
     Shared by the chapter view and the role view, so a paragraph looks and behaves the
@@ -223,7 +233,7 @@ def segments_payload(segments, attributions: dict, stress: dict, line_counts=Non
         spans = []
         counted: set[str] = set()  # a replica is a paragraph the role speaks in, torn or not
         for row in attributions.get(segment.id, []):
-            speaker = str(row.speaker or "").strip() or UNSURE
+            speaker = (identities.name(getattr(row, "role_ref", ""), row.speaker) if identities else str(row.speaker or "").strip()) or UNSURE
             if line_counts is not None and speaker not in counted:
                 counted.add(speaker)
                 line_counts[speaker] += 1
@@ -231,6 +241,7 @@ def segments_payload(segments, attributions: dict, stress: dict, line_counts=Non
                 "start": int(row.span_start or 0),
                 "end": int(row.span_end or 0),
                 "speaker": speaker,
+                **({"role_ref": identities.ref(speaker), "role_kind": identities.kind(speaker)} if identities and identities.typed else {}),
                 "confidence": float(row.confidence or 0.0),
                 "source": str(row.source or ""),
             })
@@ -283,7 +294,9 @@ def build_chapter_payload(db, chapter_id: str, *, can_edit: bool = False, can_vo
     stress = effective_stress(db, segment_ids)
 
     line_counts: dict[str, int] = collections.Counter()
-    segment_payload = segments_payload(segments, attributions, stress, line_counts)
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
+    segment_payload = segments_payload(segments, attributions, stress, line_counts, identities=identities)
 
     # Colours last: build_character_style_maps fills defaults onto the ORM rows, and the
     # session is never committed here, so nothing of that reaches the database.
@@ -291,7 +304,7 @@ def build_chapter_payload(db, chapter_id: str, *, can_edit: bool = False, can_vo
     cast = _build_cast(db, book_id, characters, dict(line_counts))
 
     return {
-        "book": {"id": book_id, "title": _book_title(book)},
+        "book": {"id": book_id, "title": _book_title(book), "language": (book.language if book else None) or "ru"},
         "chapter": {
             "id": chapter.id,
             "index": int(chapter.chapter_index or 0),

@@ -136,25 +136,25 @@ export function fetchRecordingImpact(id: string): Promise<RecordingImpact & { ok
 }
 
 const CONSILIUM_ERROR_LABELS: Record<string, string> = {
-  finding_not_found: "Находки больше нет. Обновите список.",
-  finding_already_decided: "Эту находку уже решили — возможно, в другой вкладке. Список обновлён.",
-  unknown_speaker: "Такой роли нет в касте книги.",
-  span_not_in_markup: "Это место правили после прогона — посмотрите заново.",
-  speaker_already_changed: "Это место правили после прогона — посмотрите заново.",
-  arbiter_says_undecidable: "Арбитр не доказал — выберите имя сами.",
-  arbiter_says_keep_current: "Арбитр подтвердил сценарий — выберите имя сами.",
-  no_speaker_to_apply: "Применять нечего — выберите имя сами.",
-  read_only: "Решать находки может только тот, кто правит разметку.",
-  already_running: "Прогон консилиума уже идёт.",
-  book_busy: "Книга сейчас размечается — дождитесь конца прогона.",
-  no_credits: "На балансе RouterAI не хватает денег на этот прогон.",
-  bad_mode: "Неизвестный режим прогона.",
-  no_markup: "У книги нет размеченных глав — сверять не с чем.",
+  finding_not_found: "This finding no longer exists. Refresh the list.",
+  finding_already_decided: "This finding was already resolved, possibly in another tab. The list has been refreshed.",
+  unknown_speaker: "This role is not in the book's cast.",
+  span_not_in_markup: "This passage was edited after the run. Review it again.",
+  speaker_already_changed: "This passage was edited after the run. Review it again.",
+  arbiter_says_undecidable: "The arbiter found insufficient evidence. Choose a role yourself.",
+  arbiter_says_keep_current: "The arbiter confirmed the script. Choose a role yourself.",
+  no_speaker_to_apply: "No change to apply. Choose a role yourself.",
+  read_only: "Only annotation editors can resolve findings.",
+  already_running: "AI review is already running.",
+  book_busy: "This book is being annotated. Wait for the run to finish.",
+  no_credits: "Insufficient RouterAI balance for this run.",
+  bad_mode: "Unknown run mode.",
+  no_markup: "This book has no annotated chapters to review.",
 };
 
 export function describeConsiliumError(error: unknown): string {
   const code = error instanceof ApiError ? error.errorCode : "";
-  return CONSILIUM_ERROR_LABELS[code] || describeApiError(error, "Решение не сохранилось.");
+  return CONSILIUM_ERROR_LABELS[code] || describeApiError(error, "Decision not saved.");
 }
 
 /** Место правили после прогона: карточка оставляет только «оставить» и «другая роль…». */
@@ -198,22 +198,22 @@ export function reassignSegment(segmentId: string, spans: ReassignSpan[]): Promi
 
 /** The endpoint's error codes in the operator's words. */
 const REASSIGN_ERROR_LABELS: Record<string, string> = {
-  spans_required: "Нет диапазонов для сохранения.",
-  span_not_object: "Диапазон передан в неверном виде.",
-  speaker_required: "Не указана роль.",
-  spans_overlap: "Диапазоны пересекаются.",
-  unknown_speaker: "Такой роли нет в касте книги. Добавьте её в каст или выберите другую.",
-  empty_span: "Пустой диапазон: выделите хотя бы один символ.",
-  bad_offsets: "Границы диапазона не совпадают с текстом. Обновите главу.",
-  segment_not_found: "Абзац не найден. Обновите главу.",
+  spans_required: "No ranges to save.",
+  span_not_object: "Invalid range format.",
+  speaker_required: "No role specified.",
+  spans_overlap: "Ranges overlap.",
+  unknown_speaker: "This role is not in the cast. Add it or choose another role.",
+  empty_span: "Empty range. Select at least one character.",
+  bad_offsets: "Range boundaries do not match the text. Refresh the chapter.",
+  segment_not_found: "Paragraph not found. Refresh the chapter.",
 };
 
 export function describeReassignError(error: unknown): string {
   const code = error instanceof ApiError ? error.errorCode : "";
   if (REASSIGN_ERROR_LABELS[code]) return REASSIGN_ERROR_LABELS[code];
   // a bare 404 (no code) is the route itself missing: a server older than this reader
-  if (error instanceof ApiError && error.status === 404 && !code) return "Сервер не знает этот запрос. Обновите страницу; если не помогло — сервер старее интерфейса.";
-  return describeApiError(error, "Не удалось изменить роль.");
+  if (error instanceof ApiError && error.status === 404 && !code) return "The server does not support this request. Refresh the page; if it persists, update the server.";
+  return describeApiError(error, "Could not change the role.");
 }
 
 export type ReaderQueryPart = "chapters" | "queue" | "disputed" | "cast" | "profile" | "consilium";
@@ -267,20 +267,20 @@ export function toBudgetRow(character: BookCastCharacter): BudgetCharacterRow {
 
 /** Human labels for `ReaderStress.source`. */
 const STRESS_SOURCE_LABELS: Record<string, string> = {
-  dict: "словарь",
-  wiktionary: "Викисловарь",
-  author: "словарь автора",
-  book: "словарь книги",
-  context: "контекст",
-  operator: "оператор",
-  text: "в тексте",
-  rule: "правило",
-  llm: "модель",
+  dict: "dictionary",
+  wiktionary: "Wiktionary",
+  author: "author dictionary",
+  book: "book dictionary",
+  context: "context",
+  operator: "operator",
+  text: "in text",
+  rule: "rule",
+  llm: "model",
 };
 
 export function stressSourceLabel(source: string | undefined | null): string {
   const key = String(source || "").trim().toLowerCase();
-  if (!key) return "нет";
+  if (!key) return "none";
   return STRESS_SOURCE_LABELS[key] || key;
 }
 
@@ -289,5 +289,5 @@ export function formatWhen(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString("en-US", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }

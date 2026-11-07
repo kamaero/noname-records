@@ -23,6 +23,22 @@ from app.v2.reader import effective_attributions
 from app.v2.store import load_chapter_segments
 
 logger = logging.getLogger(__name__)
+ALIGNMENT_VERSION = "language-profiles-v2"
+
+
+def asr_language(value: str | None) -> str:
+    language = str(value or "ru").strip().lower()
+    if language not in {"ru", "en"}:
+        raise AsrRunError("unsupported_book_language")
+    return language
+
+
+def chapter_language(db, chapter_id: str) -> str:
+    from app.models import ScriptBook, ScriptChapter
+
+    chapter = db.get(ScriptChapter, str(chapter_id or ""))
+    book = db.get(ScriptBook, chapter.book_id) if chapter is not None else None
+    return asr_language(getattr(book, "language", "ru"))
 
 
 def chapter_replicas(db, chapter_id: str) -> list[dict]:
@@ -40,17 +56,18 @@ def chapter_replicas(db, chapter_id: str) -> list[dict]:
         return []
     rows_by_segment = effective_attributions(db, [segment.id for segment in segments])
 
-    return _replicas_from_segments(segments, rows_by_segment)
+    from app.services.role_identity import chapter_roles
+    return _replicas_from_segments(segments, rows_by_segment, identities=chapter_roles(db, chapter_id))
 
 
-def _replicas_from_segments(segments, rows_by_segment) -> list[dict]:
+def _replicas_from_segments(segments, rows_by_segment, *, identities=None) -> list[dict]:
     """Общий порядок реплик для одиночной главы и пакетной проверки аудитов."""
 
     out: list[dict] = []
     seen: dict[str, int] = {}
     for segment in segments:
         for row in rows_by_segment.get(segment.id, []):
-            speaker = str(row.speaker or "").strip()
+            speaker = identities.name(getattr(row, "role_ref", ""), row.speaker) if identities else str(row.speaker or "").strip()
             text = str(segment.text or "")[int(row.span_start or 0):int(row.span_end or 0)].strip()
             if not speaker or not text:
                 continue
@@ -58,6 +75,7 @@ def _replicas_from_segments(segments, rows_by_segment) -> list[dict]:
             out.append({
                 "order": len(out),
                 "role": speaker,
+                **({"role_ref": identities.ref(speaker), "role_kind": identities.kind(speaker)} if identities and identities.typed else {}),
                 "role_index": seen.get(key, 0),
                 "text": text,
                 "segment_id": str(segment.id),
@@ -85,10 +103,12 @@ def _role_pieces_in_segments(db, chapter_id: str, role: str) -> "tuple[bool, lis
     куска. Кто показывает диктору «сколько реплик», должен сложить куски обратно в
     абзацы (`expected_line_segments`), иначе его числа разойдутся с Читалкой.
     """
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter_id)
     wanted = normalize_name(str(role or "").strip())
     if not wanted:
         return False, []
-    narrator = is_narrator_name(role)
+    narrator = identities.is_narrator(role)
     segments = load_chapter_segments(db, chapter_id=str(chapter_id or "").strip())
     if not segments:
         return narrator, []
@@ -97,8 +117,8 @@ def _role_pieces_in_segments(db, chapter_id: str, role: str) -> "tuple[bool, lis
     pieces: list[tuple[str, str]] = []
     for segment in segments:
         for row in rows_by_segment.get(segment.id, []):
-            speaker = str(row.speaker or "").strip()
-            same = is_narrator_name(speaker) if narrator else normalize_name(speaker) == wanted
+            speaker = identities.name(getattr(row, "role_ref", ""), row.speaker) if identities else str(row.speaker or "").strip()
+            same = identities.same(speaker, role, left_ref=getattr(row, "role_ref", "")) if identities.typed else (is_narrator_name(speaker) if narrator else normalize_name(speaker) == wanted)
             if not same:
                 continue
             text = str(segment.text or "")[int(row.span_start or 0):int(row.span_end or 0)].strip()
@@ -107,7 +127,7 @@ def _role_pieces_in_segments(db, chapter_id: str, role: str) -> "tuple[bool, lis
     return narrator, pieces
 
 
-def expected_line_segments(db, chapter_id: str, role: str) -> list[str]:
+def expected_line_segments(db, chapter_id: str, role: str, *, language: str | None = None) -> list[str]:
     """Абзац (id сегмента) каждой строки `expected_lines` — тем же отбором, в том же порядке.
 
     По нему куски сверки складываются в реплики-абзацы: абзац найден, только если
@@ -116,10 +136,11 @@ def expected_line_segments(db, chapter_id: str, role: str) -> list[str]:
     narrator, pieces = _role_pieces_in_segments(db, chapter_id, role)
     if narrator:
         return [segment_id for _, segment_id in pieces]
-    return [segment_id for text, segment_id in pieces if speech_and_narration(text)[0]]
+    language = asr_language(language) if language is not None else chapter_language(db, chapter_id)
+    return [segment_id for text, segment_id in pieces if speech_and_narration(text, language=language)[0]]
 
 
-def expected_lines(db, chapter_id: str, role: str) -> list[str]:
+def expected_lines(db, chapter_id: str, role: str, *, language: str | None = None) -> list[str]:
     """Речь роли в этой главе, по одной строке на кусок, в порядке сценария.
 
     От актёра ожидается только речь: авторские слова внутри куска читает рассказчик,
@@ -132,15 +153,16 @@ def expected_lines(db, chapter_id: str, role: str) -> list[str]:
     narrator, pieces = _role_pieces(db, chapter_id, role)
     if narrator:
         return pieces
+    language = asr_language(language) if language is not None else chapter_language(db, chapter_id)
     lines: list[str] = []
     for text in pieces:
-        speech, _ = speech_and_narration(text)
+        speech, _ = speech_and_narration(text, language=language)
         if speech:
             lines.append(speech)
     return lines
 
 
-def narration_only_lines(db, chapter_id: str, role: str) -> list[str]:
+def narration_only_lines(db, chapter_id: str, role: str, *, language: str | None = None) -> list[str]:
     """Куски роли, в которых нет ни слова прямой речи.
 
     Это не пропуск диктора, а сигнал о разметке: повествование приписано
@@ -152,9 +174,10 @@ def narration_only_lines(db, chapter_id: str, role: str) -> list[str]:
     narrator, pieces = _role_pieces(db, chapter_id, role)
     if narrator:
         return []
+    language = asr_language(language) if language is not None else chapter_language(db, chapter_id)
     lines: list[str] = []
     for text in pieces:
-        speech, _ = speech_and_narration(text)
+        speech, _ = speech_and_narration(text, language=language)
         if not speech:
             lines.append(text)
     return lines
@@ -190,29 +213,40 @@ class AsrRunError(RuntimeError):
 def find_chapter_for_take(db, audio) -> "ScriptChapter | None":
     """Глава, к которой диктор привязал этот дубль.
 
-    Связь идёт через название главы — то самое, что диктор выбрал в форме, — и через
-    код книги, выведенный из её заголовка. Другого ключа у файла нет: `audio_files`
-    хранит книгу кодом, а не идентификатором.
+    Новые typed-дубли привязаны к книге по ID. Старые сохраняют поиск через
+    название главы и код книги, выведенный из её заголовка.
     """
     from app.models import ScriptBook, ScriptChapter
     from app.services.audio_naming import book_token
     from app.services.audio_uploads import derive_book_code
 
     label = str(getattr(audio, "chapter", "") or "").strip()
+    owner = str(getattr(audio, "role_book_id", "") or "")
+    if owner:
+        matches = db.query(ScriptChapter).filter(
+            ScriptChapter.book_id == owner, ScriptChapter.chapter_title == label).all()
+        if len(matches) != 1:
+            from app.services.role_identity import RoleIdentityError
+            raise RoleIdentityError("ambiguous_chapter_label")
+        return matches[0]
     wanted = book_token(str(getattr(audio, "book_code", "") or ""))
     if not label or not wanted:
         return None
-    for book in db.query(ScriptBook).all():
-        if book_token(derive_book_code(str(book.title or ""))) != wanted:
-            continue
-        chapter = (
-            db.query(ScriptChapter)
-            .filter(ScriptChapter.book_id == book.id, ScriptChapter.chapter_title == label)
-            .one_or_none()
-        )
-        if chapter is not None:
-            return chapter
-    return None
+    candidates = [book for book in db.query(ScriptBook).all()
+                  if book_token(derive_book_code(str(book.title or ""))) == wanted]
+    if not candidates:
+        return None
+    from app.services.role_identity import RoleIdentityError, book_roles
+    if len(candidates) != 1:
+        raise RoleIdentityError("ambiguous_book_code")
+    book = candidates[0]
+    if not book_roles(db, book.id).owns_audio(audio):
+        raise RoleIdentityError("audio_book_scope_mismatch")
+    chapters = db.query(ScriptChapter).filter(
+        ScriptChapter.book_id == book.id, ScriptChapter.chapter_title == label).all()
+    if len(chapters) > 1:
+        raise RoleIdentityError("ambiguous_chapter_label")
+    return chapters[0] if chapters else None
 
 
 def book_phrases(db, book_id: str) -> list[str]:
@@ -235,7 +269,8 @@ def book_phrases(db, book_id: str) -> list[str]:
 
 
 def _transcribe_with_service(path: str, *, phrases: list[str] | None = None,
-                             provider: str | None = None, model: str | None = None) -> dict:
+                             provider: str | None = None, model: str | None = None,
+                             language: str | None = None) -> dict:
     """Настоящий путь: сжать и отправить тому, кто выбран в настройках.
 
     Сжатие нужно обоим: у whisper это условие приёма (25 МБ), у Azure — экономия
@@ -247,6 +282,8 @@ def _transcribe_with_service(path: str, *, phrases: list[str] | None = None,
     from app.config import settings
     from app.services.provider_keys import provider_key
 
+    language = asr_language(language) if language is not None else asr_language(settings.asr_language)
+
     # Модель и ключ — до сжатия: без ключа сжимать нечего, а ошибка должна сказать, куда идти.
     if provider is None or model is None:
         from app.services.step_models import step_model
@@ -257,8 +294,8 @@ def _transcribe_with_service(path: str, *, phrases: list[str] | None = None,
     from app.services.step_models import PROVIDER_LABELS
 
     if not provider_key(provider if provider in ("azure", "routerai") else "openai"):
-        raise AsrRunError(f"Для сверки записей нужен ключ {PROVIDER_LABELS.get(provider, provider)} — "
-                          "добавьте его в «Настройки → Нейросети».")
+        raise AsrRunError(f"Recording checks require a {PROVIDER_LABELS.get(provider, provider)} API key; "
+                          "add it under Settings → AI services.")
     compressed = os.path.join(tempfile.gettempdir(), f"asr-{os.path.basename(path)}.mp3")
     try:
         compress_for_asr(path, compressed)
@@ -267,7 +304,8 @@ def _transcribe_with_service(path: str, *, phrases: list[str] | None = None,
                 compressed,
                 key=provider_key("azure"),
                 endpoint=settings.azure_speech_endpoint,
-                locale=settings.azure_speech_locale,
+                locale=(settings.azure_speech_locale if str(settings.azure_speech_locale).lower().startswith(language + "-")
+                        else {"ru": "ru-RU", "en": "en-US"}[language]),
                 phrases=phrases or [],
             )
         # RouterAI совместим с OpenAI по формату — отличаются адрес, ключ и имена моделей
@@ -277,7 +315,7 @@ def _transcribe_with_service(path: str, *, phrases: list[str] | None = None,
             api_key=provider_key("routerai") if routerai else provider_key("openai"),
             base_url=settings.routerai_base_url if routerai else OPENAI_BASE_URL,
             model=asr_model,
-            language=settings.asr_language,
+            language=language,
             # подсказка одной строкой: у OpenAI-формата список фраз называется `prompt`
             prompt=settings.asr_prompt or ", ".join((phrases or [])[:80]),
         )
@@ -315,7 +353,8 @@ def notify_take_missing(db, job) -> dict | None:
     )
 
 
-def run_asr_for_take(db, audio_file_id: str, *, transcribe=None, notify: bool = True) -> "AsrJob":
+def run_asr_for_take(db, audio_file_id: str, *, transcribe=None, notify: bool = True,
+                     language: str | None = None) -> "AsrJob":
     """Распознать дубль, сверить со сценарием и записать, что вышло.
 
     Неудача — тоже результат: она ложится в ту же строку со своей причиной. Молча
@@ -342,16 +381,41 @@ def run_asr_for_take(db, audio_file_id: str, *, transcribe=None, notify: bool = 
     chapter = find_chapter_for_take(db, audio)
     if chapter is None:
         raise AsrRunError("chapter_not_found")
+    language = asr_language(language) if language is not None else chapter_language(db, chapter.id)
 
+    from app.services.role_identity import chapter_roles
+    role_identities = chapter_roles(db, chapter.id)
+    if not role_identities.owns_audio(audio):
+        from app.services.role_identity import RoleIdentityError
+        raise RoleIdentityError("audio_book_scope_mismatch")
+    if role_identities.typed:
+        if not role_identities.known_ref(str(audio.role_ref or "")):
+            from app.services.role_identity import RoleIdentityError
+            raise RoleIdentityError("unknown_role_identity")
+        # До платного STT: запись с неоднозначной подписью сначала разбирает редактор.
+        role_identities.ref(role_identities.name(getattr(audio, "role_ref", ""), audio.role))
     job = (
         db.query(AsrJob).filter(AsrJob.audio_file_id == audio.id).one_or_none()
         or AsrJob(audio_file_id=audio.id)
     )
+    if job.chapter_id and str(job.chapter_id) != str(chapter.id):
+        raise AsrRunError("cached_asr_scope_mismatch")
+    if str(job.heard_json or "").strip():
+        # Неудачный платный повтор не меняет язык прежнего оплаченного текста:
+        # бесплатная сверка должна суметь прочитать сохранённый транскрипт и после него.
+        previous = json.loads(job.alignment_json or "{}")
+        if isinstance(previous, dict):
+            previous.setdefault("language", asr_language(job.language))
+            job.alignment_json = json.dumps(previous, ensure_ascii=False)
     job.chapter_id = str(chapter.id)
+    job.language = language
     from app.services.step_models import step_model
 
     job.provider, job.model = step_model("asr")  # что на самом деле распознаёт этот дубль
-    job.expected_role = str(audio.role or "")
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter.id)
+    job.role_ref = str(getattr(audio, "role_ref", "") or "")
+    job.expected_role = identities.name(job.role_ref, audio.role)
     job.expected_chapter_index = int(chapter.chapter_index or 0)
     job.status = "running"
     job.error_message = ""
@@ -369,13 +433,14 @@ def run_asr_for_take(db, audio_file_id: str, *, transcribe=None, notify: bool = 
             from app.services import nas_health
 
             if not nas_health.reachable_now():
-                raise AsrRunError("storage_unavailable: запись на NAS, а он не отвечает")
+                raise AsrRunError("storage_unavailable: the recording is on NAS, which is unavailable")
         source = audio_storage.resolve_path(str(audio.stored_key or ""), location=location)
         phrases = None if transcribe else book_phrases(db, str(chapter.book_id))
         heard = _transcribe_retrying(
             (lambda: transcribe(source)) if transcribe
             else (lambda: _transcribe_with_service(
                 source, phrases=phrases, provider=job.provider, model=job.model,
+                language=language,
             ))
         )
         if not transcribe:
@@ -391,8 +456,9 @@ def run_asr_for_take(db, audio_file_id: str, *, transcribe=None, notify: bool = 
         db.flush()
         return job
 
-    expected = expected_lines(db, chapter.id, str(audio.role or ""))
-    alignment = align_transcript(expected, heard.get("segments") or [])
+    expected = expected_lines(db, chapter.id, job.expected_role, language=language)
+    alignment = align_transcript(expected, heard.get("segments") or [], language=language)
+    alignment.update(language=language, normalizer_version=ALIGNMENT_VERSION)
     job.status = "done"
     job.transcript_text = str(heard.get("text") or "")
     # Услышанное целиком, а не только его расшифровка текстом: сверку пересчитывают из
@@ -449,13 +515,17 @@ def chapter_take_fingerprint(db, chapter_id: str) -> str:
     if chapter is None:
         return ""
     label = str(chapter.chapter_title or "").strip()
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter.id)
     return takes_fingerprint(
         item.id
         for item in db.query(AudioFile).filter(AudioFile.kind == TAKE, AudioFile.chapter == label).all()
+        if identities.owns_audio(item)
     )
 
 
-def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = False) -> dict:
+def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = False,
+                        language: str | None = None) -> dict:
     """Распознать дубли главы. Один упавший файл не отменяет остальные.
 
     Распознавание платное и невоспроизводимое (см. память `project_asr_heard_replay`):
@@ -475,6 +545,7 @@ def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = F
     chapter = db.get(ScriptChapter, str(chapter_id or "").strip())
     if chapter is None:
         raise AsrRunError("chapter_not_found")
+    language = asr_language(language) if language is not None else chapter_language(db, chapter.id)
     label = str(chapter.chapter_title or "").strip()
     takes = (
         db.query(AudioFile)
@@ -482,13 +553,23 @@ def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = F
         .order_by(AudioFile.uploaded_at.asc())
         .all()
     )
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter.id)
+    takes = [take for take in takes if identities.owns_audio(take)]
+    if identities.typed:
+        # Проверяем весь набор до первой платной операции.
+        for take in takes:
+            if not identities.known_ref(str(take.role_ref or "")):
+                from app.services.role_identity import RoleIdentityError
+                raise RoleIdentityError("unknown_role_identity")
+            identities.ref(identities.name(take.role_ref, take.role))
     # Уже распознанные дубли главы — с готовой джобой и непустым `heard_json`.
     recognised_jobs: dict[str, AsrJob] = {}
     if takes and not force:
         recognised_jobs = {
             str(job.audio_file_id): job
             for job in db.query(AsrJob).filter(
-                AsrJob.audio_file_id.in_([take.id for take in takes]), AsrJob.status == "done",
+                AsrJob.audio_file_id.in_([take.id for take in takes]), AsrJob.status.in_(["done", "failed"]),
             ).all()
             if str(job.heard_json or "").strip()
         }
@@ -504,6 +585,10 @@ def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = F
     for take in takes:
         recognised = recognised_jobs.get(str(take.id))
         if recognised is not None:
+            if str(recognised.chapter_id or "") != str(chapter.id):
+                failed += 1
+                lost_takes.append({"role": str(take.role or ""), "error": "cached_asr_scope_mismatch"})
+                continue
             # Своим `try`: испорченный сохранённый JSON одной старой джобы не должен
             # обрывать прогон всей главы. Платить за такой дубль заново не идём —
             # только в журнал; услышать его заново можно кнопкой «Распознать».
@@ -515,7 +600,7 @@ def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = F
             realigned += 1
             continue
         try:
-            job = run_asr_for_take(db, take.id, transcribe=transcribe, notify=False)
+            job = run_asr_for_take(db, take.id, transcribe=transcribe, notify=False, language=language)
         except AsrRunError as exc:
             failed += 1
             lost_takes.append({"role": str(take.role or "").strip(), "error": str(exc)[:255]})
@@ -647,6 +732,8 @@ def enqueue_asr_for_chapter(chapter_id: str) -> str | None:
     chapter_id = str(chapter_id or "").strip()
     if not chapter_id:
         return None
+    with SessionLocal() as db:
+        language = chapter_language(db, chapter_id)
     return enqueue_tracked_task(
         queue_name="high",
         func_ref="app.worker_tasks.perform_asr_chapter_task",
@@ -656,6 +743,7 @@ def enqueue_asr_for_chapter(chapter_id: str) -> str | None:
         entity_type="script_chapter",
         entity_id=chapter_id,
         run_key=f"asr:{chapter_id}",
-        meta={"chapter_id": chapter_id},
+        meta={"chapter_id": chapter_id, "language": language},
         chapter_id=chapter_id,
+        language=language,
     )

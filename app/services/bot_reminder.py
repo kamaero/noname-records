@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+from app.services.studio_calendar import studio_timezone
+
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -39,17 +41,12 @@ class Target:
 
 
 def _chapters_word(n: int) -> str:
-    mod10, mod100 = n % 10, n % 100
-    if mod10 == 1 and mod100 != 11:
-        return f"{n} глава"
-    if 2 <= mod10 <= 4 and not 12 <= mod100 <= 14:
-        return f"{n} главы"
-    return f"{n} глав"
+    return f"{n} {'chapter' if n == 1 else 'chapters'}"
 
 
 def dictors_word(n: int) -> str:
     """«1 диктору», «2 дикторам», «21 диктору»."""
-    return f"{n} диктору" if n % 10 == 1 and n % 100 != 11 else f"{n} дикторам"
+    return f"{n} {'voice actor' if n == 1 else 'voice actors'}"
 
 
 def targets(db, *, book_id: str) -> list[Target]:
@@ -79,9 +76,9 @@ def targets(db, *, book_id: str) -> list[Target]:
     return sorted(found, key=lambda t: t.actor.lower().replace("ё", "е"))
 
 
-def reminder_text(target: Target) -> str:
+def reminder_text(target: Target, *, timezone: str = "") -> str:
     """Письмо диктору: книги, роли, сколько глав, срок. На «вы», без восклицаний."""
-    lines = [f"🎙 {studio.name()} — напоминание о записи", ""]
+    lines = [f"🎙 {studio.name()} — recording reminder", ""]
     by_book: dict[str, list[RoleLine]] = {}
     for role in target.roles:
         by_book.setdefault(role.book_title, []).append(role)
@@ -89,16 +86,16 @@ def reminder_text(target: Target) -> str:
         lines.append(f"«{title}»:")
         lines += [f"• «{r.role}» — {_chapters_word(r.chapters)}" for r in roles]
     due = min(r.due_at for r in target.roles)
-    lines += ["", f"Срок — до {format_due(due, kind='role')}.",
-              f"Записи загружайте на {studio.site_host()}, раздел «Загрузка». По книге, которая сейчас в работе студии, "
-              "дубли можно прислать и файлом в бот. Если нужна помощь или больше "
-              f"времени — {studio.write_to()}."]
+    lines += ["", f"Deadline: {format_due(due, kind='role', timezone=timezone)}.",
+              f"Upload recordings at {studio.site_host()}. For the book currently being recorded, "
+              "you can also send files to the bot. If you need help or more time, "
+              f"{studio.write_to()}."]
     return "\n".join(lines)
 
 
 def header(db, bc: BotBroadcast) -> str:
     book = db.get(ScriptBook, bc.book_id) if bc.book_id else None
-    return f"⏰ {book.display_title or book.title}" if book is not None else "⏰ Все книги"
+    return f"⏰ {book.display_title or book.title}" if book is not None else "⏰ All books"
 
 
 def deliver(db, bc_id: str, *, send, now: datetime | None = None) -> str:
@@ -111,7 +108,7 @@ def deliver(db, bc_id: str, *, send, now: datetime | None = None) -> str:
     now = now or utcnow_naive()
     bc = db.get(BotBroadcast, str(bc_id or ""))
     if bc is None:
-        return "Напоминание не найдено."
+        return "Reminder not found."
     found = targets(db, book_id=bc.book_id)
     progress = {"delivered": [], "failed": [], "no_telegram": [t.actor for t in found if not t.chat]}
     db.add(AuditLog(user_id="", entity_type="broadcast", entity_id=bc.id, action="bot_reminder", created_at=now,
@@ -124,16 +121,16 @@ def deliver(db, bc_id: str, *, send, now: datetime | None = None) -> str:
         if not target.chat:
             continue
         try:
-            ok = bool(send(target.chat, reminder_text(target)))
+            ok = bool(send(target.chat, reminder_text(target, timezone=studio_timezone(db))))
         except Exception:  # noqa: BLE001 — один адресат не срывает остальных
             ok = False
         progress["delivered" if ok else "failed"].append(target.actor)
         bc.sent_count = len(progress["delivered"])
         bc.failed_json = json.dumps(progress, ensure_ascii=False)
         db.commit()
-    lines = [f"Напоминание «{header(db, bc)[2:]}» — Ушло: {len(progress['delivered'])}."]
+    lines = [f"Reminder «{header(db, bc)[2:]}» — sent: {len(progress['delivered'])}."]
     if progress["failed"]:
-        lines.append(f"Не дошло: {', '.join(progress['failed'])}")
+        lines.append(f"Not delivered: {', '.join(progress['failed'])}")
     if progress["no_telegram"]:
-        lines.append(f"Без Telegram: {', '.join(progress['no_telegram'])} — им напишите сами.")
+        lines.append(f"Without Telegram: {', '.join(progress['no_telegram'])} — please contact them directly.")
     return "\n".join(lines)

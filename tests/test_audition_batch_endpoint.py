@@ -147,7 +147,7 @@ class TestARoleThatIsNotHis:
     def test_the_owner_is_told_it_is_an_audition(self):
         _, _, _, sent = _post([_upload("проба.wav")], [_meta("Сатухух")])
 
-        assert sent and "Пробы на роль" in sent[0]
+        assert sent and "Role auditions" in sent[0]
 
 
 class TestTheRoleHeHolds:

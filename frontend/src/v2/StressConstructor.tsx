@@ -23,11 +23,7 @@ type StressConstructorProps = {
 };
 
 function segmentsWord(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "сегмент";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "сегмента";
-  return "сегментов";
+  return n === 1 ? "segment" : "segments";
 }
 
 export function StressConstructor({ bookId, target, segment, onClose, onSaved }: StressConstructorProps) {
@@ -67,24 +63,24 @@ export function StressConstructor({ bookId, target, segment, onClose, onSaved }:
       }),
     onSuccess: async (result) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Ударение не сохранено", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Word stress not saved", detail: result.error || "The server returned no details." });
         return;
       }
       const n = Number(result.segments_updated || 0);
       const extra: string[] = [];
-      if (result.occurrences) extra.push(`вхождений: ${result.occurrences}`);
-      if (result.skipped) extra.push(`пропущено: ${result.skipped}`);
-      if (result.scope === "author") extra.push("записано в словарь автора");
+      if (result.occurrences) extra.push(`occurrences: ${result.occurrences}`);
+      if (result.skipped) extra.push(`skipped: ${result.skipped}`);
+      if (result.scope === "author") extra.push("saved to the author's dictionary");
       pushToast({
         tone: "success",
-        title: `${result.stressed || preview}: обновлено ${n} ${segmentsWord(n)}`,
+        title: `${result.stressed || preview}: updated ${n} ${segmentsWord(n)}`,
         detail: extra.join(" · ") || undefined,
       });
       await invalidateReader(queryClient, bookId, ["chapters", "queue", "profile"]);
       onSaved();
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Ударение не сохранено", detail: describeApiError(error, "Не удалось сохранить ударение.") });
+      pushToast({ tone: "error", title: "Word stress not saved", detail: describeApiError(error, "Could not save word stress.") });
     },
   });
 
@@ -115,32 +111,32 @@ export function StressConstructor({ bookId, target, segment, onClose, onSaved }:
   };
 
   const authorHint = hasAuthor === null
-    ? "Проверяю, определён ли автор книги…"
+    ? "Checking the book's author…"
     : hasAuthor
-      ? "Записать в словарь автора — применится ко всем его книгам"
-      : "У книги не определён автор — сохранить можно только в книгу";
+      ? "Save to the author's dictionary for use in all their books"
+      : "This book has no linked author; save to this book only";
 
   return (
     <section
       ref={rootRef}
       className="v2r-dock"
       role="region"
-      aria-label={`Ударение в слове ${clean}`}
+      aria-label={`Word stress in ${clean}`}
       tabIndex={-1}
       onKeyDown={onKeyDown}
     >
       <div className="v2r-dock-head">
-        <span className="v2r-dock-title">Ударение</span>
+        <span className="v2r-dock-title">Word stress</span>
         <span className="v2r-dock-preview" aria-live="polite">{preview}</span>
         <span className="v2r-dock-source">
-          сейчас: {current ? `${stressSourceLabel(current.source)}${currentIndex >= 0 ? ` · ${placeStress(clean, currentIndex)}` : ""}` : "нет"}
+          current: {current ? `${stressSourceLabel(current.source)}${currentIndex >= 0 ? ` · ${placeStress(clean, currentIndex)}` : ""}` : "none"}
         </span>
-        <button type="button" className="btn btn-sm btn-ghost v2r-btn v2r-dock-close" onClick={onClose} aria-label="Закрыть конструктор" data-action="close">
+        <button type="button" className="btn btn-sm btn-ghost v2r-btn v2r-dock-close" onClick={onClose} aria-label="Close stress editor" data-action="close">
           ✕
         </button>
       </div>
 
-      <div className="v2r-letters" role="radiogroup" aria-label="Ударная гласная">
+      <div className="v2r-letters" role="radiogroup" aria-label="Stressed vowel">
         {letters.map((letter) => (
           <button
             key={letter.index}
@@ -155,7 +151,7 @@ export function StressConstructor({ bookId, target, segment, onClose, onSaved }:
             {letter.ch}
           </button>
         ))}
-        {vowelIndexes.length === 0 ? <span className="v2r-dock-hint">В слове нет гласных — ударение поставить негде.</span> : null}
+        {vowelIndexes.length === 0 ? <span className="v2r-dock-hint">No vowels found in this word.</span> : null}
       </div>
 
       <div className="v2r-dock-actions">
@@ -164,9 +160,9 @@ export function StressConstructor({ bookId, target, segment, onClose, onSaved }:
           className="btn btn-sm btn-primary v2r-btn"
           disabled={!canSave || save.isPending}
           onClick={() => save.mutate("book")}
-          title="Enter — сохранить для этой книги"
+          title="Enter — save for this book"
         >
-          {save.isPending && save.variables === "book" ? "Сохраняю…" : "Для этой книги"}
+          {save.isPending && save.variables === "book" ? "Saving…" : "For this book"}
         </button>
         <button
           type="button"
@@ -176,9 +172,9 @@ export function StressConstructor({ bookId, target, segment, onClose, onSaved }:
           title={authorHint}
           data-action="author"
         >
-          {save.isPending && save.variables === "author" ? "Сохраняю…" : "Автору"}
+          {save.isPending && save.variables === "author" ? "Saving…" : "For this author"}
         </button>
-        <span className="v2r-dock-hint">← → гласная · Enter — в книгу · Esc — закрыть</span>
+        <span className="v2r-dock-hint">← → vowel · Enter — save to book · Esc — close</span>
       </div>
     </section>
   );

@@ -10,14 +10,13 @@ from pathlib import Path
 
 from app.models import ScriptBook
 from app.services import book_import, provider_keys, spend, step_models
-from app.services.provider_checks import WORDS
 from app.services.step_models import PROVIDER_LABELS
 from app.services.studio_settings import studio_settings
 from app.time_utils import utcnow_naive
 from app.v2.models import V2Run
 
-SAMPLE_PATH = Path(__file__).resolve().parents[1] / "samples" / "example_detective.txt"
-SAMPLE_TITLE = "Номер двенадцатый"
+SAMPLE_PATH = Path(__file__).resolve().parents[1] / "samples" / "example_detective_en.txt"
+SAMPLE_TITLE = "The Missing Key"
 SAMPLE_AUTHOR = "Noname Records"
 #: шаги модели, без которых пример не разметить; консилиум, звук, эмбиент и ASR — потом
 MARKUP_STEPS = ("attribution", "characters")
@@ -27,8 +26,8 @@ FAILED_CHECKS = ("bad_key", "no_money")
 #: увидят «примера нет» и импортируют две книги
 _IMPORT_LOCK = threading.Lock()
 TITLES = {
-    "key": "Добавьте ключ нейросети", "models": "Проверьте модели", "limit": "Задайте месячный лимит",
-    "sample": "Добавьте книгу-пример", "run": "Разметьте пример", "result": "Откройте результат",
+    "key": "Add an AI provider key", "models": "Check your models", "limit": "Set a monthly limit",
+    "sample": "Add the sample book", "run": "Analyze the sample", "result": "Open the result",
 }
 
 
@@ -49,27 +48,28 @@ def _key_step(db, providers: dict[str, str]) -> dict:
     provider = providers["attribution"]
     info = provider_keys.key_info(db, provider)
     if info["source"] == "none":
-        return _step("key", False, f"Нет ключа {_label(provider)} — на нём идёт разметка книги.")
+        return _step("key", False, f"Add a {_label(provider)} key to analyze the book.")
     # ключ из установщика лежит в .env и проверки не имеет — это не повод держать шаг открытым
     if info["check_status"] in FAILED_CHECKS:
-        return _step("key", False, f"{_label(provider)}: {WORDS[info['check_status']]}")
-    return _step("key", True, f"Ключ {_label(provider)} есть.")
+        message = {"bad_key": "The key is invalid.", "no_money": "The provider balance is insufficient."}
+        return _step("key", False, f"{_label(provider)}: {message[info['check_status']]}")
+    return _step("key", True, f"{_label(provider)} key is configured.")
 
 
 def _models_step(db, providers: dict[str, str]) -> dict:
     missing = sorted({providers[s] for s in MARKUP_STEPS if not _has_key(db, providers[s])})
     if missing:
-        return _step("models", False, "Нет ключа для " + ", ".join(_label(p) for p in missing)
-                     + " — смените модель шага или добавьте ключ.")
-    return _step("models", True, "Модели разметки и поиска персонажей готовы к работе.")
+        return _step("models", False, "Missing key for " + ", ".join(_label(p) for p in missing)
+                     + ". Choose another model or add a key.")
+    return _step("models", True, "Character extraction and attribution models are ready.")
 
 
 def _limit_step(row) -> dict:
     if row.monthly_limit_rub > 0:
-        return _step("limit", True, f"Лимит — {row.monthly_limit_rub:,} ₽ в месяц.".replace(",", " "))
+        return _step("limit", True, f"Monthly limit: {row.monthly_limit_rub:,} RUB.")
     if row.onboarding_no_limit:
-        return _step("limit", True, "Вы работаете без лимита.")
-    return _step("limit", False, "Новые прогоны не стартуют сверх лимита без подтверждения.")
+        return _step("limit", True, "No spending limit is set.")
+    return _step("limit", False, "New runs require confirmation when the limit is exceeded.")
 
 
 def _sample(db, row) -> ScriptBook | None:
@@ -82,13 +82,13 @@ def _latest_run(db, book_id: str) -> V2Run | None:
 
 def _run_step(run: V2Run | None) -> dict:
     if run is None:
-        return _step("run", False, "Откройте книгу и запустите разметку — смета будет до старта.")
+        return _step("run", False, "Open the book and start analysis. You will see an estimate first.")
     if run.status in ("queued", "running"):
-        return _step("run", False, "Разметка идёт.", "running")
+        return _step("run", False, "Analysis is in progress.", "running")
     if run.status == "done":
-        return _step("run", True, "Пример размечен.")
+        return _step("run", True, "Sample analysis is complete.")
     # stopped — тоже «не удалось»: иначе шаг висел бы «идёт» вечно
-    return _step("run", False, "Разметка не удалась — журнал на странице книги.", "failed")
+    return _step("run", False, "Analysis failed. See the log on the book page.", "failed")
 
 
 def checklist(db) -> dict:
@@ -98,14 +98,14 @@ def checklist(db) -> dict:
     run = _latest_run(db, book.id) if book else None
     steps = [_key_step(db, providers), _models_step(db, providers), _limit_step(row)]
     if book is None:
-        steps += [_step("sample", False, "Короткий детектив на две главы — чтобы увидеть всю цепочку."),
-                  _step("run", False, "Сначала добавьте пример.", "locked"),
-                  _step("result", False, "Сначала добавьте пример.", "locked")]
+        steps += [_step("sample", False, "A short two-chapter mystery to explore the workflow."),
+                  _step("run", False, "Add the sample first.", "locked"),
+                  _step("result", False, "Add the sample first.", "locked")]
     else:
         seen = row.onboarding_result_seen_at is not None
-        steps += [_step("sample", True, "Пример добавлен."), _run_step(run),
-                  _step("result", seen, "Каст и Читалка примера." if seen
-                        else "Посмотрите каст и Читалку — так выглядит готовая разметка.")]
+        steps += [_step("sample", True, "Sample added."), _run_step(run),
+                  _step("result", seen, "Sample cast and reader." if seen
+                        else "Open the cast and reader to see the completed analysis.")]
     estimate, unknown = None, False
     # смета только пока не запускали: считать её на каждый заход на главную незачем
     if book is not None and run is None:
@@ -131,7 +131,7 @@ def _import_sample(db, *, user_id: str, user_name: str) -> ScriptBook:
         return existing
     book = book_import.enqueue_book(db, SAMPLE_PATH.name, SAMPLE_PATH.read_bytes(), title=SAMPLE_TITLE,
                                     author=SAMPLE_AUTHOR, created_by_user_id=user_id,
-                                    created_by_name=user_name)
+                                    created_by_name=user_name, language="en")
     row = studio_settings(db)
     row.sample_book_id = book.id
     # новый пример — новый результат: прежняя отметка относилась к удалённой книге

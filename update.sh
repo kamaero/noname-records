@@ -9,20 +9,20 @@ docker() {
   if command docker info >/dev/null 2>&1; then command docker "$@"; else sudo docker "$@"; fi
 }
 if [[ "${1:-}" == "--dry-run" ]]; then
-  echo "Создать резервную копию, получить новую версию через Git или архив, пересобрать образ и перезапустить сервисы."
+  echo "Create a backup, download the latest version with Git or an archive, rebuild the image and restart services."
   exit 0
 fi
-if (($#)); then echo "Использование: $0 [--dry-run]" >&2; exit 2; fi
+if (($#)); then echo "Usage: $0 [--dry-run]" >&2; exit 2; fi
 
 if [[ -d .git ]] && command -v git >/dev/null 2>&1 && [[ -n "$(git remote)" ]]; then
   ./backup.sh
   git pull --ff-only
   docker compose up -d --build
-  echo "Обновление выполнено."
+  echo "Update complete."
   exit 0
 fi
 
-echo "Получаю новую версию из архива..."
+echo "Downloading the latest version from an archive..."
 stage="$(mktemp -d "${TMPDIR:-/tmp}/noname-update.XXXXXX")"
 new_sh=
 new_ps=
@@ -38,7 +38,7 @@ if command -v curl >/dev/null 2>&1; then
 elif command -v wget >/dev/null 2>&1; then
   wget -qO "$stage/source.tar.gz" "$NONAME_ARCHIVE_URL"
 else
-  echo "Для обновления нужен curl или wget. Установите одну из этих программ." >&2
+  echo "Updating requires curl or wget. Install either tool." >&2
   exit 1
 fi
 mkdir "$stage/extract"
@@ -47,12 +47,12 @@ shopt -s nullglob
 roots=("$stage/extract"/*)
 shopt -u nullglob
 if (("${#roots[@]}" != 1)) || [[ ! -d "${roots[0]}" ]]; then
-  echo "Архив имеет неожиданный вид. Существующая версия сохранена." >&2
+  echo "The archive has an unexpected structure. The existing version has been preserved." >&2
   exit 1
 fi
 source_dir="${roots[0]}"
 if [[ ! -f "$source_dir/install.sh" || ! -f "$source_dir/update.sh" || ! -f "$source_dir/Dockerfile" ]]; then
-  echo "В архиве нет нужных файлов системы. Существующая версия сохранена." >&2
+  echo "The archive is missing required application files. The existing version has been preserved." >&2
   exit 1
 fi
 
@@ -80,4 +80,4 @@ docker compose up -d --build
 if [[ -n "$new_ps" ]]; then mv -f "$new_ps" update.ps1; new_ps=; fi
 mv -f "$new_sh" update.sh
 new_sh=
-echo "Обновление выполнено."
+echo "Update complete."

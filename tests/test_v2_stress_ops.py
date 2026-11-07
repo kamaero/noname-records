@@ -46,7 +46,7 @@ def _mark(segment_id, start, end, vowel, source, version=1):
 
 
 def _seed(db, *, author_id=AUTHOR, notes=""):
-    db.add(Author(id=AUTHOR, name="Александр Примеродин", slug="primerodin"))
+    db.add(Author(id=AUTHOR, name="Алексей Примеров", slug="primerov"))
     db.add(ScriptBook(id=BOOK, title="Карта", source_filename="k.txt", source_format="txt",
                       author_id=author_id, pronunciation_notes=notes))
     db.add(ScriptChapter(id=CH1, book_id=BOOK, chapter_index=1, chapter_title="Глава 1"))

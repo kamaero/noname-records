@@ -24,13 +24,13 @@ export function ReaderEntryPage() {
   });
 
   if (bookId) {
-    if (chaptersQuery.isLoading) return <SkeletonPanel label="Ищу размеченные главы…" lines={3} />;
+    if (chaptersQuery.isLoading) return <SkeletonPanel label="Finding annotated chapters…" lines={3} />;
     if (chaptersQuery.isError || !chaptersQuery.data) {
       return (
         <div className="panel panel-pad v2r-empty">
-          <p>{describeApiError(chaptersQuery.error, "Не удалось загрузить главы книги.")}</p>
+          <p>{describeApiError(chaptersQuery.error, "Could not load book chapters.")}</p>
           <Link className="btn btn-sm" to="/reader">
-            К списку книг
+            Back to books
           </Link>
         </div>
       );
@@ -42,30 +42,30 @@ export function ReaderEntryPage() {
         <div className="v2r-empty">
           <Icon name="doc" />
           <p>
-            В книге «{chaptersQuery.data.book.title}» пока нет глав, размеченных в v2.
+            Book «{chaptersQuery.data.book.title}» has no annotated chapters yet.
           </p>
           <Link className="btn btn-sm" to="/reader">
-            Выбрать другую книгу
+            Choose another book
           </Link>
         </div>
       </div>
     );
   }
 
-  if (booksQuery.isLoading) return <SkeletonPanel label="Загружаю книги…" lines={4} />;
+  if (booksQuery.isLoading) return <SkeletonPanel label="Loading books…" lines={4} />;
   const books = booksQuery.data?.items ?? [];
   return (
     <div className="v2r v2r--font-m">
       <div className="v2r-books">
-        <h1 className="v2r-books-title">Подготовка</h1>
-        <p className="muted">Сверка сценария, ударения и подготовка книги к записи.</p>
-        {books.length === 0 ? <p className="faint">Книг пока нет.</p> : null}
+        <h1 className="v2r-books-title">Preparation</h1>
+        <p className="muted">Review scripts, word stress and prepare books for recording.</p>
+        {books.length === 0 ? <p className="faint">No books yet.</p> : null}
         <ul className="v2r-books-list">
           {books.map((book) => (
             <li key={book.id}>
               <Link className="v2r-book" to={`/reader?book_id=${encodeURIComponent(book.id)}`}>
                 <strong>{book.display_title || book.title}</strong>
-                <span className="faint num">{book.chapter_count} гл.</span>
+                <span className="faint num">{book.chapter_count} ch.</span>
               </Link>
             </li>
           ))}

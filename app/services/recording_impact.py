@@ -23,24 +23,22 @@ def chapter_has_recognition(db, chapter_id: str) -> bool:
 
 
 def _actor_label(name: str) -> str:
-    return name or "актёр не назначен"
+    return name or 'no actor assigned'
 
 
 def _state_text(state: str, *, from_role: str, from_actor: str, to_role: str, to_actor: str) -> str:
     if state == "borrow":
-        return f"Глава записана. Звук возьмём из файла роли «{from_role}» — читает тот же актёр ({from_actor})."
+        return f'The chapter is recorded. Audio will be taken from the role «{from_role}» — the same actor ({from_actor}).'
     if state == "borrow_no_file":
-        return (f"Глава записана, звук лежит у роли «{from_role}» (тот же актёр), но у роли «{to_role}» в этой главе "
-                "нет своей записи — сборка его не возьмёт, реплику придётся дописать.")
+        return (f'The chapter is recorded; audio belongs to «{from_role}» (the same actor), but «{to_role}» has no recording in this chapter. Assembly cannot use it; the line must be recorded.')
     if state == "rerecord":
-        tail = "ему придёт уведомление." if to_actor else "уведомлять некого — назначьте актёра."
-        return (f"Глава записана — реплика лежит у роли «{from_role}» ({_actor_label(from_actor)}). После правки её "
-                f"дозапишет «{to_role}» ({_actor_label(to_actor)}), {tail}")
+        tail = 'the actor will be notified.' if to_actor else 'assign an actor to receive the notification.'
+        return (f'The chapter is recorded; the line belongs to «{from_role}» ({_actor_label(from_actor)}). After the edit, the line will be recorded by «{to_role}» ({_actor_label(to_actor)}), {tail}')
     if state == "not_in_audio":
-        tail = "придёт уведомление её дописать." if to_actor else "— уведомлять некого, назначьте актёра."
-        return f"Глава записана, но этой реплики в записи нет. Актёру роли «{to_role}» ({_actor_label(to_actor)}) {tail}"
+        tail = 'will be notified to record the line.' if to_actor else 'has no actor to notify; assign one.'
+        return f'The chapter is recorded, but this line is missing. The actor for «{to_role}» ({_actor_label(to_actor)}) {tail}'
     if state == "new_role_unrecorded":
-        return f"У роли «{to_role}» в этой главе ещё нет записи — реплика войдёт в её обычную запись."
+        return f'The role «{to_role}» has no recording in this chapter yet; the line will be included in the normal recording.'
     return ""
 
 

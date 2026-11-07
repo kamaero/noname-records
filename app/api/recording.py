@@ -23,7 +23,7 @@ from app.services.upload_role_chapter import refusal_text, role_not_in_chapter
 
 #: Диск переполнен — это не баг, а исчерпание места: диктору нужен внятный отказ,
 #: а не 500. 507 (Insufficient Storage) точнее прочих кодов называет причину.
-DISK_FULL_MESSAGE = "Не могу принять файл: на диске сервера кончилось место. Попробуйте позже."
+DISK_FULL_MESSAGE = "The file cannot be accepted because the server is out of disk space. Try again later."
 
 #: `delete_audio_file` (`app/services/audio_deletion.py`) отказывает машинным кодом —
 #: экрану он не годится, диктор, увидевший `too_old`, не поймёт, что делать. Словарь
@@ -31,21 +31,21 @@ DISK_FULL_MESSAGE = "Не могу принять файл: на диске се
 AUDIO_DELETE_ERRORS: dict[str, tuple[int, str]] = {
     "not_found": (
         status.HTTP_404_NOT_FOUND,
-        "Такой записи уже нет — возможно, её удалили раньше. Обновите страницу.",
+        "This recording no longer exists. Refresh the page.",
     ),
     "forbidden": (
         status.HTTP_403_FORBIDDEN,
-        "Это чужая запись — удалить её может только тот, кто её записал, либо автор или владелец.",
+        "Only the actor who made this recording, the author or the owner can delete it.",
     ),
     "too_old": (
         status.HTTP_403_FORBIDDEN,
-        "Запись сделана больше суток назад — самостоятельно удалить её уже нельзя. "
-        "Обратитесь к автору или владельцу студии.",
+        "This recording is more than 24 hours old. "
+        "Contact the author or studio owner to delete it.",
     ),
     "forbidden_agent": (
         status.HTTP_403_FORBIDDEN,
-        "Агент загружает записи, но не удаляет их. "
-        "Если файл попал сюда по ошибке — напишите владельцу студии, он уберёт.",
+        "Agents can upload recordings but cannot delete them. "
+        "If a file was uploaded by mistake, contact the studio owner.",
     ),
 }
 
@@ -53,12 +53,15 @@ AUDIO_DELETE_ERRORS: dict[str, tuple[int, str]] = {
 #: validation_failed» диктору ничего не говорит. Тексты — те же, что под файлом в
 #: предпросмотре (`ERROR_TEXT` во фронтовом `BatchUpload.tsx`).
 BATCH_ERROR_TEXT: dict[str, str] = {
-    "chapter_required": "не указана глава",
-    "role_required": "не указана роль",
-    "duplicate_in_batch": "в пачке два одинаковых файла",
-    "duplicate_in_storage": "этот же файл уже загружен в эту роль и главу",
-    "role_not_in_chapter": "роль не говорит в этой главе",
-    "role_taken": "роль уже утверждена за другим",
+    "unknown_role_identity": "this role no longer exists in the cast; choose a current role before uploading",
+    "ambiguous_role_identity": "several roles match this name; resolve duplicate names and aliases in the cast before uploading",
+    "ambiguous_book_code": "more than one book uses this code; choose a unique book code before uploading",
+    "chapter_required": "no chapter specified",
+    "role_required": "no role specified",
+    "duplicate_in_batch": "the batch contains duplicate files",
+    "duplicate_in_storage": "this file has already been uploaded for this role and chapter",
+    "role_not_in_chapter": "the role has no lines in this chapter",
+    "role_taken": "another actor has already been approved for this role",
 }
 
 
@@ -66,8 +69,8 @@ def _validation_item_text(item: dict) -> str:
     error = str(item.get("error") or "")
     if error == "chapter_mismatch":
         return (
-            f"в имени файла глава {item.get('filename_chapter')}, "
-            f"а выбрана глава {item.get('chosen_chapter')}"
+            f"the filename specifies chapter {item.get('filename_chapter')}, "
+            f"but chapter {item.get('chosen_chapter')} is selected"
         )
     if error == "role_not_in_chapter":
         return refusal_text(
@@ -134,7 +137,7 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
                          db.query(ScriptBook.title).filter(ScriptBook.voiced_at.isnot(None))]
         if any(book_code_matches_title(title, code) for title in voiced_titles for code in book_codes):
             return JSONResponse(
-                {"ok": False, "error": "book_voiced", "message": "Книга озвучена — загрузка закрыта."},
+                {"ok": False, "error": "book_voiced", "message": "The book is complete; uploads are closed."},
                 status_code=status.HTTP_409_CONFLICT,
             )
         return None
@@ -196,6 +199,11 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
                     actor_name=actor_for(request, actor_name),
                     line_index=int(line_index),
                 )
+            except ValueError as exc:
+                if str(exc) not in {"ambiguous_book_code", "ambiguous_role_identity", "unknown_role_identity"}:
+                    raise
+                return JSONResponse({"ok": False, "error": str(exc),
+                                     "message": BATCH_ERROR_TEXT[str(exc)]}, status_code=409)
             except audio_mirror.LocalDiskFull:
                 return JSONResponse(
                     {"ok": False, "error": "disk_full", "message": DISK_FULL_MESSAGE},
@@ -247,6 +255,13 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
                 actor_name = actor_for(request, str((meta or {}).get("actor_name") or ""))
                 book_code = str((meta or {}).get("book_code") or "").strip() or "BOOK"
                 kind = classify_upload_kind(db, role=role, actor_name=actor_name, book_code=book_code)
+                from app.services.role_identity import audio_role_ref
+                try:
+                    audio_role_ref(db, book_code, role)
+                except ValueError as exc:
+                    if str(exc) not in {"ambiguous_book_code", "ambiguous_role_identity", "unknown_role_identity"}:
+                        raise
+                    validation_errors.append({"index": idx, "file": up.filename or "", "error": str(exc)})
                 chapter = str((meta or {}).get("chapter") or "").strip()
                 if not chapter and kind != "audition":
                     validation_errors.append({"index": idx, "file": up.filename or "", "error": "chapter_required"})
@@ -559,7 +574,7 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
                 str(params.get("chapter") or ""),
                 role,
                 actor_name,
-                str(params.get("ext") or "имя.wav"),
+                str(params.get("ext") or "audio.wav"),
                 kind=kind,
             ),
         })

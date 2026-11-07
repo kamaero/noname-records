@@ -45,7 +45,7 @@ def test_a_step_without_its_key_refuses_before_spending(factory, monkeypatch):
     monkeypatch.setattr(provider_keys, "provider_key", lambda name: "")
     with pytest.raises(sm.MissingKeyError) as err:
         sm.require_key_for("sound")
-    assert "RouterAI" in str(err.value) and "звуковой разметки" in str(err.value)
+    assert "RouterAI" in str(err.value) and "Sound planning" in str(err.value)
 
 
 def test_asr_default_follows_env(factory, monkeypatch):

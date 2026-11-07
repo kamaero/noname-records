@@ -140,15 +140,15 @@ def build_budget_api_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., A
 
     #: Отказ агенту в остальных полях — словами, а не кодом: он увидит его в интерфейсе.
     AGENT_FIELDS_REFUSAL = (
-        "Агент вписывает в каст только актёра — предварительно, со знаком вопроса. "
-        "Расу, темперамент, описание и деньги правят автор и владелец студии."
+        "Agents may only propose an actor, marked with a question mark. "
+        "The author and studio owner edit the species, temperament, description and fees."
     )
     #: Рассказчик — не роль из списка: его выбирает владелец, и запрет живёт здесь, а не
     #: только в интерфейсе. `canAssignActor` прячет поле, но у строки рассказчика в касте
     #: настоящий `character_id`, и адрес ручки обходит любое сокрытие.
     AGENT_NARRATOR_REFUSAL = (
-        "Рассказчика выбирает владелец студии: он читает книгу целиком, и это назначение "
-        "не бывает предварительным. Агент предлагает актёров на остальные роли."
+        "The studio owner selects the narrator for the whole book; this assignment "
+        "cannot be tentative. Agents can propose actors for other roles."
     )
 
     def cast_assign_scope(request: Request) -> str:
@@ -189,6 +189,8 @@ def build_budget_api_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., A
         return before != after
 
     def is_narrator_row(character: dict[str, Any]) -> bool:
+        if "role_kind" in character:
+            return character["role_kind"] == "system_narrator"
         return (
             is_narrator_name(str(character.get("name") or ""))
             or is_narrator_name(str(character.get("aliases") or ""))
@@ -289,7 +291,9 @@ def build_budget_api_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., A
                 db.commit()
                 characters = db.query(character_model).filter(character_model.book_id == book_id).order_by(character_model.name.asc()).all()
             snapshots = db.query(character_budget_snapshot_model).filter(character_budget_snapshot_model.book_id == book_id).all()
-            narrator_rows = [row for row in characters if is_narrator_name(getattr(row, "name", "") or "") or is_narrator_name(getattr(row, "aliases", "") or "") or is_narrator_name(getattr(row, "narrator_role", "") or "")]
+            from app.services.role_identity import book_roles
+            identities = book_roles(db, book_id)
+            narrator_rows = [row for row in characters if identities.is_narrator(getattr(row, "name", "") or "") or (not identities.typed and (is_narrator_name(getattr(row, "aliases", "") or "") or is_narrator_name(getattr(row, "narrator_role", "") or "")))]
             character_ids = {str(getattr(item, "id", "") or "") for item in characters}
             snapshot_character_ids = {str(getattr(item, "character_id", "") or "") for item in snapshots}
             needs_autofill = (
@@ -316,7 +320,7 @@ def build_budget_api_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., A
                     db.commit()
                     characters = db.query(character_model).filter(character_model.book_id == book_id).order_by(character_model.name.asc()).all()
                 snapshots = db.query(character_budget_snapshot_model).filter(character_budget_snapshot_model.book_id == book_id).all()
-            characters, snapshot_map = collapse_budget_character_rows(characters, snapshots)
+            characters, snapshot_map = collapse_budget_character_rows(characters, snapshots, identities=identities)
             narrative = int((budget.narrative_cost_rub if budget else 0) or 0)
             engineer = int((budget.sound_engineer_cost_rub if budget else 0) or 0)
             extra = int((budget.extra_cost_rub if budget else 0) or 0)
@@ -494,10 +498,12 @@ def build_budget_api_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., A
             # Рассказчик — обычная строка `Character`, и агент дотягивается до неё по
             # адресу, минуя интерфейс. Проверять можно только с карточкой на руках,
             # поэтому отказ здесь, а не в `cast_assign_scope` выше.
+            from app.services.role_identity import book_roles
+            identities = book_roles(db, char.book_id)
             if scope == "actor_only" and (
-                is_narrator_name(str(char.name or ""))
-                or is_narrator_name(str(getattr(char, "aliases", "") or ""))
-                or is_narrator_name(str(getattr(char, "narrator_role", "") or ""))
+                identities.is_narrator(str(char.name or ""))
+                or (not identities.typed and (is_narrator_name(str(getattr(char, "aliases", "") or ""))
+                                              or is_narrator_name(str(getattr(char, "narrator_role", "") or ""))))
             ):
                 return JSONResponse(
                     {"ok": False, "error": "agent_not_narrator", "message": AGENT_NARRATOR_REFUSAL},

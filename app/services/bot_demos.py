@@ -69,7 +69,7 @@ def _files(message: dict) -> list[dict]:
         name, mime = str(f.get("file_name") or fallback), str(f.get("mime_type") or "")
         if key == "document" and not _is_media(name, mime):
             continue
-        found.append({"file_id": str(f.get("file_id") or ""), "file_name": (name or "демо")[:255],
+        found.append({"file_id": str(f.get("file_id") or ""), "file_name": (name or 'demo')[:255],
                       "mime_type": mime[:80], "file_size": int(f.get("file_size") or 0)})
     return found
 
@@ -134,16 +134,16 @@ def known_dictor(db, telegram_user_id: str) -> tuple[User | None, str]:
         user = db.query(User).filter(User.login == f"{TELEGRAM_LOGIN_PREFIX}{tid}").first()
     if user is None and linked:
         # строка доступа ссылается на удалённую учётку: `attach_telegram` откажет (telegram_taken)
-        return None, "удалённой учётки"
+        return None, "a deleted account"
     if user is None:
         # строку доступа выключили нарочно (как читает её `bot_intro.may_introduce`) — не оживляем
-        return (None, "доступ по этому Telegram выключен") if row is not None and row.is_active != "true" else (None, "")
+        return (None, "access through this Telegram account is disabled") if row is not None and row.is_active != "true" else (None, "")
     name = str(user.display_name or user.login or "")
     if user.is_active != "true":
-        return None, f"{name} (выключена)"
+        return None, f"{name} (disabled)"
     roles = {r.role for r in db.query(UserRole).filter(UserRole.user_id == user.id)}
     if not roles & DICTOR_ROLES:
-        return None, f"{name} (не диктор)"
+        return None, f"{name} (not a voice actor)"
     return user, ""
 
 
@@ -172,29 +172,29 @@ def _similar(db, name: str, *, limit: int = 3) -> list[User]:
 def _ask(chat_id, intake: BotDemoIntake, db) -> Outgoing:
     from app.services.bot_intro import clean_name
 
-    who = intake.tg_name or "без имени"
+    who = intake.tg_name or "unnamed"
     if intake.tg_username:
         who += f" (@{intake.tg_username})"
-    text = f"Новый диктор: {who}. Как записать? Напишите фамилию и имя или выберите. {_tag(intake)}"
+    text = f"New voice actor: {who}. Enter the surname and given name, or choose an account. {_tag(intake)}"
     if intake.foreign_note:
-        text += f"\nЭтот Telegram уже у учётки {intake.foreign_note} — новую карточку заведу без него."
+        text += f"\nThis Telegram account is linked to {intake.foreign_note} — a new profile will be created without that link."
     rows = []
     suggested = clean_name(intake.tg_name)
     if suggested:
         rows.append([{"text": suggested, "callback_data": f"{DM_PREFIX}n:{intake.id}"}])
     for user in _similar(db, intake.tg_name):
-        rows.append([{"text": f"Это {user.display_name}"[:60], "callback_data": f"{DM_PREFIX}p:{intake.id}:{user.id}"}])
-    rows.append([{"text": "Отмена", "callback_data": f"{DM_PREFIX}x:{intake.id}"}])
+        rows.append([{"text": f'This is {user.display_name}'[:60], "callback_data": f"{DM_PREFIX}p:{intake.id}:{user.id}"}])
+    rows.append([{"text": "Cancel", "callback_data": f"{DM_PREFIX}x:{intake.id}"}])
     return send(chat_id, text, {"inline_keyboard": rows})
 
 
 def _ask_namesake(chat_id, intake: BotDemoIntake, db) -> Outgoing:
     name = intake.pending_name
-    rows = [[{"text": f"Это {user.display_name}"[:60], "callback_data": f"{DM_PREFIX}p:{intake.id}:{user.id}"}]
+    rows = [[{"text": f'This is {user.display_name}'[:60], "callback_data": f"{DM_PREFIX}p:{intake.id}:{user.id}"}]
             for user in _similar(db, name)]
-    rows.append([{"text": "Это другой человек — завести", "callback_data": f"{DM_PREFIX}o:{intake.id}"}])
-    rows.append([{"text": "Отмена", "callback_data": f"{DM_PREFIX}x:{intake.id}"}])
-    return send(chat_id, f"Имя «{name}» уже занято. Это кто-то из них или другой человек? {_tag(intake)}",
+    rows.append([{"text": "Create a different person", "callback_data": f"{DM_PREFIX}o:{intake.id}"}])
+    rows.append([{"text": "Cancel", "callback_data": f"{DM_PREFIX}x:{intake.id}"}])
+    return send(chat_id, f"The name «{name}» is already in use. Is this one of these people, or someone else? {_tag(intake)}",
                 {"inline_keyboard": rows})
 
 
@@ -224,7 +224,7 @@ def append_note(db, user_id: str, text: str, now) -> None:
 
     profile = _profile(db, user_id)
     old = str(profile.note or "")
-    line = f"{now:%d.%m} из Telegram: {text}"
+    line = f"{now:%d.%m} from Telegram: {text}"
     room = NOTE_MAX - len(old) - (1 if old else 0)
     if room > 0:
         profile.note = (old + "\n" if old else "") + line[:room]
@@ -259,15 +259,15 @@ def _settle(db, intake: BotDemoIntake, user: User, now) -> tuple[list[Outgoing],
 def _summary(name: str, counts: dict) -> str:
     parts = []
     if counts["file"]:
-        parts.append(f"файлов: {counts['file']}")
+        parts.append(f"files: {counts['file']}")
     if counts["link"]:
-        parts.append(f"ссылок скачать: {counts['link']}")
+        parts.append(f"links to download: {counts['link']}")
     if counts["saved"]:
-        parts.append(f"ссылок в карточку: {counts['saved']}")
+        parts.append(f"links to add to profile: {counts['saved']}")
     if counts["text"]:
-        parts.append("текст — в заметку")
-    tail = " Сохраню и напишу." if counts["file"] or counts["link"] else ""
-    return f"{name}: принято — {', '.join(parts) or 'ничего нового'}.{tail}"
+        parts.append("text will be saved as a note")
+    tail = " I will save it and confirm." if counts["file"] or counts["link"] else ""
+    return f"{name}: received — {', '.join(parts) or 'nothing new'}.{tail}"
 
 
 def receive_forward(db, *, chat_id, message: dict, now) -> list[Outgoing]:
@@ -275,9 +275,9 @@ def receive_forward(db, *, chat_id, message: dict, now) -> list[Outgoing]:
     if fwd is None:
         return []
     if fwd.kind == "chat" or not fwd.sender_key:
-        return [send(chat_id, "Пересланное не от человека — демо не добавлено.")]
+        return [send(chat_id, "The forwarded message is not from a person; no demo was added.")]
     if not (fwd.files or fwd.links or fwd.text):
-        return [send(chat_id, "Здесь нет демо — пришлите файл или ссылку.")]
+        return [send(chat_id, "No demo was found. Send a file or link.")]
     user, foreign = known_dictor(db, fwd.telegram_user_id)
     if user is not None:
         intake = (db.query(BotDemoIntake).filter_by(sender_key=fwd.sender_key, state="resolved", user_id=user.id)
@@ -325,13 +325,13 @@ def _attach_note(db, intake: BotDemoIntake, user: User) -> str:
     if not tid:
         return ""
     if intake.foreign_note:
-        return f"Telegram не привязан: он у учётки {intake.foreign_note}."
+        return f"Telegram was not linked; it belongs to {intake.foreign_note}."
     if db.query(TelegramAuthAccount.telegram_user_id).filter(TelegramAuthAccount.user_id == user.id).first():
-        return f"Telegram не привязан: у {user.display_name} уже есть свой."
+        return f"Telegram was not linked; {user.display_name} already has a Telegram account."
     try:
         attach_telegram(db, user_id=user.id, telegram_user_id=tid)
     except UserAdminError as exc:
-        return f"Telegram не привязан: {exc.args[0] if exc.args else exc}."
+        return f"Telegram was not linked: {exc.args[0] if exc.args else exc}."
     return ""
 
 
@@ -340,16 +340,16 @@ def _resolve(db, chat_id, intake: BotDemoIntake, now, *, name: str = "", user_id
     from app.services.dictors import DictorError, create_dictor
 
     if not _claim(db, intake.id, now):
-        return [send(chat_id, "Этот вопрос уже закрыт.")]
+        return [send(chat_id, "This question is closed.")]
     db.refresh(intake)
     note = ""
     if user_id:
         user = db.get(User, user_id)
         if user is None or known_dictor_user(db, user) is None:
             intake.state = "ask"
-            return [send(chat_id, "Эта карточка недоступна — выберите другую или напишите имя.")]
+            return [send(chat_id, "This profile is unavailable. Choose another or enter a name.")]
         note = _attach_note(db, intake, user)
-        head = f"Добавляю в карточку: {user.display_name}."
+        head = f"Adding to profile: {user.display_name}."
     else:
         tid = "" if intake.foreign_note else intake.telegram_user_id
         try:
@@ -364,9 +364,9 @@ def _resolve(db, chat_id, intake: BotDemoIntake, now, *, name: str = "", user_id
                 db.flush()
                 return [_ask_namesake(chat_id, intake, db)]
             db.flush()
-            return [send(chat_id, f"Не получилось завести диктора ({exc.code}) — напишите другое имя. {_tag(intake)}")]
+            return [send(chat_id, f"Could not create the voice actor ({exc.code}). Enter a different name. {_tag(intake)}")]
         user = db.get(User, made["user_id"])
-        head = f"Завёл диктора {user.display_name}."
+        head = f"Created voice actor {user.display_name}."
     intake.user_id, intake.updated_at = user.id, now
     jobs, counts = _settle(db, intake, user, now)
     lines = [head, _summary(str(user.display_name or ""), counts)] + ([note] if note else [])
@@ -388,12 +388,12 @@ def press(db, *, chat_id, data: str, now, message_id=None) -> list[Outgoing]:
     out = [edit_off(chat_id, message_id)] if message_id is not None and intake.state == "ask" else []
     if action == "x":
         if intake.state != "ask":
-            return [send(chat_id, "Этот вопрос уже закрыт.")]
+            return [send(chat_id, "This question is closed.")]
         intake.state, intake.updated_at = "cancelled", now
         db.query(BotDemoItem).filter_by(intake_id=intake.id, state="waiting").update(
             {"state": "cancelled", "updated_at": now}, synchronize_session=False)
         db.flush()
-        return out + [send(chat_id, "Отменено.")]
+        return out + [send(chat_id, "Cancelled.")]
     if action == "n":
         name = clean_name(intake.tg_name)
         return out + (_resolve(db, chat_id, intake, now, name=name) if name else [])
@@ -421,7 +421,7 @@ def take_name(db, *, chat_id, text: str, reply_to: dict | None, now, reply_only:
         intake = next((row for row in opened if row.id.startswith(match.group(1))), None)
         if intake is None and db.query(BotDemoIntake.id).filter(BotDemoIntake.id.like(f"{match.group(1)}%")).first():
             # реплай на закрытый вопрос — не отдавать имя другому открытому приёму (ревью I-1)
-            return [send(chat_id, "Этот вопрос уже закрыт.")]
+            return [send(chat_id, "This question is closed.")]
     if intake is None:
         if reply_only:
             return None
@@ -431,11 +431,11 @@ def take_name(db, *, chat_id, text: str, reply_to: dict | None, now, reply_only:
         if other_since is not None and other_since > max(row.updated_at for row in fresh):
             return None
         if len(fresh) > 1:
-            return [send(chat_id, f"Ответьте на вопрос о нужном дикторе — открыто {len(fresh)}.")]
+            return [send(chat_id, f"Reply to the question for the correct actor; open questions: {len(fresh)}.")]
         intake = fresh[0]
     name = clean_name(text)
     if not name:
-        return [send(chat_id, f"Напишите фамилию и имя — от двух до четырёх слов. {_tag(intake)}")]
+        return [send(chat_id, f"Enter the surname and given name, using two to four words. {_tag(intake)}")]
     return _resolve(db, chat_id, intake, now, name=name)
 
 
@@ -462,7 +462,7 @@ def _title(item: BotDemoItem, path: str, name: str) -> str:
     from app.services.demo_audio import demo_title
 
     if item.kind == "file" and item.file_name == "voice.ogg":
-        return "голосовое"
+        return "voice message"
     return demo_title(item.file_name if item.kind == "file" else os.path.basename(path), name)
 
 
@@ -531,8 +531,8 @@ def store_item(db, item_id: str, *, fetch, download, send_text, workdir: str | N
     intake = db.get(BotDemoIntake, item.intake_id)
     user = db.get(User, intake.user_id) if intake is not None and intake.user_id else None
     owner = str(settings.owner_telegram_id)
-    name = str(getattr(user, "display_name", "") or "диктор")
-    state, text = "failed", f"Не получилось сохранить демо {name} — пришлите ещё раз."
+    name = str(getattr(user, "display_name", "") or 'voice actor')
+    state, text = "failed", f"Could not save the demo {name} — please send it again."
     try:
         if user is None:
             raise LookupError("no_user")
@@ -540,8 +540,8 @@ def store_item(db, item_id: str, *, fetch, download, send_text, workdir: str | N
             if item.kind == "file":
                 titles = _save_file(db, item, user, fetch, tmp)
                 state = "stored" if titles else "duplicate"
-                text = (f"{name}: демо «{titles[0]}» добавлено — {_cards_link()}" if titles
-                        else f"Это демо у {name} уже есть.")
+                text = (f"{name}: demo «{titles[0]}» added — {_cards_link()}" if titles
+                        else f"This demo is already in the profile of {name}.")
             else:
                 try:
                     titles, dups = _save_link(db, item, user, download, tmp)
@@ -549,15 +549,15 @@ def store_item(db, item_id: str, *, fetch, download, send_text, workdir: str | N
                     db.rollback()
                     if not db.query(DictorLink.id).filter_by(user_id=user.id, url=item.ref).first():
                         db.add(DictorLink(user_id=user.id, url=item.ref, title=""))
-                    state, text = "link_saved", f"Не скачалось: {item.ref} — ссылку сохранил в карточке {name}."
+                    state, text = "link_saved", f"Could not download: {item.ref} — the link was saved in the profile of {name}."
                 else:
                     state = "stored" if titles else "duplicate"
-                    text = (f"{name}: по ссылке добавлено демо — {len(titles)}"
-                            + (f", уже были — {dups}" if dups else "") + f". {_cards_link()}"
-                            if titles else f"Демо по ссылке у {name} уже есть.")
+                    text = (f"{name}: demos added from link — {len(titles)}"
+                            + (f", already present — {dups}" if dups else "") + f". {_cards_link()}"
+                            if titles else f"The linked demo is already in the profile of {name}.")
     except _TooBig:
         db.rollback()
-        text = f"Файл больше {size_text(max_download_bytes())} — демо {name} не добавлено."
+        text = f"The file is larger than {size_text(max_download_bytes())} — demo {name} was not added."
     except Exception as exc:  # noqa: BLE001 — строка не должна висеть «queued», а владелец — в неведении
         db.rollback()
         logging.getLogger(__name__).warning("Демо из бота %s не сохранено: %s", item_id, type(exc).__name__)

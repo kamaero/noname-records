@@ -44,7 +44,7 @@ def _account_name(db, tid: str) -> str:
 
 
 def _unknown_line(row: BotContact) -> str:
-    who = row.tg_name or "без имени"
+    who = row.tg_name or 'unnamed'
     at = f" @{row.username}" if row.username else ""
     return f"{who}{at} (id {row.telegram_user_id})"
 
@@ -60,11 +60,11 @@ def summary(db, *, contacts: list[BotContact], since: datetime) -> str:
     )
     parts = []
     if known:
-        parts.append("Вышли на связь:\n" + "\n".join(f"• {name}" for name in sorted(known)))
+        parts.append('New contacts:\n' + "\n".join(f"• {name}" for name in sorted(known)))
     if unknown:
-        parts.append("Без учётки — назвать?\n" + "\n".join(f"• {line}" for line in unknown))
+        parts.append('Without an account — identify them?\n' + "\n".join(f"• {line}" for line in unknown))
     if passwords:
-        parts.append("Брали пароль:\n" + "\n".join(f"• {name}" + (f" ×{n}" if n > 1 else "")
+        parts.append('Passwords issued:\n' + "\n".join(f"• {name}" + (f" ×{n}" if n > 1 else "")
                                                 for name, n in sorted(passwords.items())))
     return "\n\n".join(parts)
 
@@ -88,7 +88,7 @@ def report_pass(db, *, now: datetime | None = None, send) -> bool:
     row_settings.contacts_reported_at = now
     db.commit()  # отметки — до отправки: упавшая отправка не повторит сводку
     if text and owner:
-        send(owner, f"Бот: кто вышел на связь\n\n{text}")
+        send(owner, f'Bot: new contacts\n\n{text}')
         return True
     return False
 
@@ -102,4 +102,4 @@ def who_now(db, *, now: datetime | None = None) -> str:
     seen = {row.telegram_user_id for row in recent}
     text = summary(db, contacts=recent + [row for row in without if row.telegram_user_id not in seen], since=day)
     total = db.query(BotContact).count()
-    return f"Контактов с ботом всего: {total}. За сутки:\n\n{text}" if text else f"Контактов с ботом всего: {total}. За сутки нового нет."
+    return f'Bot contacts total: {total}. During the last day:\n\n{text}' if text else f'Bot contacts total: {total}. Nothing new during the last day.'

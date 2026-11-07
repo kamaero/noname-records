@@ -26,12 +26,12 @@ from app.time_utils import iso_utc
 
 STEP_KEYS = ("segment", "cast", "attribute", "stress", "review", "publish")
 STEP_LABELS = {
-    "segment": "Сегментация",
-    "cast": "Персонажи",
-    "attribute": "Роли",
-    "stress": "Ударения",
-    "review": "Проверка",
-    "publish": "Публикация",
+    "segment": "Segments",
+    "cast": "Characters",
+    "attribute": "Attribution",
+    "stress": "Stress marks",
+    "review": "Review",
+    "publish": "Publication",
 }
 REVIEW_DONE_STATUSES = ("author_review", "approved", "published_to_dictor")
 PUBLISH_DONE_STATUSES = ("published_to_dictor",)
@@ -72,6 +72,7 @@ def run_payload(run) -> dict | None:
         return None
     return {
         "id": run.id,
+        "language": run.language_snapshot,
         "status": run.status,
         "step": run.step or "",
         "chapters_total": int(run.chapters_total or 0),
@@ -95,10 +96,10 @@ def _pipeline_step_states(counts: dict, run) -> dict[str, tuple[str, str]]:
         "stress": chapters > 0 and counts["stressed_chapters"] >= chapters,
     }
     details = {
-        "segment": f"сегментов {counts['segments']}",
-        "cast": f"персонажей {counts['cast']}",
-        "attribute": f"глав {counts['attributed_chapters']}/{chapters}",
-        "stress": f"глав {counts['stressed_chapters']}/{chapters}",
+        "segment": f"{counts['segments']} segments",
+        "cast": f"{counts['cast']} characters",
+        "attribute": f"{counts['attributed_chapters']}/{chapters} chapters",
+        "stress": f"{counts['stressed_chapters']}/{chapters} chapters",
     }
     states = {key: ("done" if done_by_counts[key] else "pending", details[key]) for key in STEPS}
     if run is None or run.step not in STEPS:
@@ -116,11 +117,11 @@ def _pipeline_step_states(counts: dict, run) -> dict[str, tuple[str, str]]:
         # The step the run is on, or fell on, or was stopped on.
         if run.status in ("running", "queued"):
             progress = f"{int(run.chapters_done or 0)}/{int(run.chapters_total or 0)}"
-            states[key] = ("running", f"{detail} · идёт {progress}")
+            states[key] = ("running", f"{detail} · running {progress}")
         elif run.status == "failed":
             states[key] = ("failed", (run.error or "").strip()[:200] or detail)
         elif run.status == "stopped" and state != "done":
-            states[key] = ("pending", f"{detail} · остановлено")
+            states[key] = ("pending", f"{detail} · stopped")
     return states
 
 
@@ -137,22 +138,22 @@ def _status_step_states(book_status: str, review_counts: dict) -> dict[str, tupl
     published = int(review_counts.get("published") or 0)
 
     if attributed and approved >= attributed:
-        review = ("done", f"проверено {approved} из {attributed}")
+        review = ("done", f"{approved} of {attributed} reviewed")
     elif approved:
-        review = ("running", f"проверено {approved} из {attributed}")
+        review = ("running", f"{approved} of {attributed} reviewed")
     elif status in REVIEW_DONE_STATUSES:
-        review = ("pending", f"ждёт проверки автором · глав {attributed}")
+        review = ("pending", f"Awaiting author review · {attributed} chapters")
     else:
-        review = ("pending", f"статус {status or '—'}")
+        review = ("pending", f"Status: {status or '—'}")
 
     if published and attributed and published >= attributed:
-        publish = ("done", f"дикторам отдано глав {published}")
+        publish = ("done", f"{published} chapters available to voice actors")
     elif published:
-        publish = ("running", f"опубликовано {published} из {attributed}")
+        publish = ("running", f"{published} of {attributed} published")
     elif status in PUBLISH_DONE_STATUSES:
-        publish = ("done", "опубликовано")
+        publish = ("done", "Published")
     else:
-        publish = ("pending", "после проверки")
+        publish = ("pending", "After review")
     return {"review": review, "publish": publish}
 
 
@@ -165,6 +166,8 @@ def book_progress(db, book_id: str) -> dict | None:
     counts = book_counts(db, book.id)
     review_counts = approval_counts(db, book.id)
     states = {**_pipeline_step_states(counts, run), **_status_step_states(book.status, review_counts)}
+    if getattr(book, "language", "ru") == "en" and states["stress"][0] != "done":
+        states["stress"] = ("skipped", "Russian stress marking does not apply to English books")
     steps = [
         {"key": key, "label": STEP_LABELS[key], "state": states[key][0], "detail": states[key][1]}
         for key in STEP_KEYS

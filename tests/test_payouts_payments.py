@@ -115,7 +115,7 @@ def test_payments_of_a_deleted_book_stay_and_credit_is_not_spent_twice(db):
     olga = _person(db)
     assert olga["credit"] == 0 and olga["paid"] == 12500
     past = next(r for r in olga["roles"] if r["role_name"] == "Убув")
-    assert past["state"] == "past" and past["book_title"] == "книга удалена"
+    assert past["state"] == "past" and past["book_title"] == "Book deleted"
 
 
 def test_an_offset_advance_cannot_be_cancelled_before_its_offset(db):

@@ -54,9 +54,12 @@ def test_suspect_alias_count_makes_it_dirty():
     assert any(r["code"] == "AMBIGUOUS_MERGE" for r in a.blocking_reasons)
 
 
-def test_canon_known_vs_new_and_high_new_ratio(tmp_path):
+def test_canon_known_vs_new_and_high_new_ratio(tmp_path, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "canon_author_slug", "primerov")
     db = _session()
-    db.add(Author(id="auth-rud", name="Примеродин", slug="primerodin"))
+    db.add(Author(id="auth-rud", name="Примеров", slug="primerov"))
     book = ScriptBook(title="X", source_filename="x.fb2", source_format="fb2", author_id="auth-rud")
     db.add(book); db.flush()
     _add_char(db, book.id, "Дгарнин", "Лис")

@@ -64,9 +64,9 @@ def rejection_view(rej: AuditionRejection | None) -> dict | None:
 #: Фраза о причине — после «звучать немного иначе». Без указания, кто решил: 👎 ставят
 #: и автор, и студия, и письмо не должно приписывать отказ автору (решение владельца 05.10).
 REASON_LINES = {
-    "voice": "Для этого героя нужен другой тембр.",
-    "manner": "Для этого героя нужна другая манера подачи.",
-    "all": "Для этого героя нужны и другой тембр, и другая манера подачи.",
+    "voice": "This character needs a different voice.",
+    "manner": "This character needs a different delivery.",
+    "all": "This character needs a different voice and delivery.",
 }
 
 
@@ -78,30 +78,29 @@ def rejection_notice(*, role: str, book_title: str, reason: str = "") -> str:
     role = str(role or "").strip()
     reason_line = REASON_LINES.get(str(reason or ""), "")
     return "\n".join([
-        f"🎙 {studio.name()} — про вашу пробу",
-        f"Роль: «{role}»",
-        f"Книга: {str(book_title or '').strip()}",
+        f"🎙 {studio.name()} — about your audition",
+        f"Role: «{role}»",
+        f"Book: {str(book_title or '').strip()}",
         "",
-        f"Спасибо, что попробовались! В этот раз на персонажа «{role}» выбран другой голос. "
-        "Запись тут ни при чём — просто этот герой должен звучать немного иначе."
+        f"Thank you for auditioning. This time, a different voice was selected for «{role}». "
+        "This does not reflect the recording quality; the character needs a different sound."
         + (f"\n{reason_line}" if reason_line else ""),
         "",
-        "Не прощаемся: героев много, и среди них наверняка есть тот, с кем ваш голос "
-        "сойдётся с первого слова 🙂",
+        "We hope to find another character whose voice is a good match for yours 🙂",
     ])
 
 
 def rejection_relay_notice(*, role: str, book_title: str, actor_name: str, candidates: list[str]) -> str:
     """Владельцу и агентам — когда написать актёру лично система не может."""
     why = (
-        f"имя неоднозначное, подходят: {', '.join(candidates)}"
-        if candidates else "учётки в системе нет"
+        f"ambiguous name; matches: {', '.join(candidates)}"
+        if candidates else "no account was found"
     )
     return "\n".join([
-        f"🎙 {studio.name()} — отказ по пробе не доставлен",
-        f"Роль: «{str(role or '').strip()}»",
-        f"Книга: {str(book_title or '').strip()}",
-        f"Актёр: {str(actor_name or '').strip()} — {why}. Сообщите, пожалуйста, сами.",
+        f"🎙 {studio.name()} — audition result was not delivered",
+        f"Role: «{str(role or '').strip()}»",
+        f"Book: {str(book_title or '').strip()}",
+        f"Actor: {str(actor_name or '').strip()} — {why}. Please contact the actor directly.",
     ])
 
 

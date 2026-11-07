@@ -77,15 +77,15 @@ export function LegendEditor({ bookId, entry, onClose }: LegendEditorProps) {
     mutationFn: () => savePalette(entry.character_id, draft, row),
     onSuccess: async (result) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Палитра не сохранена", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Palette not saved", detail: result.error || "The server returned no details." });
         return;
       }
-      pushToast({ tone: "success", title: `${entry.name}: палитра сохранена`, detail: "Реплики в тексте перекрасятся сейчас." });
+      pushToast({ tone: "success", title: `${entry.name}: palette saved`, detail: "Line colors will update now." });
       onClose();
       await invalidateReader(queryClient, bookId, ["chapters", "cast"]);
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Палитра не сохранена", detail: describeApiError(error, "Не удалось сохранить палитру.") });
+      pushToast({ tone: "error", title: "Palette not saved", detail: describeApiError(error, "Could not save the palette.") });
     },
   });
 
@@ -101,7 +101,7 @@ export function LegendEditor({ bookId, entry, onClose }: LegendEditorProps) {
       onClose={onClose}
       onSave={() => save.mutate()}
       warning={<PaletteWarning conflicts={peers} />}
-      saveLabel={peers.length ? "Всё равно сохранить" : undefined}
+      saveLabel={peers.length ? "Save anyway" : undefined}
     />
   );
 }
@@ -141,11 +141,11 @@ export function LegendConflicts({ bookId, chapterIndex, enabled }: LegendConflic
     },
     onSuccess: async (changed) => {
       setPreview(false);
-      pushToast({ tone: "success", title: `Перекрашено ролей: ${changed}` });
+      pushToast({ tone: "success", title: `Roles recolored: ${changed}` });
       await invalidateReader(queryClient, bookId, ["chapters", "cast"]);
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Цвета не разведены", detail: describeApiError(error, "Не удалось сохранить палитру.") });
+      pushToast({ tone: "error", title: "Colors not adjusted", detail: describeApiError(error, "Could not save the palette.") });
     },
   });
 
@@ -153,22 +153,22 @@ export function LegendConflicts({ bookId, chapterIndex, enabled }: LegendConflic
   const total = conflicts.length;
   const shown = here.length > 0 ? here : conflicts;
   const pairs = shown.slice(0, 3).map((item) => `${item.leftName} ↔ ${item.rightName}`).join(" · ");
-  const rest = shown.length > 3 ? ` · ещё ${shown.length - 3}` : "";
+  const rest = shown.length > 3 ? ` · more ${shown.length - 3}` : "";
   return (
     <div className={total > 0 ? "v2r-legend-conflicts is-bad" : "v2r-legend-conflicts"}>
-      <span title="Две роли одного цвета, которые говорят в одной главе: на распечатке их не различить">
+      <span title="Two roles share a color within a chapter and cannot be distinguished in print">
         {total > 0 ? (
           <>
-            Похожие цвета: <strong className="num">{here.length}</strong>{" "}
-            {here.length === 1 ? "пара" : "пар"} в этой главе
+            Similar colors: <strong className="num">{here.length}</strong>{" "}
+            {here.length === 1 ? "pair" : "pairs"} in this chapter
             {total > here.length ? (
               <span className="v2r-legend-conflicts-total">
-                {" "}· <span className="num">{total}</span> в книге
+                {" "}· <span className="num">{total}</span> in book
               </span>
             ) : null}
           </>
         ) : (
-          <>Похожие цвета: <strong className="num">нет</strong></>
+          <>Similar colors: <strong className="num">none</strong></>
         )}
       </span>
       {total > 0 ? (
@@ -178,7 +178,7 @@ export function LegendConflicts({ bookId, chapterIndex, enabled }: LegendConflic
             {rest}
           </span>
           <button type="button" className="btn btn-sm v2r-btn" onClick={() => setPreview(true)}>
-            Развести цвета
+            Adjust colors
           </button>
         </>
       ) : null}

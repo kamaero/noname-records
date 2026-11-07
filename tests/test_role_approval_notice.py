@@ -46,7 +46,7 @@ class TestWhatTheMessageSays:
     def test_it_says_what_to_do_next(self):
         text = approval_notice(role="Дгарнин", book_title="Карта переправы")
 
-        assert "по главам" in text
+        assert "chapter by chapter" in text
 
     def test_it_carries_a_link_to_the_role_when_there_is_one(self):
         text = approval_notice(role="Дгарнин", book_title="Карта переправы", link="https://studio.example/app/reader/role/b1")
@@ -58,7 +58,7 @@ class TestWhatTheMessageSays:
 
         # С 01.10 в письме есть ссылки на «Помощь» и первые шаги; ссылку на реплики роли
         # без адреса книги по-прежнему не выдумываем.
-        assert "/app/reader/role" not in text and "Все реплики роли" not in text
+        assert "/app/reader/role" not in text and "All lines for this role" not in text
 
 
 class TestFindingThePerson:
@@ -194,7 +194,7 @@ class TestATentativeAssignmentIsAnAuditionInvite:
         assert len(box) == 1
         text, chat_ids, direct, markup = box[0]
         assert chat_ids == ["222"] and direct is True
-        assert "пробу" in text and "Химера" in text
+        assert "audition" in text and "Химера" in text
 
     def test_a_stranger_never_gets_it(self, db, monkeypatch):
         """Предложенного имени в системе нет — приглашение никому и не уходит адресно,
@@ -236,9 +236,9 @@ class TestATentativeAssignmentIsAnAuditionInvite:
         assert result["reason"] == "ambiguous"
         assert result["kind"] == "audition"
         assert result["actor_name"] == "Натали Ким"
-        assert all(not direct for _text, _chat_ids, direct in box), "никому напрямую — имя неоднозначно"
+        assert all(not direct for _text, _chat_ids, direct in box), "никому напрямую — имя ambiguousо"
         to_owner = [text for text, _chat_ids, direct in box if not direct]
-        assert to_owner and "неоднозначн" in to_owner[0].lower()
+        assert to_owner and "ambiguous" in to_owner[0].lower()
 
     def test_a_single_token_name_ambiguous_across_two_accounts(self, db, monkeypatch):
         """Однословное имя сверяется мягче (`len(actor_tokens) == 1`): «Натали»
@@ -289,7 +289,7 @@ class TestATentativeActorWithNoAccount:
         assert result["relayed"] is True
         to_owner = [call for call in box if call[2] is False]
         assert len(to_owner) == 1
-        assert "пробу" in to_owner[0][0] and "Без Учётки" in to_owner[0][0]
+        assert "audition" in to_owner[0][0] and "Без Учётки" in to_owner[0][0]
 
 
 class TestAnActorWithNoAccount:
@@ -352,7 +352,7 @@ class TestAnActorWithNoAccount:
 
         notify_role_approved(db, book_id="b1", book_title="Книга", role="Химера", actor_name="Без Учётки")
 
-        assert "учётки" in box[0]
+        assert "account" in box[0]
 
     def test_the_owner_hears_it_even_with_no_agent_at_all(self, db, monkeypatch):
         box: list = []
@@ -472,10 +472,10 @@ def test_the_approval_notice_lists_the_other_books_of_the_cycle():
     text = approval_notice(role="Куйбу Гудисди", book_title="Сад великанов 1",
                            also_in=["Сад великанов 2", "Карта Переправы"])
     assert "Сад великанов 1" in text
-    assert "Также в книгах: Сад великанов 2, Карта Переправы" in text
+    assert "Also in: Сад великанов 2, Карта Переправы" in text
 
 
 def test_without_other_books_the_notice_is_unchanged():
     from app.services.role_approval import approval_notice
 
-    assert "Также в книгах" not in approval_notice(role="Куйбу", book_title="Книга")
+    assert "Also in" not in approval_notice(role="Куйбу", book_title="Book")

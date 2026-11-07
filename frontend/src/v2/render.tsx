@@ -1,3 +1,4 @@
+import { roleLabel } from "./types";
 /**
  * Turning one segment's text + annotations into React nodes.
  *
@@ -300,7 +301,7 @@ function renderRemarkGroup(group: RemarkGroup, key: number, opts: RenderOptions,
       className="v2r-remark"
       data-start={candidate.start}
       data-end={candidate.end}
-      title="Отдать эти слова Рассказчику"
+      title="Assign these words to the Narrator"
     >
       {children}
     </span>
@@ -336,7 +337,7 @@ export function renderSegment(
     }
     const unsure = speaker === UNSURE;
     const confidence = Math.round((run.span.confidence || 0) * 100);
-    const label = `[${unsure ? "?" : speaker}]`;
+    const label = `[${unsure ? "?" : roleLabel(speaker)}]`;
     const activeChip = Boolean(opts.activeSpan && opts.activeSpan.start === run.start && opts.activeSpan.end === run.end);
     const chip = opts.roles ? (
       <button
@@ -344,8 +345,8 @@ export function renderSegment(
         className={activeChip ? "v2r-chip v2r-chip--btn is-active" : "v2r-chip v2r-chip--btn"}
         data-start={run.start}
         data-end={run.end}
-        title="Переназначить роль"
-        aria-label={`Переназначить роль: ${unsure ? "не определено" : speaker}`}
+        title="Reassign role"
+        aria-label={`Reassign role: ${unsure ? "unassigned" : roleLabel(speaker)}`}
       >
         {label}
       </button>
@@ -357,7 +358,7 @@ export function renderSegment(
         key={index}
         className={unsure ? "v2r-span v2r-span--unsure" : "v2r-span"}
         style={roleVars(opts.styleOf(speaker))}
-        title={`${unsure ? "Не определено" : speaker} · ${confidence}%${run.span.source ? ` · ${run.span.source}` : ""}`}
+        title={`${unsure ? "Unassigned" : roleLabel(speaker)} · ${confidence}%${run.span.source ? ` · ${run.span.source}` : ""}`}
       >
         {chip}
         {children}

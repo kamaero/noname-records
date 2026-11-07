@@ -25,26 +25,26 @@ type UploadPanelProps = {
 type Phase = "idle" | "uploading" | "starting";
 
 function formatSize(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} КБ`;
-  return `${(bytes / (1024 * 1024)).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} МБ`;
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toLocaleString("en-US", { maximumFractionDigits: 1 })} MB`;
 }
 
 function describeUploadError(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.errorCode) {
       case "file_required":
-        return "Сервер не получил файл. Выберите его заново.";
+        return "The server did not receive the file. Please select it again.";
       case "active_book_exists":
-        return "Сервер ещё держит запрет на вторую активную книгу. Нужен перезапуск сервера.";
+        return "Another book is still active. The server needs to be restarted.";
     }
-    if (error.status === 413) return `Файл слишком большой. Предел на сервере меньше ${MAX_MB} МБ.`;
-    if (error.status === 403) return "У вашей роли нет права загружать книги.";
-    if (error.status === 0) return error.message || "Сеть недоступна. Проверьте соединение и повторите.";
+    if (error.status === 413) return `The file is too large. The server limit is below ${MAX_MB} MB.`;
+    if (error.status === 403) return "You do not have permission to upload books.";
+    if (error.status === 0) return error.message || "Network unavailable. Check your connection and try again.";
     if (error.message && !error.message.startsWith("API ")) return error.message;
-    return `Сервер ответил ошибкой ${error.status}. Повторите через минуту.`;
+    return `The server returned error ${error.status}. Please try again shortly.`;
   }
   if (error instanceof Error && error.message) return error.message;
-  return "Не удалось загрузить книгу.";
+  return "Could not upload the book.";
 }
 
 /**
@@ -62,6 +62,7 @@ export function UploadPanel({ onDone, onCancel, autoFocus }: UploadPanelProps) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
+  const [language, setLanguage] = useState<"en" | "ru">("en");
   const [runV2, setRunV2] = useState(true);
   const [dragOver, setDragOver] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -81,12 +82,12 @@ export function UploadPanel({ onDone, onCancel, autoFocus }: UploadPanelProps) {
     const lower = next.name.toLowerCase();
     if (!ACCEPT_EXT.some((ext) => lower.endsWith(ext))) {
       setFile(null);
-      setFileError(`Формат не поддерживается. Подойдут ${ACCEPT_EXT.join(", ")}.`);
+      setFileError(`Unsupported format. Choose ${ACCEPT_EXT.join(", ")}.`);
       return;
     }
     if (next.size > MAX_MB * 1024 * 1024) {
       setFile(null);
-      setFileError(`Файл больше ${MAX_MB} МБ. Разбейте книгу или сожмите файл.`);
+      setFileError(`The file exceeds ${MAX_MB} MB. Split or compress it.`);
       return;
     }
     setFile(next);
@@ -105,7 +106,7 @@ export function UploadPanel({ onDone, onCancel, autoFocus }: UploadPanelProps) {
     event.preventDefault();
     if (busy) return;
     if (!file) {
-      setFileError("Выберите файл книги.");
+      setFileError("Choose a book file.");
       inputRef.current?.focus();
       return;
     }
@@ -117,6 +118,7 @@ export function UploadPanel({ onDone, onCancel, autoFocus }: UploadPanelProps) {
     // `v2` keeps the old orchestrator off the book (app/v2/pipeline.py:is_v2_book);
     // the server normalises unknown modes to `standard`.
     params.set("pipeline_mode", runV2 ? "v2" : "standard");
+    params.set("language", language);
     const cleanTitle = title.trim();
     const cleanAuthor = author.trim();
     if (cleanTitle) params.set("title", cleanTitle);
@@ -131,7 +133,7 @@ export function UploadPanel({ onDone, onCancel, autoFocus }: UploadPanelProps) {
       const result = await apiUploadForm<UploadBookResponse>(`/api/books/upload?${params.toString()}`, formData, setProgress);
       if (!result.ok || !result.book_id) {
         setPhase("idle");
-        setFormError(describeUploadError(new ApiError(result.error || "Не удалось загрузить книгу.", { status: 200, errorCode: result.error })));
+        setFormError(describeUploadError(new ApiError(result.error || "Could not upload the book.", { status: 200, errorCode: result.error })));
         return;
       }
       bookId = result.book_id;
@@ -161,15 +163,15 @@ export function UploadPanel({ onDone, onCancel, autoFocus }: UploadPanelProps) {
     void queryClient.invalidateQueries({ queryKey: ["books"] });
     pushToast({
       tone: runNote ? "info" : "success",
-      title: "Книга загружена",
-      detail: runStarted ? `«${bookTitle}» — разметка v2 запущена.` : runNote ? `«${bookTitle}». Разметку не удалось запустить: ${runNote}` : `«${bookTitle}» добавлена в библиотеку.`,
+      title: "Book uploaded",
+      detail: runStarted ? `“${bookTitle}” — analysis started.` : runNote ? `“${bookTitle}”. Could not start analysis: ${runNote}` : `“${bookTitle}” was added to the library.`,
     });
     setPhase("idle");
     if (onDone) onDone(bookId);
     else navigate(`/books/${encodeURIComponent(bookId)}`);
   };
 
-  const submitLabel = phase === "uploading" ? `Загружаю… ${Math.round(progress * 100)}%` : phase === "starting" ? "Запускаю разметку…" : runV2 ? "Загрузить и разметить" : "Загрузить книгу";
+  const submitLabel = phase === "uploading" ? `Uploading… ${Math.round(progress * 100)}%` : phase === "starting" ? "Starting analysis…" : runV2 ? "Upload and analyze" : "Upload book";
 
   return (
     <form className="upl" onSubmit={onSubmit} aria-busy={busy || undefined} noValidate>
@@ -204,12 +206,12 @@ export function UploadPanel({ onDone, onCancel, autoFocus }: UploadPanelProps) {
               </div>
             ) : (
               <div className="upl-file">
-                <strong>Перетащите файл сюда</strong>
-                <span className="upl-file-meta">txt, epub, fb2 или docx</span>
+                <strong>Drop a file here</strong>
+                <span className="upl-file-meta">txt, epub, fb2 or docx</span>
               </div>
             )}
             <label htmlFor={dropId} className="ui-btn ui-btn--secondary ui-btn--sm upl-pick">
-              {file ? "Выбрать другой файл" : "Выбрать файл"}
+              {file ? "Choose another file" : "Choose file"}
             </label>
           </div>
           {fileError ? (
@@ -218,7 +220,7 @@ export function UploadPanel({ onDone, onCancel, autoFocus }: UploadPanelProps) {
             </p>
           ) : (
             <p className="ui-field-hint" id={`${dropId}-hint`}>
-              Один файл — одна книга. Главы определятся по заголовкам.
+              One file per book. Chapters are detected from headings.
             </p>
           )}
           {phase === "uploading" ? (
@@ -231,24 +233,33 @@ export function UploadPanel({ onDone, onCancel, autoFocus }: UploadPanelProps) {
         </div>
 
         <div className="upl-fields">
-          <Field label="Название" hint="Пусто — возьмём из имени файла. Без автора: из названия складывается код для имён файлов актёров">
+          <Field label="Title" hint="Leave blank to use the filename. Enter the title without the author.">
             {(props) => (
               <input
                 {...props}
                 className="ui-input"
                 value={title}
                 disabled={busy}
-                placeholder="Из имени файла"
+                placeholder="From filename"
                 onChange={(event) => setTitle(event.target.value)}
               />
             )}
           </Field>
-          <Field label="Автор" hint={'Книга покажется как «Иванов - "Тихий берег"»'}>
-            {(props) => <input {...props} className="ui-input" value={author} disabled={busy} placeholder="Из имени файла, если узнаётся" onChange={(event) => setAuthor(event.target.value)} />}
+          <Field label="Author" hint="The author will be shown alongside the book title.">
+            {(props) => <input {...props} className="ui-input" value={author} disabled={busy} placeholder="From filename, when available" onChange={(event) => setAuthor(event.target.value)} />}
+          </Field>
+          <Field label="Book language" hint="Choose the language of the book, not the interface.">
+            {(props) => (
+              <select {...props} className="ui-input" value={language} disabled={busy}
+                onChange={(event) => setLanguage(event.target.value as "en" | "ru")}>
+                <option value="en">English</option>
+                <option value="ru">Russian</option>
+              </select>
+            )}
           </Field>
           <label className="ui-check">
             <input type="checkbox" checked={runV2} disabled={busy} onChange={(event) => setRunV2(event.target.checked)} />
-            Запустить разметку v2 сразу
+            Start analysis immediately
           </label>
         </div>
       </div>
@@ -265,7 +276,7 @@ export function UploadPanel({ onDone, onCancel, autoFocus }: UploadPanelProps) {
         </Button>
         {onCancel ? (
           <Button variant="ghost" onClick={onCancel} disabled={busy}>
-            Отмена
+            Cancel
           </Button>
         ) : null}
       </div>

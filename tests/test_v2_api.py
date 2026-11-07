@@ -128,7 +128,7 @@ def _shared_session_factory():
 
 def _seed_book(SessionLocal, *, author_id=AUTHOR):
     with SessionLocal() as db:
-        db.add(Author(id=AUTHOR, name="Примеродин", slug="primerodin"))
+        db.add(Author(id=AUTHOR, name="Примеров", slug="primerov"))
         db.add(ScriptBook(id=BOOK, title="Карта", source_filename="k.txt", source_format="txt", author_id=author_id))
         db.add(ScriptChapter(id=CH1, book_id=BOOK, chapter_index=1, chapter_title="Глава 1"))
         db.add(Character(id="c1", book_id=BOOK, name="Дгарнин", actor_name="Иван Петров"))
@@ -289,7 +289,7 @@ def test_profile_sync_and_apply_as_editor(monkeypatch):
     SessionLocal = _patched_routes(monkeypatch)
     client = _client_with_session(["author"])
     profile = client.get(f"/api/v2/books/{BOOK}/profile").json()
-    assert profile["ok"] is True and profile["author"]["slug"] == "primerodin" and profile["last_sync"] is None
+    assert profile["ok"] is True and profile["author"]["slug"] == "primerov" and profile["last_sync"] is None
     assert profile["counts"]["v2_segments"] == 1 and profile["counts"]["linked_characters"] == 0
 
     response = client.post(f"/api/v2/books/{BOOK}/profile/sync")

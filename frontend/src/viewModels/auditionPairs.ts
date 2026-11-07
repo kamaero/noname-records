@@ -78,9 +78,9 @@ export function asksReason(lane: AuditionLane, score: number | null): boolean {
 /** Причина относится к герою: общее «Голос» воспринималось как приговор качеству голоса.
     Те же подписи у кнопок бота (`audition_scores.REASON_LABELS`). */
 export const REASON_LABEL: Record<AuditionReason, string> = {
-  voice: "Тембр не этого героя",
-  manner: "Подача не этого героя",
-  all: "И тембр, и подача",
+  voice: "Voice does not fit the character",
+  manner: "Delivery does not fit the character",
+  all: "Both voice and delivery",
 };
 
 /** Предел комментария — как на сервере (`COMMENT_MAX_CHARS`). */
@@ -89,5 +89,5 @@ export const COMMENT_MAX_CHARS = 1000;
 /** Вопрос перед утверждением занятого актёра — исключения редкие, но возможны. */
 export function busyConfirmText(pair: AuditionPair): string {
   const roles = pair.busy_on.map((role) => `«${role}»`).join(", ");
-  return `${pair.actor_name} уже утверждён(а) на ${roles}. Утвердить и на «${pair.role}»?\n\nМы стремимся к одной роли на актёра.`;
+  return `${pair.actor_name} is already approved for ${roles}. Also approve for «${pair.role}»? We aim for one role per voice actor.`;
 }

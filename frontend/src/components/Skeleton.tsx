@@ -12,7 +12,7 @@ function SkeletonBody({ lines }: { lines: number }) {
 }
 
 /** Full-page loading placeholder (shimmer) for top-level route loads. */
-export function SkeletonScreen({ label = "Загрузка…", lines = 4 }: SkeletonProps) {
+export function SkeletonScreen({ label = "Loading…", lines = 4 }: SkeletonProps) {
   return (
     <div className="shell" aria-busy="true" aria-live="polite">
       <div className="panel skeleton-panel">
@@ -24,7 +24,7 @@ export function SkeletonScreen({ label = "Загрузка…", lines = 4 }: Ske
 }
 
 /** Inline (panel-sized) loading placeholder for in-page transitions. */
-export function SkeletonPanel({ label = "Загрузка…", lines = 3 }: SkeletonProps) {
+export function SkeletonPanel({ label = "Loading…", lines = 3 }: SkeletonProps) {
   return (
     <div className="panel skeleton-panel" aria-busy="true" aria-live="polite">
       <SkeletonBody lines={lines} />

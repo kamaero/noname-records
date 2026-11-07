@@ -106,7 +106,7 @@ class TestTheRoster:
 
         text = export_roster(db)
 
-        assert "парол" in text.lower()
+        assert 'password' in text.lower()
 
     def test_it_never_carries_a_hash(self, db):
         made = create_user(db, display_name="Роман Сомов", roles=["dictor"])

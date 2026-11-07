@@ -55,20 +55,20 @@ export function CastBudgetLine({ budget, summaryText, saving, onSave, rate, usdR
 
   return (
     <div className="cast-budget">
-      <p className="cast-budget-line num" aria-label="Состав и итоги бюджета">
+      <p className="cast-budget-line num" aria-label="Cast and budget totals">
         <span className="cast-budget-item cast-budget-summary">{summaryText}</span>
         <span className="cast-budget-item">
-          <span className="cast-budget-key">итого</span> <strong>{formatRub(totals?.grand_total_rub || 0)} ₽</strong>
+          <span className="cast-budget-key">total</span> <strong>{formatRub(totals?.grand_total_rub || 0)} ₽</strong>
         </span>
         <span className="cast-budget-item">
-          <span className="cast-budget-key">каст</span> {formatRub(totals?.character_total_rub || 0)}
+          <span className="cast-budget-key">cast</span> {formatRub(totals?.character_total_rub || 0)}
         </span>
-        <span className="cast-budget-item" title="Ставка студии по умолчанию: по ней считается роль, у которой нет своей ставки">
-          <span className="cast-budget-key">ставка студии</span> {formatRub(rate)} ₽/мин
+        <span className="cast-budget-item" title="Default studio rate, used for roles without a custom rate">
+          <span className="cast-budget-key">studio rate</span> {formatRub(rate)} RUB/min
         </span>
         {!editing ? (
           <Button size="sm" variant="ghost" className="cast-budget-edit-btn" onClick={() => setEditing(true)}>
-            Изменить
+            Edit
           </Button>
         ) : null}
       </p>
@@ -80,7 +80,7 @@ export function CastBudgetLine({ budget, summaryText, saving, onSave, rate, usdR
             void submit();
           }}
         >
-          <Field label="Звукорежиссёр, ₽">
+          <Field label="Sound engineer, RUB">
             {(props) => (
               <input
                 {...props}
@@ -97,7 +97,7 @@ export function CastBudgetLine({ budget, summaryText, saving, onSave, rate, usdR
               />
             )}
           </Field>
-          <Field label="Ставка студии, ₽/мин" hint="По умолчанию для всех книг: роль без своей ставки считается по ней">
+          <Field label="Studio rate, RUB/min" hint="Default for all books; used for roles without a custom rate">
             {(props) => (
               <input
                 {...props}
@@ -113,7 +113,7 @@ export function CastBudgetLine({ budget, summaryText, saving, onSave, rate, usdR
               />
             )}
           </Field>
-          <Field label="Курс доллара, ₽" hint="По нему считаются модели, которые выставляют счёт в долларах">
+          <Field label="USD exchange rate, RUB" hint="Used to calculate costs for models billed in USD">
             {(props) => (
               <input
                 {...props}
@@ -130,7 +130,7 @@ export function CastBudgetLine({ budget, summaryText, saving, onSave, rate, usdR
               />
             )}
           </Field>
-          <Field label="Доп. расходы, ₽">
+          <Field label="Extra expenses, RUB">
             {(props) => (
               <input
                 {...props}
@@ -148,10 +148,10 @@ export function CastBudgetLine({ budget, summaryText, saving, onSave, rate, usdR
           </Field>
           <div className="cast-budget-form-actions">
             <Button type="submit" variant="primary" loading={saving || savingRate}>
-              Сохранить статьи
+              Save budget items
             </Button>
             <Button type="button" variant="ghost" disabled={saving} onClick={() => setEditing(false)}>
-              Отмена
+              Cancel
             </Button>
           </div>
         </form>

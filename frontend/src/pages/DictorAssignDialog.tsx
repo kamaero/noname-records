@@ -48,7 +48,7 @@ function rememberBook(bookId: string) {
 
 function minutes(seconds: number): string {
   const m = Math.round((seconds || 0) / 60);
-  return m ? `${m} мин` : "";
+  return m ? `${m} min` : "";
 }
 
 function outcome(name: string, role: string, tentative: boolean, result: AssignResponse): { tone: "success" | "info" | "error"; title: string; detail: string } {
@@ -56,24 +56,24 @@ function outcome(name: string, role: string, tentative: boolean, result: AssignR
   if (vote && !sameActor(vote.actor_name, name)) {
     return {
       tone: "error",
-      title: "Голос не перевесил",
-      detail: `На «${role}» остаётся ${vote.actor_name || "свободно"}${vote.overridden_by ? ` — решил голос: ${vote.overridden_by}` : ""}.`,
+      title: "Decision did not take priority",
+      detail: `«${role}» remains ${vote.actor_name || "unassigned"}${vote.overridden_by ? ` — decision by: ${vote.overridden_by}` : ""}.`,
     };
   }
   const parts: string[] = [];
   const also = result.cycle?.changed?.map((b) => b.book_title).filter(Boolean) || [];
-  if (also.length) parts.push(`ещё в: ${also.join(", ")}`);
+  if (also.length) parts.push(`also in: ${also.join(", ")}`);
   const kept = result.cycle?.kept || [];
-  if (kept.length) parts.push(`где записано, остался прежний: ${kept.map((b) => `${b.book_title} (${b.actor})`).join(", ")}`);
+  if (kept.length) parts.push(`unchanged where already recorded: ${kept.map((b) => `${b.book_title} (${b.actor})`).join(", ")}`);
   const approval = result.approval;
   if (approval) {
-    if (approval.reason === "sent") parts.push("письмо в бот ушло");
-    else if (approval.reason === "no_telegram" || approval.reason === "not_sent") parts.push("бот не дозвался — письмо ушло вам, сообщите сами");
-    else if (approval.reason === "ambiguous") parts.push("имени подошло несколько учёток — письмо ушло вам");
+    if (approval.reason === "sent") parts.push("bot notification sent");
+    else if (approval.reason === "no_telegram" || approval.reason === "not_sent") parts.push("bot unreachable; message forwarded to you, contact them directly");
+    else if (approval.reason === "ambiguous") parts.push("name matches multiple accounts; message forwarded to you");
   }
   return {
     tone: "success",
-    title: tentative ? `Позван на пробу: ${role}` : `Утверждён на роль: ${role}`,
+    title: tentative ? `Invited to audition: ${role}` : `Approved for role: ${role}`,
     detail: parts.join(" · "),
   };
 }
@@ -111,11 +111,11 @@ export function DictorAssignDialog({ name, onClose, onAssigned }: { name: string
   const assign = async (row: BudgetCharacterRow, tentative: boolean) => {
     const others = mine.filter((r) => r.character_id !== row.character_id);
     if (others.length && !window.confirm(
-      `${name} уже на роли «${others.map((r) => r.name).join("», «")}» в этой книге.\n\nОдин актёр — одна роль. Всё равно назначить на «${row.name}»?`,
+      `${name} is already assigned to «${others.map((r) => r.name).join("», «")}» in this book. We aim for one role per voice actor. Assign to «${row.name}»?`,
     )) return;
     const current = row.actor_name.trim();
     if (current && !sameActor(current, name) && !current.endsWith("?") && !window.confirm(
-      `На «${row.name}» сейчас утверждён ${current}. Заменить на ${name}?\n\nРешение считается по голосам: если автор голосовал за ${current}, замена не пройдёт.`,
+      `«${row.name}» is currently assigned to ${current}. Replace with ${name}? Decisions follow voting priority: if the author voted for ${current}, the replacement will not apply.`,
     )) return;
     setBusy(tentative ? "audition" : "approve");
     try {
@@ -129,17 +129,17 @@ export function DictorAssignDialog({ name, onClose, onAssigned }: { name: string
       setPicked(null);
       onAssigned();
     } catch (error) {
-      pushToast({ tone: "error", title: "Не удалось назначить", detail: describeApiError(error, "Сервер не принял назначение.") });
+      pushToast({ tone: "error", title: "Could not assign", detail: describeApiError(error, "The server rejected the assignment.") });
     } finally {
       setBusy("");
     }
   };
 
   return (
-    <Dialog title={`Назначить: ${name}`} subtitle="Утвердить сразу или позвать на пробу — как выбор актёра в касте" onClose={onClose} className="dic-assign">
+    <Dialog title={`Assign: ${name}`} subtitle="Approve now or invite to audition, just as in the cast" onClose={onClose} className="dic-assign">
       <div className="dic-assign-head">
         <label className="dic-assign-book">
-          <span>Книга</span>
+          <span>Book</span>
           <select
             value={currentBook}
             onChange={(event) => {
@@ -157,24 +157,24 @@ export function DictorAssignDialog({ name, onClose, onAssigned }: { name: string
         </label>
         <label className="dic-search dic-assign-search">
           <Icon name="search" />
-          <input type="search" value={query} placeholder="Роль" aria-label="Найти роль" data-autofocus onChange={(e) => setQuery(e.target.value)} />
+          <input type="search" value={query} placeholder="Role" aria-label="Find role" data-autofocus onChange={(e) => setQuery(e.target.value)} />
         </label>
         <label className="dic-assign-free">
-          <input type="checkbox" checked={freeOnly} onChange={(e) => setFreeOnly(e.target.checked)} /> только свободные
+          <input type="checkbox" checked={freeOnly} onChange={(e) => setFreeOnly(e.target.checked)} /> unassigned only
         </label>
       </div>
       {mine.length ? (
         <p className="dic-assign-mine">
-          Уже в этой книге: {mine.map((r) => `${r.name}${r.actor_name.trim().endsWith("?") ? " (проба)" : ""}`).join(", ")}
+          Already in this book: {mine.map((r) => `${r.name}${r.actor_name.trim().endsWith("?") ? " (audition)" : ""}`).join(", ")}
         </p>
       ) : null}
 
       {castQuery.isError ? (
-        <p className="dic-sub">{describeApiError(castQuery.error, "Не удалось загрузить роли книги.")}</p>
+        <p className="dic-sub">{describeApiError(castQuery.error, "Could not load book roles.")}</p>
       ) : castQuery.isLoading ? (
-        <p className="dic-sub">Загружаю роли…</p>
+        <p className="dic-sub">Loading roles…</p>
       ) : (
-        <ul className="dic-assign-roles" aria-label="Роли книги">
+        <ul className="dic-assign-roles" aria-label="Book roles">
           {shown.map((row) => {
             const actor = row.actor_name.trim();
             const isHim = sameActor(actor, name);
@@ -184,27 +184,27 @@ export function DictorAssignDialog({ name, onClose, onAssigned }: { name: string
                 <button type="button" className="dic-assign-role" aria-expanded={open} onClick={() => setPicked(open ? null : row)}>
                   <strong>{row.name}</strong>
                   <span className={actor ? (isHim ? "dic-assign-actor is-him" : "dic-assign-actor") : "dic-assign-actor is-free"}>
-                    {actor || "свободна"}
+                    {actor || "unassigned"}
                   </span>
                   <span className="dic-sub">
-                    {row.lines_count} {plural(row.lines_count, "реплика", "реплики", "реплик")}
+                    {row.lines_count} {plural(row.lines_count, "line", "lines", "lines")}
                     {minutes(row.approx_seconds) ? ` · ${minutes(row.approx_seconds)}` : ""}
                   </span>
                 </button>
                 {open ? (
                   <div className="dic-assign-actions">
                     <Button size="sm" variant="secondary" loading={busy === "audition"} disabled={Boolean(busy)} onClick={() => assign(row, true)}>
-                      Позвать на пробу
+                      Invite to audition
                     </Button>
                     <Button size="sm" variant="primary" loading={busy === "approve"} disabled={Boolean(busy)} onClick={() => assign(row, false)}>
-                      Утвердить на роль
+                      Approve for role
                     </Button>
                   </div>
                 ) : null}
               </li>
             );
           })}
-          {shown.length === 0 ? <li className="dic-sub">Ролей не нашлось.</li> : null}
+          {shown.length === 0 ? <li className="dic-sub">No roles found.</li> : null}
         </ul>
       )}
     </Dialog>

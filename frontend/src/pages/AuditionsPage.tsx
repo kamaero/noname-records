@@ -1,3 +1,5 @@
+import { roleLabel } from "../v2/types";
+import { formatDeadlineDateTime } from "../utils/serverTime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,7 +26,7 @@ import "./AuditionsPage.css";
 
 export const AUDITIONS_SEEN_KEY = "auditions.lastSeen";
 const LANES: AuditionLane[] = ["author", "studio"];
-const LANE_TITLE: Record<AuditionLane, string> = { author: "Оценка автора", studio: "Оценка студии" };
+const LANE_TITLE: Record<AuditionLane, string> = { author: "Author rating", studio: "Studio rating" };
 
 function readSeen(): string {
   try {
@@ -40,8 +42,7 @@ function fold(text: string): string {
 
 function when(iso: string): string {
   if (!iso) return "";
-  return new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
-    .format(new Date(iso));
+  return formatDeadlineDateTime(iso);
 }
 
 function seconds(value: number): string {
@@ -51,9 +52,9 @@ function seconds(value: number): string {
 
 function roleState(pair: AuditionPair): { text: string; tone: "" | "ok" | "maybe" } {
   const actor = pair.role_actor.trim();
-  if (!actor) return { text: `свободна · претендентов: ${pair.role_auditions}`, tone: "" };
-  if (actor.endsWith("?")) return { text: `на пробе: ${actor.replace(/\?+$/, "")} · претендентов: ${pair.role_auditions}`, tone: "maybe" };
-  return { text: `утверждён ${actor}`, tone: "ok" };
+  if (!actor) return { text: `unassigned · candidates: ${pair.role_auditions}`, tone: "" };
+  if (actor.endsWith("?")) return { text: `auditioning: ${actor.replace(/\?+$/, "")} · candidates: ${pair.role_auditions}`, tone: "maybe" };
+  return { text: `approved ${actor}`, tone: "ok" };
 }
 
 /** «тик-так» → «Тик-Так»: роль из имени файла приходит строчными. */
@@ -62,11 +63,7 @@ function suggestRoleName(role: string): string {
 }
 
 function auditionsWord(count: number): string {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${count} проба`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} пробы`;
-  return `${count} проб`;
+  return `${count} ${count === 1 ? "audition" : "auditions"}`;
 }
 
 export function AuditionsPage() {
@@ -113,7 +110,7 @@ export function AuditionsPage() {
     const needle = fold(query.trim());
     return pairs.filter((pair) => {
       if (book && pair.book_id !== book) return false;
-      if (needle && !fold(`${pair.actor_name} ${pair.role}`).includes(needle)) return false;
+      if (needle && !fold(`${pair.actor_name} ${roleLabel(pair.role)}`).includes(needle)) return false;
       if (unscored && (pair.scores?.author || pair.scores?.studio)) return false;
       if (unapproved && !unapprovedRole(pair)) return false;
       if (recommended && !(isRecommended(pair) && unapprovedRole(pair))) return false;
@@ -165,7 +162,7 @@ export function AuditionsPage() {
       await postScore(pair, lane, value, answer);
       await feedQuery.refetch();
     } catch (error) {
-      pushToast({ tone: "error", title: "Оценка не сохранилась", detail: describeApiError(error, "") });
+      pushToast({ tone: "error", title: "Rating not saved", detail: describeApiError(error, "") });
     } finally {
       setBusy("");
     }
@@ -177,9 +174,11 @@ export function AuditionsPage() {
     let roleName = pair.role;
     const guess = pair.role_guess;
     if (!characterId && guess && window.confirm(
-      `Роли «${pair.role}» нет в касте книги «${pair.book_title}». Похоже, это «${guess.name}» — в книге она пишется так.\n\n`
-      + `ОК — утвердить ${pair.actor_name} на «${guess.name}» (проба переименуется в «${guess.name}»).\n`
-      + "Отмена — завести новую роль.",
+      `Role «${roleLabel(pair.role)}» is not in the cast for book «${pair.book_title}». It may refer to «${guess.name}», as spelled in the book.
+
+`
+      + `OK — approve ${pair.actor_name} to «${guess.name}» (audition will be renamed to «${guess.name}»).\n`
+      + "Cancel — create a new role.",
     )) {
       // 11.10 «Ийли» из имени файла стала второй ролью без реплик, а не «Эиной»:
       // диктор открыла пустую Читалку. Похожая роль предлагается до новой, и правится
@@ -187,7 +186,7 @@ export function AuditionsPage() {
       try {
         await moveAuditionsToRole(pair.book_id, guess.character_id, pair.role, pair.actor_name);
       } catch (error) {
-        pushToast({ tone: "error", title: "Роль не нашлась", detail: describeApiError(error, "") });
+        pushToast({ tone: "error", title: "Role not found", detail: describeApiError(error, "") });
         return;
       }
       characterId = guess.character_id;
@@ -200,20 +199,20 @@ export function AuditionsPage() {
       // отправляла в Читалку; теперь роль заводится тут же — той же ручкой, что
       // «новая роль» в Читалке: она узнаёт уже существующую по регистру и псевдонимам.
       const name = window.prompt(
-        `Роли «${pair.role}» нет в касте книги «${pair.book_title}». Добавить её и утвердить ${pair.actor_name}?\n\nКак назвать роль в касте:`,
+        `Role «${roleLabel(pair.role)}» is not in the cast for book «${pair.book_title}». Add it and approve ${pair.actor_name}? Enter the role name for the cast:`,
         suggestRoleName(pair.role),
       );
       if (!name || !name.trim()) return;
       try {
         characterId = (await createRole(pair.book_id, name.trim())).character_id;
       } catch (error) {
-        pushToast({ tone: "error", title: "Роль не добавилась", detail: describeApiError(error, "") });
+        pushToast({ tone: "error", title: "Role not added", detail: describeApiError(error, "") });
         return;
       }
     }
     if (isBusy(pair) && !window.confirm(busyConfirmText(pair))) return;
     if (current && !current.endsWith("?") && !sameActor(current, pair.actor_name) && !window.confirm(
-      `На «${roleName}» сейчас утверждён ${current}. Заменить на ${pair.actor_name}?\n\nРешение считается по голосам, как в касте.`,
+      `«${roleName}» is currently assigned to ${current}. Replace with ${pair.actor_name}? Decisions follow voting priority, as in the cast.`,
     )) return;
     setBusy(pair.key);
     try {
@@ -223,13 +222,13 @@ export function AuditionsPage() {
       // Про отказы — только когда они правда заводятся: решение сменилось и есть
       // кому отказывать. Повторное утверждение того же актёра писем не шлёт.
       const rejects = pair.role_auditions > 1 && Boolean(result.vote?.changed);
-      const detail = `«${roleName}» · ${pair.book_title}` + (rejects ? ". Остальным пробовавшимся через 15 минут уйдёт вежливый отказ." : "");
+      const detail = `«${roleName}» · ${pair.book_title}` + (rejects ? ". Other candidates will receive a polite rejection in 15 minutes." : "");
       pushToast(won
-        ? { tone: "success", title: `Утверждён: ${pair.actor_name}`, detail }
-        : { tone: "error", title: "Голос не перевесил", detail: `На «${pair.role}» остаётся ${result.vote?.actor_name || "свободно"}.` });
+        ? { tone: "success", title: `Approved: ${pair.actor_name}`, detail }
+        : { tone: "error", title: "Decision did not take priority", detail: `«${roleLabel(pair.role)}» remains ${result.vote?.actor_name || "unassigned"}.` });
       await feedQuery.refetch();
     } catch (error) {
-      pushToast({ tone: "error", title: "Не удалось утвердить", detail: describeApiError(error, "") });
+      pushToast({ tone: "error", title: "Could not approve", detail: describeApiError(error, "") });
     } finally {
       setBusy("");
     }
@@ -239,23 +238,23 @@ export function AuditionsPage() {
      а нажатие по ошибке — можно («Не отказывать» до срока) */
   const reject = async (pair: AuditionPair, cancel: boolean) => {
     if (!cancel && !window.confirm(
-      `Отказать ${pair.actor_name} по роли «${pair.role}»?\n\nЧерез 15 минут диктору уйдёт вежливое письмо в Telegram. До этого отказ можно отменить.`,
+      `Reject ${pair.actor_name} for role «${roleLabel(pair.role)}»? A polite rejection will be sent through Telegram in 15 minutes. You can cancel it before then.`,
     )) return;
     setBusy(pair.key);
     try {
       await apiPostJson("/api/auditions/reject", { book_id: pair.book_id, role: pair.role, actor_name: pair.actor_name, cancel });
       pushToast(cancel
-        ? { tone: "success", title: "Отказ отменён", detail: `${pair.actor_name} · «${pair.role}»` }
-        : { tone: "success", title: `Отказ: ${pair.actor_name}`, detail: `«${pair.role}» · письмо уйдёт через 15 минут` });
+        ? { tone: "success", title: "Rejection cancelled", detail: `${pair.actor_name} · «${roleLabel(pair.role)}»` }
+        : { tone: "success", title: `Rejection: ${pair.actor_name}`, detail: `«${roleLabel(pair.role)}» · notification will be sent in 15 minutes` });
       await feedQuery.refetch();
     } catch (error) {
-      pushToast({ tone: "error", title: cancel ? "Отказ не отменился" : "Отказ не записался", detail: describeApiError(error, "") });
+      pushToast({ tone: "error", title: cancel ? "Could not cancel rejection" : "Could not save rejection", detail: describeApiError(error, "") });
     } finally {
       setBusy("");
     }
   };
 
-  if (feedQuery.isError) return <div className="panel panel-pad">{describeApiError(feedQuery.error, "Не удалось загрузить пробы.")}</div>;
+  if (feedQuery.isError) return <div className="panel panel-pad">{describeApiError(feedQuery.error, "Could not load auditions.")}</div>;
   const canApprove = Boolean(feedQuery.data?.can_approve);
   const seesScores = pairs.some((pair) => pair.scores !== null) || canScore.length > 0;
 
@@ -263,7 +262,7 @@ export function AuditionsPage() {
     <button
       type="button"
       className={playing === id ? "aufeed-play is-on" : "aufeed-play"}
-      aria-label={playing === id ? `Остановить пробу: ${actor}` : `Слушать пробу: ${actor}`}
+      aria-label={playing === id ? `Stop audition: ${actor}` : `Listen to audition: ${actor}`}
       aria-pressed={playing === id}
       onClick={(event) => {
         event.stopPropagation();
@@ -277,43 +276,43 @@ export function AuditionsPage() {
   return (
     <section className="aufeed">
       <PageHeader
-        title="Пробы"
-        subtitle={`${pairs.length} претендентов · свежие сверху${fresh ? ` · новых проб с прошлого раза: ${fresh}` : ""}`}
+        title="Auditions"
+        subtitle={`${pairs.length} candidates · newest first${fresh ? ` · new auditions since last visit: ${fresh}` : ""}`}
       />
       <div className="aufeed-head">
-        <select value={book} onChange={(e) => setBook(e.target.value)} aria-label="Книга">
-          <option value="">Все книги</option>
+        <select value={book} onChange={(e) => setBook(e.target.value)} aria-label="Book">
+          <option value="">All books</option>
           {books.map(([id, title]) => (
             <option key={id} value={id}>{title}</option>
           ))}
         </select>
         <label className="aufeed-search">
           <Icon name="search" />
-          <input type="search" value={query} placeholder="Диктор или роль" aria-label="Найти пробу" onChange={(e) => setQuery(e.target.value)} />
+          <input type="search" value={query} placeholder="Voice actor or role" aria-label="Find audition" onChange={(e) => setQuery(e.target.value)} />
         </label>
         {seesScores ? (
           <>
             <button type="button" className={unscored ? "aufeed-chip is-on" : "aufeed-chip"} aria-pressed={unscored} onClick={() => setUnscored(!unscored)}>
-              Без оценки
+              Unrated
             </button>
             <button type="button" className={recommended ? "aufeed-chip is-on" : "aufeed-chip"} aria-pressed={recommended} onClick={() => setRecommended(!recommended)}
-              title="Кто-то из двоих поставил 7 или выше, а роль ещё не утверждена">
-              К утверждению (7+)
+              title="At least one reviewer rated this 7 or higher; the role is not assigned yet">
+              Ready for approval (7+)
             </button>
           </>
         ) : null}
         {busyCount || hideBusy ? (
           <button type="button" className={hideBusy ? "aufeed-chip is-on" : "aufeed-chip"} aria-pressed={hideBusy} onClick={() => setHideBusy(!hideBusy)}
-            title="Скрыть актёров, уже утверждённых на другую роль этой книги">
-            Без занятых{busyCount ? ` (${busyCount})` : ""}
+            title="Hide voice actors already approved for another role in this book">
+            Available actors only{busyCount ? ` (${busyCount})` : ""}
           </button>
         ) : null}
         <button type="button" className={unapproved ? "aufeed-chip is-on" : "aufeed-chip"} aria-pressed={unapproved} onClick={() => setUnapproved(!unapproved)}>
-          Роль не утверждена
+          Unassigned role
         </button>
       </div>
 
-      {feedQuery.isLoading ? <p className="aufeed-sub">Загружаю…</p> : null}
+      {feedQuery.isLoading ? <p className="aufeed-sub">Loading…</p> : null}
       <ul className="aufeed-list">
         {shown.map((pair) => {
           const state = roleState(pair);
@@ -326,20 +325,20 @@ export function AuditionsPage() {
               <div className="aufeed-row">
                 {several ? (
                   <button type="button" className="aufeed-expand" aria-expanded={expanded}
-                    aria-label={expanded ? "Свернуть пробы" : `Показать ${auditionsWord(pair.auditions.length)}`}
+                    aria-label={expanded ? "Collapse auditions" : `Show ${auditionsWord(pair.auditions.length)}`}
                     onClick={() => toggleOpen(pair.key)}>
-                    {expanded ? "Свернуть ▴" : `${auditionsWord(pair.auditions.length)} ▾`}
+                    {expanded ? "Collapse ▴" : `${auditionsWord(pair.auditions.length)} ▾`}
                   </button>
                 ) : playButton(single.id, pair.actor_name)}
                 <div className="aufeed-main" onClick={several ? () => toggleOpen(pair.key) : undefined}>
                   <div className="aufeed-line">
                     <Link className="aufeed-actor" to={`/dictors?q=${encodeURIComponent(pair.actor_name)}`} onClick={(e) => e.stopPropagation()}>
-                      {pair.actor_name || "без имени"}
+                      {pair.actor_name || "unnamed"}
                     </Link>
-                    <span className="aufeed-role">«{pair.role}»</span>
-                    {freshPair ? <span className="aufeed-new">новая</span> : null}
-                    {!pair.approved && roleOpen(pair) && isRecommended(pair) ? <span className="aufeed-recommended">к утверждению</span> : null}
-                    {pair.busy_on.length ? <span className="aufeed-busy">утверждён: {pair.busy_on.map((r) => `«${r}»`).join(", ")}</span> : null}
+                    <span className="aufeed-role">«{roleLabel(pair.role)}»</span>
+                    {freshPair ? <span className="aufeed-new">new</span> : null}
+                    {!pair.approved && roleOpen(pair) && isRecommended(pair) ? <span className="aufeed-recommended">pending approval</span> : null}
+                    {pair.busy_on.length ? <span className="aufeed-busy">approved: {pair.busy_on.map((r) => `«${r}»`).join(", ")}</span> : null}
                   </div>
                   <div className="aufeed-sub">
                     {pair.book_title} · {several ? auditionsWord(pair.auditions.length) : `${when(single.uploaded_at)}${seconds(single.duration_seconds) ? ` · ${seconds(single.duration_seconds)}` : ""}`}
@@ -348,16 +347,16 @@ export function AuditionsPage() {
                 </div>
                 <div className="aufeed-actions">
                   {pair.approved ? (
-                    <span className="aufeed-state is-ok">утверждён</span>
+                    <span className="aufeed-state is-ok">approved</span>
                   ) : canApprove && pair.actor_name ? (
-                    <Button size="sm" variant={roleOpen(pair) && isRecommended(pair) ? "primary" : "secondary"} loading={busy === pair.key} onClick={() => approve(pair)}>Утвердить</Button>
+                    <Button size="sm" variant={roleOpen(pair) && isRecommended(pair) ? "primary" : "secondary"} loading={busy === pair.key} onClick={() => approve(pair)}>Approve</Button>
                   ) : null}
                   {/* отказ, который уже ушёл (или не дошёл), назван строкой ниже — второй кнопки нет */}
                   {!pair.approved && canApprove && pair.actor_name ? (
                     pair.rejection?.status === "pending" ? (
-                      <Button size="sm" variant="ghost" disabled={busy === pair.key} onClick={() => reject(pair, true)}>Не отказывать</Button>
+                      <Button size="sm" variant="ghost" disabled={busy === pair.key} onClick={() => reject(pair, true)}>Cancel rejection</Button>
                     ) : !pair.rejection ? (
-                      <Button size="sm" variant="ghost" disabled={busy === pair.key} onClick={() => reject(pair, false)}>Отказать</Button>
+                      <Button size="sm" variant="ghost" disabled={busy === pair.key} onClick={() => reject(pair, false)}>Reject</Button>
                     ) : null
                   ) : null}
                 </div>
@@ -391,10 +390,10 @@ export function AuditionsPage() {
               {/* Диктор оценок не видит, но свой отправленный отказ — видит, как в листе проб */}
               {pair.rejection && (pair.scores || pair.rejection.status === "sent") ? (
                 <p className="aufeed-rejection">
-                  {pair.rejection.status === "pending" ? `Отказ уйдёт диктору в ${when(pair.rejection.due_at)}`
-                    : pair.rejection.status === "sent" ? `Отказ отправлен ${when(pair.rejection.sent_at)}`
-                    : pair.rejection.status === "failed" ? "Отказ не ушёл — Telegram не ответил"
-                    : "Отказ не доставлен: у диктора нет учётки — сообщите сами"}
+                  {pair.rejection.status === "pending" ? `The rejection will be sent via ${when(pair.rejection.due_at)}`
+                    : pair.rejection.status === "sent" ? `Rejection sent ${when(pair.rejection.sent_at)}`
+                    : pair.rejection.status === "failed" ? "Rejection not delivered: Telegram did not respond"
+                    : "Rejection not delivered: no voice actor account. Contact them directly"}
                 </p>
               ) : null}
               {several && expanded ? (
@@ -406,7 +405,7 @@ export function AuditionsPage() {
                         {when(item.uploaded_at)}{seconds(item.duration_seconds) ? ` · ${seconds(item.duration_seconds)}` : ""}
                         {item.chapter ? ` · ${item.chapter}` : ""}
                       </span>
-                      {isNew(item.uploaded_at) ? <span className="aufeed-new">новая</span> : null}
+                      {isNew(item.uploaded_at) ? <span className="aufeed-new">new</span> : null}
                     </li>
                   ))}
                 </ul>
@@ -414,7 +413,7 @@ export function AuditionsPage() {
             </li>
           );
         })}
-        {!feedQuery.isLoading && shown.length === 0 ? <li className="aufeed-sub">Проб не нашлось.</li> : null}
+        {!feedQuery.isLoading && shown.length === 0 ? <li className="aufeed-sub">No auditions found.</li> : null}
       </ul>
       {reasonPrompt.dialog}
     </section>

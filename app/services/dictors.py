@@ -210,7 +210,7 @@ def add_demo(db, user_id: str, source_path: str, title: str, *, source: str = "u
             raise DictorError("duplicate")
         with open(target, "rb") as handle:
             audio_storage.write_file(key, handle.read())
-    demo = DictorDemo(id=demo_id, user_id=user.id, title=_clean_name(title) or "демо", stored_key=key,
+    demo = DictorDemo(id=demo_id, user_id=user.id, title=_clean_name(title) or "Demo", stored_key=key,
                       duration_seconds=info["duration_seconds"], size_bytes=info["size_bytes"], md5=info["md5"],
                       trimmed=info["trimmed"], source=source)
     db.add(demo)
@@ -365,7 +365,7 @@ def delete_dictor(db, user_id: str, *, actor_user_id: str) -> None:
             roles.append({"book": titles.get(budget.book_id, ""), "role": "Рассказчик"})
     for profile in db.query(AuthorCharacter).filter(AuthorCharacter.actor_name != "").all():
         if his(str(profile.actor_name or "")):
-            roles.append({"book": "профиль автора", "role": str(profile.canonical_name or "")})
+            roles.append({"book": "Author profile", "role": str(profile.canonical_name or "")})
     if roles:
         raise DictorError("has_roles", roles)
     from app.config import settings

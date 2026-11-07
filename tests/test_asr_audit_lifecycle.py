@@ -31,6 +31,38 @@ SNAPSHOT = {"assembled_fingerprint": "assembled", "narrator_take_id": "take-r",
             "narrator_input_fingerprint": "narrator-input"}
 
 
+def test_audit_queue_and_worker_preserve_language(factory, queue, monkeypatch):
+    from app import worker_tasks
+    from app.services import asr_audit
+    snapshot = dict(SNAPSHOT, language="en")
+    monkeypatch.setattr(lifecycle, "assembled_audit_snapshot", lambda db, cid: snapshot)
+    assert lifecycle.enqueue_audit("chapter")
+    assert queue[0]["language"] == "en"
+    with factory() as db:
+        assert json.loads(db.query(BackgroundRun).one().meta_json)["language"] == "en"
+    monkeypatch.setattr(worker_tasks, "SessionLocal", factory)
+    seen = []
+    monkeypatch.setattr(asr_audit, "run_asr_audit", lambda *a, **kw: seen.append(kw) or
+                        SimpleNamespace(status="done", error_message=""))
+    worker_tasks.perform_asr_audit_task(**queue[0])
+    assert seen == [{"expected_narrator_fingerprint": "narrator-input", "language": "en"}]
+
+
+def test_language_change_after_queue_prevents_audit_payment(factory, queue, monkeypatch):
+    from app import worker_tasks
+    from app.services import asr_audit
+    monkeypatch.setattr(lifecycle, "assembled_audit_snapshot", lambda db, cid: dict(SNAPSHOT, language="en"))
+    assert lifecycle.enqueue_audit("chapter")
+    monkeypatch.setattr(lifecycle, "assembled_audit_snapshot", lambda db, cid: dict(SNAPSHOT, language="ru"))
+    monkeypatch.setattr(worker_tasks, "SessionLocal", factory)
+    monkeypatch.setattr(asr_audit, "run_asr_audit", lambda *a, **kw: pytest.fail("paid language mismatch"))
+    worker_tasks.perform_asr_audit_task(**queue[0])
+    with factory() as db:
+        run = db.query(BackgroundRun).one()
+        assert run.status == "skipped"
+        assert json.loads(run.meta_json)["payment_state"] == "not_started"
+
+
 @pytest.fixture()
 def factory(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'audit.db'}", connect_args={"timeout": 15})
@@ -375,11 +407,9 @@ def test_foreign_book_with_same_title_cannot_complete_project(complete_real_proj
     complete.update(matched=4, missing=[])
     db.add(AsrJob(audio_file_id="foreign", chapter_id="other-chapter", status="done", alignment_json=json.dumps(complete)))
     db.commit()
-    # Свёртка старого экрана по названиям ошибочно даёт 100%, но оплату она не разрешает.
-    assert book_recording_status(db, BOOK)["chapters"][0]["matched_lines"] == 4
-    # В старой схеме обе сводки зависят от названия; платная проверка должна
-    # отказать, даже когда эта неоднозначность ошибочно даёт полное покрытие.
-    assert chapter_recording_status(db, chapter_id)["matched_lines"] == 4
+    # Чужой дубль исключён и из сводки, и из платного основания сборки.
+    assert book_recording_status(db, BOOK)["chapters"][0]["matched_lines"] == 3
+    assert chapter_recording_status(db, chapter_id)["matched_lines"] == 3
     assert lifecycle.audit_assembly_snapshot(db, chapter_id) is None
 
 

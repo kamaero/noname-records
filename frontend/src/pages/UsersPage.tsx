@@ -28,17 +28,18 @@ import type { BotReachResponse, MeResponse, SaveTelegramWhitelistPayload, Telegr
 import "./UsersPage.css";
 
 const ROLES = ["admin", "author", "dictor", "agent"] as const;
+const ROLE_LABELS: Record<string, string> = { admin: "Administrator", author: "Author", dictor: "Voice actor", agent: "Agent" };
 
 /** The refusals the service can answer with, in the owner's words. */
 const REFUSALS: Record<string, string> = {
-  last_admin: "Это последний администратор — иначе в студию будет не войти.",
-  same_account: "Это одна и та же учётка.",
-  self_delete: "Свою собственную учётку удалить нельзя.",
-  display_name_required: "Нужно имя.",
-  login_taken: "Такой логин уже занят.",
-  user_not_found: "Учётка не найдена — возможно, её уже удалили.",
-  telegram_taken: "Этот Telegram ID уже привязан к другой учётке — сначала отвяжите его там.",
-  bad_telegram_id: "Telegram ID — это число.",
+  last_admin: "This is the last administrator. Keep one administrator to retain access.",
+  same_account: "These are the same account.",
+  self_delete: "You cannot delete your own account.",
+  display_name_required: "A name is required.",
+  login_taken: "This username is already taken.",
+  user_not_found: "Account not found. It may have been deleted.",
+  telegram_taken: "This Telegram ID is linked to another account. Unlink it there first.",
+  bad_telegram_id: "Telegram ID must be a number.",
 };
 
 function refusal(error: unknown): string {
@@ -46,7 +47,7 @@ function refusal(error: unknown): string {
   for (const [code, message] of Object.entries(REFUSALS)) {
     if (text.includes(code)) return message;
   }
-  return describeApiError(error, "Сервер ответил без подробностей.");
+  return describeApiError(error, "The server returned no details.");
 }
 
 function fold(value: string): string {
@@ -68,7 +69,7 @@ export function UsersPage({ me }: { me: MeResponse }) {
 
   /* Реестр отдаётся текстом, и сохранить его надо тем же жестом, что и любой файл.
      Ссылка живёт мгновение: она нужна только чтобы браузер начал скачивание. */
-  const download = (url: string, blob?: Blob, name = "доступы.txt") => {
+  const download = (url: string, blob?: Blob, name = "credentials.txt") => {
     const href = blob ? URL.createObjectURL(blob) : url;
     const link = document.createElement("a");
     link.href = href;
@@ -88,16 +89,16 @@ export function UsersPage({ me }: { me: MeResponse }) {
     onSuccess: (result) => {
       setBotReach(result);
       if (result.error === "no_token") {
-        pushToast({ tone: "error", title: "Бот не настроен", detail: "В .env нет токена бота." });
+        pushToast({ tone: "error", title: "Bot not configured", detail: "No bot token configured in .env." });
         return;
       }
       pushToast({
         tone: result.unreachable ? "info" : "success",
-        title: result.unreachable ? `Бот не достучится до ${result.unreachable}` : "Бот достучится до всех",
-        detail: `Проверено ${result.checked}.`,
+        title: result.unreachable ? `The bot cannot reach ${result.unreachable}` : "The bot can reach everyone",
+        detail: `Checked ${result.checked}.`,
       });
     },
-    onError: (error) => pushToast({ tone: "error", title: "Проверка не прошла", detail: refusal(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Check failed", detail: refusal(error) }),
   });
 
   const attachTelegram = useMutation({
@@ -109,26 +110,26 @@ export function UsersPage({ me }: { me: MeResponse }) {
     onSuccess: async (result) => {
       pushToast({
         tone: "success",
-        title: result.telegram_user_id ? "Telegram привязан" : "Telegram отвязан",
+        title: result.telegram_user_id ? "Telegram linked" : "Telegram unlinked",
         detail: result.telegram_user_id || undefined,
       });
       await refresh();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не привязалось", detail: refusal(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Could not link", detail: refusal(error) }),
   });
 
   const issuePasswords = useMutation({
     mutationFn: () => apiPostJson<{ ok: boolean; issued: number; roster: string }>("/api/users/issue-passwords", {}),
     onSuccess: async (result) => {
-      download("", new Blob([result.roster], { type: "text/plain;charset=utf-8" }), "доступы-с-паролями.txt");
+      download("", new Blob([result.roster], { type: "text/plain;charset=utf-8" }), "credentials-with-passwords.txt");
       pushToast({
         tone: "success",
-        title: `Паролей выдано: ${result.issued}`,
-        detail: "Файл скачан. Пароли в нём больше нигде не хранятся.",
+        title: `Passwords issued: ${result.issued}`,
+        detail: "File downloaded. These passwords are not stored anywhere else.",
       });
       await queryClient.invalidateQueries({ queryKey: ["users"] });
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не вышло", detail: refusal(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Could not complete the action", detail: refusal(error) }),
   });
   const [whitelistForm, setWhitelistForm] = useState<SaveTelegramWhitelistPayload>({
     telegram_user_id: "",
@@ -155,14 +156,14 @@ export function UsersPage({ me }: { me: MeResponse }) {
       setSecret({ login: result.user.login, password: result.password });
       void refresh();
     },
-    onError: onRefusal("Учётка не создана"),
+    onError: onRefusal("Account not created"),
   });
 
   const updateUser = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Record<string, unknown> }) =>
       apiPatchJson<{ ok: boolean; user: UserListItem }>(`/api/users/${encodeURIComponent(id)}`, patch),
     onSuccess: () => void refresh(),
-    onError: onRefusal("Не сохранено"),
+    onError: onRefusal("Not saved"),
   });
 
   const resetPassword = useMutation({
@@ -171,16 +172,16 @@ export function UsersPage({ me }: { me: MeResponse }) {
         (result) => ({ ...result, login: user.login }),
       ),
     onSuccess: (result) => setSecret({ login: result.login, password: result.password }),
-    onError: onRefusal("Пароль не выдан"),
+    onError: onRefusal("Password not issued"),
   });
 
   const removeUser = useMutation({
     mutationFn: (id: string) => apiDelete<{ ok: boolean }>(`/api/users/${encodeURIComponent(id)}`),
     onSuccess: () => {
-      pushToast({ tone: "success", title: "Учётка удалена" });
+      pushToast({ tone: "success", title: "Account deleted" });
       void refresh();
     },
-    onError: onRefusal("Не удалено"),
+    onError: onRefusal("Not deleted"),
   });
 
   const mergeUsers = useMutation({
@@ -189,22 +190,22 @@ export function UsersPage({ me }: { me: MeResponse }) {
     onSuccess: (result) => {
       pushToast({
         tone: "success",
-        title: "Учётки объединены",
-        detail: `Осталась ${result.user.login}; ${result.dropped_login} удалена, история перенесена.`,
+        title: "Accounts merged",
+        detail: `Kept ${result.user.login}; ${result.dropped_login} deleted; history transferred.`,
       });
       void refresh();
     },
-    onError: onRefusal("Не объединено"),
+    onError: onRefusal("Not merged"),
   });
 
   const bulkRoles = useMutation({
     mutationFn: (payload: { ids: string[]; roles: string[] }) =>
       apiPostJson<{ ok: boolean; changed: number }>("/api/users/bulk-roles", payload),
     onSuccess: (result) => {
-      pushToast({ tone: "success", title: `Роль изменена у ${result.changed}` });
+      pushToast({ tone: "success", title: `Role changed for ${result.changed}` });
       void refresh();
     },
-    onError: onRefusal("Роли не изменены"),
+    onError: onRefusal("Roles not changed"),
   });
 
   const users = usersQuery.data?.users ?? [];
@@ -247,7 +248,7 @@ export function UsersPage({ me }: { me: MeResponse }) {
   );
 
   const rename = (user: UserListItem) => {
-    const next = window.prompt("Имя и фамилия", user.display_name);
+    const next = window.prompt("Full name", user.display_name);
     if (next === null || next.trim() === user.display_name) return;
     updateUser.mutate({ id: user.id, patch: { display_name: next.trim() } });
   };
@@ -255,7 +256,7 @@ export function UsersPage({ me }: { me: MeResponse }) {
   const columns: Column<UserListItem>[] = [
     {
       key: "name",
-      header: "Имя",
+      header: "Name",
       render: (user) => (
         // the name is the affordance: renaming is the commonest fix and does not
         // deserve a button competing for the row's right edge
@@ -263,7 +264,7 @@ export function UsersPage({ me }: { me: MeResponse }) {
           type="button"
           className={user.is_active ? "usr-name" : "usr-name usr-off"}
           onClick={() => rename(user)}
-          title="Переименовать"
+          title="Rename"
         >
           <strong>{user.display_name}</strong>
           <span className="usr-login">{user.login}</span>
@@ -272,25 +273,25 @@ export function UsersPage({ me }: { me: MeResponse }) {
     },
     {
       key: "auth",
-      header: "Вход",
+      header: "Sign-in",
       width: 190,
       render: (user) => (
         <span className="usr-auth">
           {/* Оба пути сразу — это и есть ответ на «узнает ли система меня»: и пароль,
               и телеграм ведут в одну строку. */}
           <span className="usr-ways">
-            {user.ways_in.includes("password") ? <span className="usr-way">логин и пароль</span> : null}
+            {user.ways_in.includes("password") ? <span className="usr-way">username and password</span> : null}
             {/* Телеграм привязывается здесь же: владелец смотрит на строку человека и
                 уже знает, чей это айди — спрашивать его у сверки по именам нелепо. */}
             <button
               type="button"
               className={user.telegram_user_id ? "usr-way usr-way--tg" : "usr-way usr-way--add"}
               disabled={attachTelegram.isPending}
-              title={user.telegram_user_id ? `Telegram ID ${user.telegram_user_id} — нажмите, чтобы изменить` : "Привязать Telegram"}
+              title={user.telegram_user_id ? `Telegram ID ${user.telegram_user_id} — click to change` : "Link Telegram"}
               onClick={() => {
                 const entered = window.prompt(
-                  `Telegram ID для «${user.display_name}»` +
-                    (user.telegram_user_id ? "\n\nПустое поле — отвязать." : ""),
+                  `Telegram ID for «${user.display_name}»` +
+                    (user.telegram_user_id ? "\n\nLeave blank to unlink." : ""),
                   user.telegram_user_id || "",
                 );
                 if (entered === null) return;
@@ -300,20 +301,20 @@ export function UsersPage({ me }: { me: MeResponse }) {
               {user.telegram_user_id ? "Telegram" : "+ Telegram"}
             </button>
           </span>
-          {user.twin_login ? <span className="usr-twin">похож на — {user.twin_login}</span> : null}
+          {user.twin_login ? <span className="usr-twin">possible match — {user.twin_login}</span> : null}
         </span>
       ),
     },
     {
       key: "roles",
-      header: "Роли",
+      header: "Roles",
       width: 210,
       render: (user) => (
         <span className="usr-roles">
-          {user.roles.length === 0 ? <span className="usr-role">без ролей</span> : null}
+          {user.roles.length === 0 ? <span className="usr-role">no roles</span> : null}
           {user.roles.map((role) => (
             <span key={role} className={role === "admin" ? "usr-role usr-role--admin" : "usr-role"}>
-              {role}
+              {ROLE_LABELS[role] || role}
             </span>
           ))}
         </span>
@@ -321,10 +322,10 @@ export function UsersPage({ me }: { me: MeResponse }) {
     },
     {
       key: "status",
-      header: "Статус",
+      header: "Status",
       width: 96,
       nowrap: true,
-      render: (user) => (user.is_active ? "активна" : "выключена"),
+      render: (user) => (user.is_active ? "active" : "disabled"),
     },
     {
       key: "actions",
@@ -337,14 +338,14 @@ export function UsersPage({ me }: { me: MeResponse }) {
             className="usr-rolepick"
             value={user.roles[0] || ""}
             onChange={(event) => updateUser.mutate({ id: user.id, patch: { roles: [event.target.value] } })}
-            aria-label={`Роль учётки ${user.display_name}`}
+            aria-label={`Account role for ${user.display_name}`}
           >
             <option value="" disabled>
-              роль…
+              role…
             </option>
             {ROLES.map((role) => (
               <option key={role} value={role}>
-                {role}
+                {ROLE_LABELS[role] || role}
               </option>
             ))}
           </select>
@@ -353,80 +354,82 @@ export function UsersPage({ me }: { me: MeResponse }) {
             variant="ghost"
             onClick={() => updateUser.mutate({ id: user.id, patch: { is_active: !user.is_active } })}
           >
-            {user.is_active ? "Выкл." : "Вкл."}
+            {user.is_active ? "Disable" : "Enable"}
           </Button>
           {user.auth === "password" ? (
             <Button size="sm" variant="ghost" onClick={() => resetPassword.mutate(user)}>
-              Пароль
+              Password
             </Button>
           ) : null}
           <Button size="sm" variant="ghost" onClick={() => setMergeFrom(user)} disabled={mergeUsers.isPending}>
-            Объединить…
+            Merge…
           </Button>
           <Button
             size="sm"
             variant="ghost"
             onClick={() => {
-              if (window.confirm(`Удалить учётку «${user.display_name}» (${user.login})?`)) removeUser.mutate(user.id);
+              if (window.confirm(`Delete account «${user.display_name}» (${user.login})?`)) removeUser.mutate(user.id);
             }}
           >
-            Удалить
+            Delete
           </Button>
         </span>
       ),
     },
   ];
 
-  if (!allowed) return <div className="panel panel-pad">Страница доступна только владельцу и администраторам.</div>;
+  if (!allowed) return <div className="panel panel-pad">This page is available to the owner and administrators only.</div>;
   if (usersQuery.isError) {
-    return <div className="panel panel-pad">{describeApiError(usersQuery.error, "Не удалось загрузить пользователей.")}</div>;
+    return <div className="panel panel-pad">{describeApiError(usersQuery.error, "Could not load users.")}</div>;
   }
 
   return (
     <section className="usr">
       <PageHeader
-        title="Пользователи"
-        subtitle={`${users.length} учёток · логины и пароли выдаются здесь`}
+        title="Users"
+        subtitle={`${users.length} accounts · manage usernames and passwords here`}
         actions={
           <>
             <Button variant="secondary" onClick={() => download("/api/users/export.txt")}>
-              Выгрузить доступы
+              Export credentials
             </Button>
             <Button
               variant="secondary"
               loading={checkBot.isPending}
-              title="Кому бот сможет прислать «ты утверждён на роль» и «не нашлось реплик»"
+              title="Check who can receive casting and missing-line notifications"
               onClick={() => checkBot.mutate()}
             >
-              Связь с ботом
+              Bot reachability
             </Button>
             {withoutPassword.length ? (
               <Button
                 variant="secondary"
                 disabled={issuePasswords.isPending}
-                title={`Без пароля: ${withoutPassword.map((u) => u.display_name).join(", ")}`}
+                title={`Without a password: ${withoutPassword.map((u) => u.display_name).join(", ")}`}
                 onClick={() => {
                   if (
                     window.confirm(
-                      `Выдать пароли тем, у кого их нет (${withoutPassword.length})? ` +
-                        `Скачается файл с новыми паролями — другого случая их увидеть не будет.\n\n` +
-                        `Тем, у кого пароль есть, новый не выдаётся.`,
+                      `Issue passwords to accounts without one (${withoutPassword.length})? ` +
+                        `A file with new passwords will be downloaded. This is the only time they will be visible.
+
+` +
+                        `Existing passwords will remain unchanged.`,
                     )
                   )
                     issuePasswords.mutate();
                 }}
               >
-                Выдать пароли · {withoutPassword.length}
+                Issue passwords · {withoutPassword.length}
               </Button>
             ) : null}
             <Button
               onClick={() => {
-                const name = window.prompt("Имя и фамилия нового участника");
+                const name = window.prompt("New member's full name");
                 if (!name || !name.trim()) return;
                 createUser.mutate({ display_name: name.trim(), roles: ["dictor"] });
               }}
             >
-              <Icon name="users" /> Завести учётку
+              <Icon name="users" /> Create account
             </Button>
           </>
         }
@@ -435,11 +438,11 @@ export function UsersPage({ me }: { me: MeResponse }) {
       {secret ? (
         <div className="usr-secret" role="status">
           <span>
-            <strong>{secret.login}</strong> — пароль <code>{secret.password}</code>
+            <strong>{secret.login}</strong> — password <code>{secret.password}</code>
           </span>
-          <span className="usr-secret-note">Показывается один раз. Скопируйте и передайте лично.</span>
+          <span className="usr-secret-note">Shown once. Copy it and share privately.</span>
           <Button size="sm" variant="ghost" onClick={() => setSecret(null)}>
-            Скрыть
+            Hide
           </Button>
         </div>
       ) : null}
@@ -447,25 +450,25 @@ export function UsersPage({ me }: { me: MeResponse }) {
       {authorsOnly.length > 0 ? (
         <div className="panel panel-pad usr-bulk">
           <span>
-            У <strong>{authorsOnly.length}</strong> {plural(authorsOnly.length, "учётки", "учёток", "учёток")} роль{" "}
-            <strong>author</strong> — это право править разметку книги.
+            <strong>{authorsOnly.length}</strong> {plural(authorsOnly.length, "account has", "accounts have", "accounts have")} the{" "}
+            <strong>Author</strong> role, which grants permission to edit book annotations.
           </span>
           <Button
             size="sm"
             onClick={() => {
-              if (window.confirm(`Перевести ${authorsOnly.length} учёток в dictor?`))
+              if (window.confirm(`Change ${authorsOnly.length} accounts to voice actors?`))
                 bulkRoles.mutate({ ids: authorsOnly.map((user) => user.id), roles: ["dictor"] });
             }}
             disabled={bulkRoles.isPending}
           >
-            Сделать их дикторами
+            Make them voice actors
           </Button>
         </div>
       ) : null}
 
       <div className="usr-head">
-        <h2>Учётки</h2>
-        <span className="usr-count">{found.length === users.length ? users.length : `${found.length} из ${users.length}`}</span>
+        <h2>Accounts</h2>
+        <span className="usr-count">{found.length === users.length ? users.length : `${found.length} of ${users.length}`}</span>
         <span className="usr-spacer" />
         <label className="usr-search">
           <Icon name="search" />
@@ -473,23 +476,21 @@ export function UsersPage({ me }: { me: MeResponse }) {
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Имя или логин…"
-            aria-label="Поиск по учёткам"
+            placeholder="Name or username…"
+            aria-label="Search accounts"
           />
         </label>
       </div>
 
       {botReach ? (
         <Sheet
-          title="Связь с ботом"
-          subtitle={`Проверено ${botReach.checked} · не достучится до ${botReach.unreachable}`}
+          title="Bot reachability"
+          subtitle={`Checked ${botReach.checked} · unreachable ${botReach.unreachable}`}
           onClose={() => setBotReach(null)}
         >
           <p className="usr-reach-note">
-            Вход через «Log in with Telegram» работает без бота — Telegram подтверждает личность сам. А писать
-            человеку бот не может, пока тот сам не нажал Start у{" "}
-            <strong>бота студии</strong>: так устроен Telegram. До тех, кто ниже, уведомления
-            «ты утверждён на роль» и «не нашлось реплик» не дойдут.
+            Log in with Telegram works without the bot: Telegram verifies the identity. The bot can only send messages after the person presses Start in the{" "}
+            <strong>studio bot</strong>. The people below cannot receive casting and missing-line notifications until then.
           </p>
           <ul className="usr-reach-list">
             {botReach.items.map((item) => (
@@ -497,13 +498,13 @@ export function UsersPage({ me }: { me: MeResponse }) {
                 <span className="usr-reach-who">
                   <strong>{item.display_name}</strong>
                   {item.telegram_name && item.telegram_name !== item.display_name ? (
-                    <span className="usr-login"> в телеграме — {item.telegram_name}
+                    <span className="usr-login"> in Telegram — {item.telegram_name}
                       {item.username ? ` @${item.username}` : ""}
                     </span>
                   ) : null}
                 </span>
                 <span className={item.reachable ? "usr-reach-state" : "usr-reach-state usr-reach-state--bad"}>
-                  {item.reachable === null ? "не спросили" : item.reachable ? "пишет" : "не пишет"}
+                  {item.reachable === null ? "not checked" : item.reachable ? "reachable" : "unreachable"}
                 </span>
               </li>
             ))}
@@ -513,8 +514,8 @@ export function UsersPage({ me }: { me: MeResponse }) {
 
       {mergeFrom ? (
         <Sheet
-          title={`Объединить «${mergeFrom.display_name}»`}
-          subtitle="Эта учётка исчезнет, а все её входы, роли и история перейдут выбранной"
+          title={`Merge «${mergeFrom.display_name}»`}
+          subtitle="This account will be removed; sign-in methods, roles and history will move to the selected account"
           onClose={() => {
             setMergeFrom(null);
             setMergeQuery("");
@@ -526,8 +527,8 @@ export function UsersPage({ me }: { me: MeResponse }) {
               type="search"
               autoFocus
               value={mergeQuery}
-              placeholder="Имя или логин"
-              aria-label="Найти учётку"
+              placeholder="Name or username"
+              aria-label="Find account"
               onChange={(event) => setMergeQuery(event.target.value)}
             />
           </label>
@@ -541,9 +542,9 @@ export function UsersPage({ me }: { me: MeResponse }) {
                   onClick={() => {
                     if (
                       window.confirm(
-                        `Оставить «${candidate.display_name}» (${candidate.login}) и убрать ` +
+                        `Keep «${candidate.display_name}» (${candidate.login}) and remove ` +
                           `«${mergeFrom.display_name}» (${mergeFrom.login})?\n\n` +
-                          `Входы, роли и история перейдут оставшейся учётке.`,
+                          `Sign-in methods, roles and history will move to the remaining account.`,
                       )
                     ) {
                       mergeUsers.mutate({ keep_id: candidate.id, drop_id: mergeFrom.id });
@@ -554,11 +555,11 @@ export function UsersPage({ me }: { me: MeResponse }) {
                 >
                   <strong>{candidate.display_name}</strong>
                   <span className="usr-login">{candidate.login}</span>
-                  {candidate.id === mergeFrom.twin_id ? <span className="usr-merge-hint">похож по имени</span> : null}
+                  {candidate.id === mergeFrom.twin_id ? <span className="usr-merge-hint">similar name</span> : null}
                 </button>
               </li>
             ))}
-            {mergeCandidates.length === 0 ? <li className="usr-merge-empty">Никого не нашлось.</li> : null}
+            {mergeCandidates.length === 0 ? <li className="usr-merge-empty">No people found.</li> : null}
           </ul>
         </Sheet>
       ) : null}
@@ -568,18 +569,16 @@ export function UsersPage({ me }: { me: MeResponse }) {
         rows={found}
         rowKey={(user) => user.id}
         loading={usersQuery.isLoading}
-        empty="Ничего не найдено."
-        aria-label="Учётки"
+        empty="Nothing found."
+        aria-label="Accounts"
       />
 
       <div className="panel panel-pad">
         <h2>Telegram whitelist</h2>
         <p className="usr-count">
-          Кого пускать по кнопке «Log in with Telegram» — {whitelist.length}{" "}
-          {plural(whitelist.length, "запись", "записи", "записей")}, из них{" "}
-          {whitelist.filter((item) => item.linked_login).length} привязано к учёткам. Учётка с логином и паролем
-          заводится сразу здесь же; если такой человек в студии уже есть, запись привяжется к нему. Привязать
-          телеграм к конкретной учётке можно и в её строке выше.
+          Accounts allowed to use Log in with Telegram — {whitelist.length}{" "}
+          {plural(whitelist.length, "entry", "entries", "entries")}, including{" "}
+          {whitelist.filter((item) => item.linked_login).length} linked to accounts. A username and password are created here; existing members are linked to their accounts. You can also link Telegram from the account row above.
         </p>
         <WhitelistForm
           form={whitelistForm}
@@ -620,13 +619,13 @@ function WhitelistForm({
       if (result.created_account) onCreated(result.created_account);
       pushToast({
         tone: "success",
-        title: result.created_account ? "Внесён и заведена учётка" : "Whitelist обновлён",
-        detail: result.created_account ? `Логин ${result.created_account.login}` : undefined,
+        title: result.created_account ? "Entry and account created" : "Whitelist updated",
+        detail: result.created_account ? `Username ${result.created_account.login}` : undefined,
       });
       onForm({ telegram_user_id: "", display_name: "", role: "dictor", access_scope: "full", is_active: true });
       onSaved();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Whitelist не сохранён", detail: refusal(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Whitelist not saved", detail: refusal(error) }),
   });
 
   return (
@@ -643,29 +642,29 @@ function WhitelistForm({
           <input value={form.telegram_user_id} onChange={(event) => onForm({ ...form, telegram_user_id: event.target.value })} required />
         </label>
         <label>
-          Имя и фамилия
+          Full name
           <input value={form.display_name} onChange={(event) => onForm({ ...form, display_name: event.target.value })} required />
         </label>
         <label>
-          Роль
+          Role
           <select value={form.role} onChange={(event) => onForm({ ...form, role: event.target.value })}>
             {ROLES.map((role) => (
               <option key={role} value={role}>
-                {role}
+                {ROLE_LABELS[role] || role}
               </option>
             ))}
           </select>
         </label>
         <label>
-          Статус
+          Status
           <select value={form.is_active ? "true" : "false"} onChange={(event) => onForm({ ...form, is_active: event.target.value === "true" })}>
-            <option value="true">активен</option>
-            <option value="false">выключен</option>
+            <option value="true">active</option>
+            <option value="false">disabled</option>
           </select>
         </label>
         <div className="form-actions">
           <Button type="submit" disabled={save.isPending}>
-            {save.isPending ? "Сохраняю…" : "Добавить / обновить"}
+            {save.isPending ? "Saving…" : "Add / update"}
           </Button>
         </div>
       </form>
@@ -674,11 +673,11 @@ function WhitelistForm({
           <li className="whitelist-row" key={item.id}>
             <strong>{item.display_name || item.telegram_user_id}</strong>
             <span>
-              {item.telegram_user_id} · {item.role} · {item.is_active ? "активен" : "выключен"}
+              {item.telegram_user_id} · {ROLE_LABELS[item.role] || item.role} · {item.is_active ? "active" : "disabled"}
               {item.linked_login ? (
-                <span className="whitelist-linked"> · учётка {item.linked_login}</span>
+                <span className="whitelist-linked"> · account {item.linked_login}</span>
               ) : (
-                <span className="whitelist-loose"> · ничья — вход заведёт новую учётку</span>
+                <span className="whitelist-loose"> · unlinked — sign-in will create a new account</span>
               )}
             </span>
             <Button
@@ -695,7 +694,7 @@ function WhitelistForm({
                 })
               }
             >
-              Изменить
+              Edit
             </Button>
           </li>
         ))}

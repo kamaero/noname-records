@@ -29,13 +29,13 @@ def api(db, monkeypatch):
 def test_export_has_two_sheets_with_numbers_and_totals(db):
     data = payouts.collect(db, now=NOW)
     book = openpyxl.load_workbook(io.BytesIO(payouts.export_xlsx(data, today=date(2026, 10, 6))))
-    assert book.sheetnames == ["Дикторы", "Роли"]
-    people = book["Дикторы"]
-    assert [c.value for c in people[1]][:3] == ["Диктор", "Telegram", "К оплате"]
+    assert book.sheetnames == ["Actors", "Roles"]
+    people = book["Actors"]
+    assert [c.value for c in people[1]][:3] == ["Actor", "Telegram", "Due"]
     total = [c.value for c in people[people.max_row]]
-    assert total[0] == "Итого" and total[2] == data["totals"]["owed"]
+    assert total[0] == "Total" and total[2] == data["totals"]["owed"]
     assert isinstance(people.cell(row=2, column=3).value, int)
-    roles = book["Роли"]
+    roles = book["Roles"]
     assert roles.max_row - 1 == sum(len(p["roles"]) for p in data["people"])
 
 
@@ -79,7 +79,7 @@ def test_export_never_writes_a_formula(db):
         for row in sheet.iter_rows():
             for cell in row:
                 assert cell.data_type != "f", (sheet.title, cell.coordinate, cell.value)
-    roles = [str(c.value or "") for row in book["Роли"].iter_rows() for c in row]
+    roles = [str(c.value or "") for row in book["Roles"].iter_rows() for c in row]
     assert any(v.startswith("=HYPERLINK") for v in roles)   # текстом, data_type 's' — проверено выше
 
 
@@ -94,5 +94,5 @@ def test_export_text_is_a_string_cell_without_a_visible_apostrophe(db):
     db.get(Character, "c2").name = "=1+1"
     db.commit()
     book = openpyxl.load_workbook(io.BytesIO(payouts.export_xlsx(payouts.collect(db, now=NOW), today=date(2026, 10, 6))))
-    cells = [c for row in book["Роли"].iter_rows() for c in row if str(c.value or "").endswith("1+1")]
+    cells = [c for row in book["Roles"].iter_rows() for c in row if str(c.value or "").endswith("1+1")]
     assert cells and cells[0].value == "=1+1" and cells[0].data_type == "s"

@@ -1,3 +1,4 @@
+import { roleLabel } from "./types";
 /**
  * «Мои реплики» — the way from any chapter to a role's lines across the whole book.
  *
@@ -34,8 +35,8 @@ function fold(value: string): string {
 function countsLabel(entry: BookCastCharacter): string {
   const chapters = entry.appears_in_chapters.length;
   return (
-    `${entry.lines_count} ${plural(entry.lines_count, "реплика", "реплики", "реплик")}` +
-    ` · ${chapters} ${plural(chapters, "глава", "главы", "глав")}`
+    `${entry.lines_count} ${plural(entry.lines_count, "line", "lines", "lines")}` +
+    ` · ${chapters} ${plural(chapters, "chapter", "chapters", "chapters")}`
   );
 }
 
@@ -57,7 +58,7 @@ export function RoleFinder({
     const needle = fold(query);
     if (!needle) return speaking;
     return speaking.filter(
-      (entry) => fold(entry.name).includes(needle) || fold(entry.actor_name).includes(needle),
+      (entry) => (fold(roleLabel(entry.name)).includes(needle) || fold(entry.name).includes(needle)) || fold(entry.actor_name).includes(needle),
     );
   }, [speaking, query]);
 
@@ -72,11 +73,11 @@ export function RoleFinder({
       type="button"
       className="v2r-findrole"
       onClick={() => open(entry.name)}
-      title={`Все реплики роли «${entry.name}» по всей книге, с контекстом`}
+      title={`All lines for role «${roleLabel(entry.name)}» throughout the book, with context`}
     >
       <span className="v2r-findrole-name">
         <span className="v2r-findrole-dot" style={{ background: entry.character_color }} aria-hidden="true" />
-        {entry.name}
+        {roleLabel(entry.name)}
       </span>
       <span className="v2r-findrole-meta num">{countsLabel(entry)}</span>
       {entry.actor_name ? <span className="v2r-findrole-actor">{entry.actor_name}</span> : null}
@@ -85,22 +86,22 @@ export function RoleFinder({
 
   return (
     <Sheet
-      title="Все реплики роли"
-      subtitle="По всей книге, в порядке чтения, с контекстом вокруг каждой"
+      title="All lines for role"
+      subtitle="Throughout the book, in reading order, with context around each line"
       onClose={onClose}
     >
-      {loading ? <p className="v2r-find-note">Собираю роли книги…</p> : null}
+      {loading ? <p className="v2r-find-note">Loading book roles…</p> : null}
 
       {!loading && mine.length > 0 && !query ? (
         <section className="v2r-findgroup">
-          <h3 className="v2r-findgroup-title">Мои роли</h3>
+          <h3 className="v2r-findgroup-title">My roles</h3>
           {mine.map(row)}
         </section>
       ) : null}
 
       {!loading && speaking.length > 0 ? (
         <section className="v2r-findgroup">
-          <h3 className="v2r-findgroup-title">{query ? "Найдено" : "Все роли книги"}</h3>
+          <h3 className="v2r-findgroup-title">{query ? "Found" : "All book roles"}</h3>
           <label className="v2r-search v2r-search--dock">
             <Icon name="search" />
             <input
@@ -108,20 +109,20 @@ export function RoleFinder({
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Роль или актёр…"
-              aria-label="Поиск роли по всей книге"
+              placeholder="Role or voice actor…"
+              aria-label="Search roles throughout the book"
             />
           </label>
           {found.length > 0 ? (
             found.map(row)
           ) : (
-            <p className="v2r-find-note">Никто с таким именем в книге не говорит.</p>
+            <p className="v2r-find-note">No speaking roles match this name.</p>
           )}
         </section>
       ) : null}
 
       {!loading && speaking.length === 0 ? (
-        <p className="v2r-find-note">В книге ещё нет размеченных реплик.</p>
+        <p className="v2r-find-note">This book has no annotated lines yet.</p>
       ) : null}
     </Sheet>
   );

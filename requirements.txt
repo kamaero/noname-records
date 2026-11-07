@@ -28,3 +28,4 @@ numpy>=2.0
 # поэтому сервису нужен writable HF_HOME (см. .env на проде).
 ruaccent
 cryptography
+tzdata

@@ -19,9 +19,13 @@ from __future__ import annotations
 import json
 
 from app.services.asr_align import MIN_TAKE_WORDS, RESYNC_THRESHOLD, _best_span, _collect_takes, normalize_words, word_stream
-from app.services.asr_run import store_alignment
+from app.services.asr_run import asr_language, store_alignment
 from app.services.author_profile import normalize_name
 from app.v2.cast_ops import approved_actor
+
+
+def _job_role(job, identities=None) -> str:
+    return identities.name(getattr(job, "role_ref", ""), job.expected_role) if identities else str(job.expected_role or "").strip()
 
 
 def chapter_done_jobs(db, chapter_id: str) -> list[tuple]:
@@ -35,8 +39,12 @@ def chapter_done_jobs(db, chapter_id: str) -> list[tuple]:
         .order_by(AudioFile.uploaded_at.asc())
         .all()
     )
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter_id)
     out = []
     for job, audio in rows:
+        if not identities.owns_audio(audio):
+            continue
         try:
             alignment = json.loads(job.alignment_json or "{}")
         except ValueError:
@@ -46,11 +54,11 @@ def chapter_done_jobs(db, chapter_id: str) -> list[tuple]:
     return out
 
 
-def _unheard_indices(jobs) -> dict[str, set[int]]:
+def _unheard_indices(jobs, *, identities=None) -> dict[str, set[int]]:
     """Роль → номера строк, не найденных ни в одном её файле."""
     by_role: dict[str, list[dict]] = {}
     for job, _audio, alignment in jobs:
-        by_role.setdefault(str(job.expected_role or "").strip(), []).append(alignment)
+        by_role.setdefault(_job_role(job, identities), []).append(alignment)
     out: dict[str, set[int]] = {}
     for role, alignments in by_role.items():
         sizes = {len(item.get("lines") or []) for item in alignments}
@@ -64,13 +72,15 @@ def _unheard_indices(jobs) -> dict[str, set[int]]:
 
 def role_unheard_texts(db, chapter_id: str) -> dict[str, list[str]]:
     """Роль → тексты строк, которых нет ни в одном её файле, в порядке сценария."""
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter_id)
     jobs = chapter_done_jobs(db, chapter_id)
     first_alignment: dict[str, dict] = {}
     for job, _audio, alignment in jobs:
-        first_alignment.setdefault(str(job.expected_role or "").strip(), alignment)
+        first_alignment.setdefault(_job_role(job, identities), alignment)
     return {
         role: [str(first_alignment[role]["lines"][index].get("text") or "") for index in sorted(indices)]
-        for role, indices in _unheard_indices(jobs).items()
+        for role, indices in _unheard_indices(jobs, identities=identities).items()
         if indices
     }
 
@@ -115,7 +125,7 @@ def _taken_mask(stream, alignment: dict, borrowed_out: list[tuple[float, float]]
     return [any(start < t_end and end > t_start for t_start, t_end in spans) for _w, start, end in stream]
 
 
-def _borrowed_spans(jobs) -> dict[str, list[tuple[float, float]]]:
+def _borrowed_spans(jobs, *, identities=None) -> dict[str, list[tuple[float, float]]]:
     """Аудио id донора → отрезки, которые он уже одолжил чужой реплике.
 
     Такой отрезок лежит в СТРОКЕ ПОЛУЧАТЕЛЯ (`source_audio_file_id` == этот донор), а не
@@ -124,9 +134,9 @@ def _borrowed_spans(jobs) -> dict[str, list[tuple[float, float]]]:
     находит для новой ненайденной строки то же самое, уже отданное место.
     """
     out: dict[str, list[tuple[float, float]]] = {}
-    role_of_audio = {str(audio.id): str(job.expected_role or "").strip() for job, audio, _al in jobs}
+    role_of_audio = {str(audio.id): _job_role(job, identities) for job, audio, _al in jobs}
     for job, _audio, alignment in jobs:
-        role = str(job.expected_role or "").strip()
+        role = _job_role(job, identities)
         for line in alignment.get("lines") or []:
             donor_id = line.get("source_audio_file_id")
             if not donor_id or not line.get("matched"):
@@ -161,7 +171,7 @@ def _recount(alignment: dict) -> None:
     alignment["coverage"] = alignment["matched"] / len(lines) if lines else 0.0
 
 
-def _copy_from_siblings(jobs) -> set[str]:
+def _copy_from_siblings(jobs, *, identities=None) -> set[str]:
     """Строка, найденная в одном файле роли, — найдена и в остальных её файлах.
 
     Роль бывает записана несколькими файлами: актёр дописал перенесённую к нему реплику
@@ -173,9 +183,9 @@ def _copy_from_siblings(jobs) -> set[str]:
 
     Возвращает id джоб, чья сверка поменялась.
     """
-    by_role: dict[str, list[tuple]] = {}
+    by_role: dict[tuple[str, str], list[tuple]] = {}
     for job, audio, alignment in jobs:
-        by_role.setdefault(str(job.expected_role or "").strip(), []).append((job, audio, alignment))
+        by_role.setdefault((_job_role(job, identities), asr_language(job.language)), []).append((job, audio, alignment))
     changed: set[str] = set()
     for siblings in by_role.values():
         if len(siblings) < 2:
@@ -215,12 +225,15 @@ def borrow_across_roles(db, chapter_id: str) -> dict:
     Вызывать поверх чистой сверки (после `realign_job`/`run_asr_for_take` всех джоб главы):
     уже заимствованная строка `matched`, и повторный вызов её не ищет.
     """
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter_id)
     jobs = chapter_done_jobs(db, chapter_id)
     actors = _cast_actors(db, chapter_id)
     # Сначала — свои файлы роли: реплика, дописанная отдельным дублем, не ищется у соседей.
-    touched = _copy_from_siblings(jobs)
-    unheard = _unheard_indices(jobs)
-    borrowed_out = _borrowed_spans(jobs)
+    touched = _copy_from_siblings(jobs, identities=identities)
+    unheard_profiles = {language: _unheard_indices([row for row in jobs if asr_language(row[0].language) == language], identities=identities)
+                       for language in {asr_language(row[0].language) for row in jobs}}
+    borrowed_out = _borrowed_spans(jobs, identities=identities)
 
     donors = []
     for job, audio, alignment in jobs:
@@ -228,15 +241,18 @@ def borrow_across_roles(db, chapter_id: str) -> dict:
             heard = json.loads(job.heard_json or "{}")
         except ValueError:
             continue
-        stream = word_stream(heard.get("segments") or [])
+        language = asr_language(job.language)
+        stream = word_stream(heard.get("segments") or [], language=language)
         if stream:
             mask = _taken_mask(stream, alignment, borrowed_out.get(str(audio.id), []))
-            donors.append({"job": job, "audio": audio, "stream": stream, "mask": mask,
+            donors.append({"job": job, "audio": audio, "stream": stream, "mask": mask, "language": language,
                            "actor": normalize_name(str(audio.actor_name or ""))})
 
     report = {"searched": 0, "borrowed": 0, "roles": {}}
     for job, _audio, alignment in jobs:
-        role = str(job.expected_role or "").strip()
+        language = asr_language(job.language)
+        unheard = unheard_profiles[language]
+        role = _job_role(job, identities)
         wanted_actor = actors.get(role, "")
         indices = sorted(unheard.get(role, set()))
         if not wanted_actor or not indices:
@@ -247,7 +263,7 @@ def borrow_across_roles(db, chapter_id: str) -> dict:
             if index not in unheard.get(role, set()):
                 continue
             line = alignment["lines"][index]
-            target = normalize_words(str(line.get("text") or ""))
+            target = normalize_words(str(line.get("text") or ""), language=language)
             # «Да.», «Нет.» по всему чужому потоку находятся где угодно: такой заём прятал
             # бы настоящий пропуск. Короткую реплику честно дописывают.
             if len(target) < MIN_TAKE_WORDS:
@@ -255,11 +271,13 @@ def borrow_across_roles(db, chapter_id: str) -> dict:
             report["searched"] += 1
             best = None
             for donor in donors:
-                if donor["actor"] != wanted_actor or str(donor["job"].expected_role or "").strip() == role:
+                if donor["language"] != language:
+                    continue
+                if donor["actor"] != wanted_actor or _job_role(donor["job"], identities) == role:
                     continue
                 for run_start, run_end in _free_runs(donor["mask"]):
                     run = donor["stream"][run_start:run_end]
-                    score, start, end = _best_span(target, run, 0, lookahead=len(run))
+                    score, start, end = _best_span(target, run, 0, lookahead=len(run), language=language)
                     if score >= RESYNC_THRESHOLD and end > start and (best is None or score > best[0]):
                         best = (score, donor, run_start, run, start, end)
             if best is None:
@@ -272,7 +290,7 @@ def borrow_across_roles(db, chapter_id: str) -> dict:
             # одинаковую строку и не отдать ей место первой, как это делает
             # `align_transcript` для обычной (не заимствованной) сверки.
             recipient_texts = [str(item.get("text") or "") for item in alignment["lines"]]
-            takes, _cursor = _collect_takes(target, run, start, end, score, recipient_texts, index)
+            takes, _cursor = _collect_takes(target, run, start, end, score, recipient_texts, index, language=language)
             if not takes:
                 continue
             last_end = run_start + _cursor
@@ -292,7 +310,7 @@ def borrow_across_roles(db, chapter_id: str) -> dict:
         if changed:
             touched.add(str(job.id))
     # Заём у соседней роли лёг в один файл роли — остальным её файлам та же строка.
-    touched |= _copy_from_siblings(jobs)
+    touched |= _copy_from_siblings(jobs, identities=identities)
     for job, _audio, alignment in jobs:
         if str(job.id) in touched:
             _recount(alignment)

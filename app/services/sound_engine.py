@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import glob
 
 import json
 import math
@@ -45,42 +46,62 @@ def book_chapters(db, book_id: str, chapter_id: str = "") -> list[tuple[str, int
     return out
 
 
-def sidecar_path(book_id: str, index: int, root: str | None = None) -> str:
-    return os.path.join(root or str(artifact_root()), book_id, "sound", f"ch{int(index):02d}.json")
+def sidecar_path(book_id: str, index: int, root: str | None = None, *, language: str = "ru") -> str:
+    suffix = ".en" if language == "en" else ""
+    return os.path.join(root or str(artifact_root()), book_id, "sound", f"ch{int(index):02d}{suffix}.json")
 
 
-def load_sidecar(book_id: str, index: int, paragraphs, root: str | None = None) -> dict | None:
+def load_sidecar(book_id: str, index: int, paragraphs, root: str | None = None, *, language: str = "ru") -> dict | None:
     try:
-        with open(sidecar_path(book_id, index, root), encoding="utf-8") as handle:
+        with open(sidecar_path(book_id, index, root, language=language), encoding="utf-8") as handle:
             data = json.load(handle)
     except (OSError, ValueError):
         return None
-    if not data.get("complete") or data.get("text_sha256") != text_fingerprint(paragraphs):
+    if (not data.get("complete") or data.get("text_sha256") != text_fingerprint(paragraphs)
+            or data.get("language", "ru") != language):
         return None
     return data
 
 
 def save_sidecar(book_id: str, index: int, paragraphs, data: dict, root: str | None = None,
-                 model: str = MODEL) -> None:
-    path = sidecar_path(book_id, index, root)
+                 model: str = MODEL, *, language: str = "ru") -> None:
+    path = sidecar_path(book_id, index, root, language=language)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    payload = dict(data, chapter=index, model=model, text_sha256=text_fingerprint(paragraphs))
+    payload = dict(data, chapter=index, model=model, language=language, text_sha256=text_fingerprint(paragraphs))
     tmp = f"{path}.tmp"
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False)
     os.replace(tmp, path)
 
 
+def stale_sidecar(book_id: str, index: int, paragraphs, root: str | None = None, *, language: str = "ru") -> bool:
+    fingerprint = text_fingerprint(paragraphs)
+    for path in glob.glob(sidecar_path(book_id, index, root)[:-5] + "*.json"):
+        try:
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError):
+            continue
+        if data.get("complete") and data.get("text_sha256") == fingerprint and data.get("language", "ru") != language:
+            return True
+    return False
+
+
 def _rub(value: float) -> int:
     return int(math.ceil(max(value, 0.0) / 10.0) * 10)
 
 
-def estimate(db, book_id: str, root: str | None = None, chapter_id: str = "") -> dict:
+def estimate(db, book_id: str, root: str | None = None, chapter_id: str = "", *, language: str | None = None) -> dict:
+    from app.models import ScriptBook
+
+    language = language or getattr(db.get(ScriptBook, book_id), "language", "ru")
     chapters = book_chapters(db, book_id, chapter_id)
-    unread = [c for c in chapters if load_sidecar(book_id, c[1], c[2], root) is None]
+    unread = [c for c in chapters if load_sidecar(book_id, c[1], c[2], root, language=language) is None]
     count = lambda items: sum(len(c[2]) for c in items)
     return {
         "chapters_total": len(chapters),
+        "language": language,
+        "profile_stale_chapters": sum(stale_sidecar(book_id, c[1], c[2], root, language=language) for c in unread),
         "chapters_to_read": {"rest": len(unread), "all": len(chapters)},
         "estimate_rub": {"rest": _rub(count(unread) * RUB_PER_PARAGRAPH),
                          "all": _rub(count(chapters) * RUB_PER_PARAGRAPH)},
@@ -106,14 +127,16 @@ def enqueue_sound(book_id: str, mode: str, chapter_id: str = "") -> str | None:
         book_id=book_id,
         mode=mode,
         chapter_id=chapter_id,
+        profile_book_id=book_id,
     )
 
 
 def run_sound(*, session_factory, book_id: str, run_id: str, mode: str, chapter_id: str = "",
               ask=None, read_credits=read_credits, notify: Callable[[str], None] | None = None,
-              root: str | None = None) -> dict:
+              root: str | None = None, language: str | None = None) -> dict:
     from app.pipeline.consilium_run import Budget, StopRun
-    from app.pipeline.sound_markers import MERGE_SCHEMA, MERGE_SYSTEM, SCHEMA, SYSTEM, chapter_prompt, merge_prompt, validate
+    from app.pipeline.sound_markers import MERGE_SCHEMA, MERGE_SYSTEM, MERGE_SYSTEM_EN, SCHEMA, SYSTEM, SYSTEM_EN, chapter_prompt, merge_prompt, validate
+    from app.models import ScriptBook
     from app.services.sound_store import apply_chapter, place_rows, record_pairs, touch_sessions
 
     key = "rest" if mode == "rest" else "all"
@@ -161,15 +184,17 @@ def run_sound(*, session_factory, book_id: str, run_id: str, mode: str, chapter_
             except MissingKeyError as err:
                 raise StopRun(str(err))
         with session_factory() as db:
+            language = language or getattr(db.get(ScriptBook, book_id), "language", "ru")
+            meta["language"] = language
             chapters = book_chapters(db, book_id, chapter_id if mode == "chapter" else "")
-            plan = estimate(db, book_id, root=root, chapter_id=chapter_id if mode == "chapter" else "")
+            plan = estimate(db, book_id, root=root, chapter_id=chapter_id if mode == "chapter" else "", language=language)
         budget = Budget(plan["estimate_rub"][key], plan["estimate_calls"][key])
         credits_before = read_credits()
         meta.update(chapters_total=len(chapters), estimate_rub=float(plan["estimate_rub"][key]))
         if credits_before is not None and credits_before < max(MIN_CREDITS_RUB, plan["estimate_rub"][key]):
             raise StopRun("no_credits")
         for cid, index, paragraphs in chapters:
-            if mode == "rest" and load_sidecar(book_id, index, paragraphs, root) is not None:
+            if mode == "rest" and load_sidecar(book_id, index, paragraphs, root, language=language) is not None:
                 meta["chapters_skipped"] += 1
                 meta["chapters_done"] += 1
                 checkpoint()
@@ -179,14 +204,15 @@ def run_sound(*, session_factory, book_id: str, run_id: str, mode: str, chapter_
             answer, error = None, ""
             for _attempt in range(ATTEMPTS):
                 try:
-                    answer = counted(SYSTEM, chapter_prompt(paragraphs, places), SCHEMA)
+                    answer = counted(SYSTEM_EN if language == "en" else SYSTEM,
+                                     chapter_prompt(paragraphs, places, language=language), SCHEMA)
                     break
                 except StopRun:
                     raise
                 except Exception as exc:  # noqa: BLE001 — глава останется неполной, прогон идёт дальше
                     error = f"{type(exc).__name__}: {str(exc)[:200]}"
             if answer is None:
-                save_sidecar(book_id, index, paragraphs, {"complete": False, "error": error}, root, model)
+                save_sidecar(book_id, index, paragraphs, {"complete": False, "error": error}, root, model, language=language)
                 meta["chapters_incomplete"] += 1
             else:
                 # Модель может вернуть кривой ответ (например, "start": null) — validate()
@@ -203,12 +229,12 @@ def run_sound(*, session_factory, book_id: str, run_id: str, mode: str, chapter_
                     result["markers"] += applied["added"]
                     result["places_new"] += applied["places_new"]
                     save_sidecar(book_id, index, paragraphs, {"complete": True, "answer": answer,
-                                                              "dropped": checked.dropped}, root, model)
+                                                              "dropped": checked.dropped}, root, model, language=language)
                 except StopRun:
                     raise
                 except Exception as exc:  # noqa: BLE001 — кривой ответ модели не валит весь прогон
                     error = f"{type(exc).__name__}: {str(exc)[:200]}"
-                    save_sidecar(book_id, index, paragraphs, {"complete": False, "error": error}, root, model)
+                    save_sidecar(book_id, index, paragraphs, {"complete": False, "error": error}, root, model, language=language)
                     meta["chapters_incomplete"] += 1
             meta["chapters_done"] += 1
             checkpoint(check_money=True)
@@ -223,7 +249,8 @@ def run_sound(*, session_factory, book_id: str, run_id: str, mode: str, chapter_
             read_this_run = meta["chapters_done"] - meta["chapters_skipped"]
             if len(places) > 1 and read_this_run > 0:
                 try:
-                    answer = counted(MERGE_SYSTEM, merge_prompt(places), MERGE_SCHEMA)
+                    answer = counted(MERGE_SYSTEM_EN if language == "en" else MERGE_SYSTEM,
+                                     merge_prompt(places), MERGE_SCHEMA)
                     with session_factory() as db:
                         result["pairs"] = record_pairs(db, book_id, (answer or {}).get("pairs") or [])
                         db.commit()
@@ -257,16 +284,16 @@ def _notify(session_factory, notify, book_id: str, result: dict) -> None:
     except Exception:  # noqa: BLE001
         title = book_id
     if result["status"] == "done":
-        text = (f"Звуковая разметка «{title}»: глав {result['chapters_done']}, "
-                f"новых маркеров {result['markers']}, "
-                f"новых мест {result['places_new']}, пар мест на решение {result['pairs']}"
-                + (f", неполных глав {result['chapters_incomplete']}" if result["chapters_incomplete"] else "")
-                + (f"; склейка мест не прошла: {result['merge_error']}" if result.get("merge_error") else "")
-                + f"; потрачено ≈ {result['spent_rub']:.0f} ₽.")
+        text = (f"Sound planning «{title}»: chapters {result['chapters_done']}, "
+                f"new markers {result['markers']}, "
+                f"new locations {result['places_new']}, location pairs to review {result['pairs']}"
+                + (f", incomplete chapters {result['chapters_incomplete']}" if result["chapters_incomplete"] else "")
+                + (f"; location merge failed: {result['merge_error']}" if result.get("merge_error") else "")
+                + f"; spent ≈ {result['spent_rub']:.0f} ₽.")
     elif result["status"] == "stopped":
-        text = f"Звуковая разметка «{title}» остановлена: {STOP_TEXT.get(result['reason'], result['reason'])}."
+        text = f"Sound planning «{title}» stopped: {STOP_TEXT.get(result['reason'], result['reason'])}."
     else:
-        text = f"Звуковая разметка «{title}» упала: {result['reason']}"
+        text = f"Sound planning «{title}» failed: {result['reason']}"
     try:
         if notify is not None:
             notify(text)

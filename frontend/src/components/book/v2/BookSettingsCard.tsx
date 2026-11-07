@@ -3,6 +3,7 @@ import { Icon } from "../../Icon";
 import { ModelCard } from "./ModelCard";
 import { TitleCard } from "./TitleCard";
 import { ProfileCard } from "./ProfileCard";
+import { BookLanguageCard } from "./BookLanguageCard";
 import type { HubProgress } from "../../../viewModels/bookHub";
 
 type BookSettingsCardProps = {
@@ -59,8 +60,8 @@ export function BookSettingsCard({ bookId, progress, title, author, authorName, 
   const [open, setOpen] = useState<boolean>(() => readStoredOpen(bookId) ?? defaultOpen);
 
   const summaryParts: string[] = [];
-  if (progress.model?.label) summaryParts.push(`модель ${progress.model.label}`);
-  if (authorName) summaryParts.push(`автор ${authorName}`);
+  if (progress.model?.label) summaryParts.push(`model ${progress.model.label}`);
+  if (authorName) summaryParts.push(`author ${authorName}`);
 
   return (
     <details
@@ -74,7 +75,7 @@ export function BookSettingsCard({ bookId, progress, title, author, authorName, 
     >
       <summary className="hub-service-summary">
         <Icon name="chevron" />
-        <span className="hub-card-title">Настройки книги</span>
+        <span className="hub-card-title">Book settings</span>
         {summaryParts.length ? <span className="hub-dim">{summaryParts.join(" · ")}</span> : null}
       </summary>
       {/* `hub-settings-body` (on top of the shared `hub-service-body`) scopes the
@@ -84,6 +85,7 @@ export function BookSettingsCard({ bookId, progress, title, author, authorName, 
           separated by a rule. */}
       <div className="hub-service-body hub-settings-body">
         <TitleCard bookId={bookId} title={title} author={author} />
+        <BookLanguageCard bookId={bookId} locked={locked} />
         {progress.model ? <ModelCard bookId={bookId} model={progress.model} locked={locked} /> : null}
         <ProfileCard bookId={bookId} />
       </div>

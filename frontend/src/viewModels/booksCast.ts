@@ -5,7 +5,7 @@ export type FontWeightOption = "400" | "500" | "600" | "700" | "800" | "900";
 export type FontStyleOption = "normal" | "italic";
 
 export const FONT_WEIGHT_OPTIONS: Array<{ value: FontWeightOption; label: string }> = [
-  { value: "400", label: "Обычный 400" },
+  { value: "400", label: "Regular 400" },
   { value: "500", label: "Medium 500" },
   { value: "600", label: "SemiBold 600" },
   { value: "700", label: "Bold 700" },
@@ -14,8 +14,8 @@ export const FONT_WEIGHT_OPTIONS: Array<{ value: FontWeightOption; label: string
 ];
 
 export const FONT_STYLE_OPTIONS: Array<{ value: FontStyleOption; label: string }> = [
-  { value: "normal", label: "Прямой" },
-  { value: "italic", label: "Курсив" },
+  { value: "normal", label: "Regular" },
+  { value: "italic", label: "Italic" },
 ];
 
 const AUTO_BACKGROUND_STRIDE = 251;
@@ -121,7 +121,7 @@ export function formatCastDuration(seconds: number): string {
 }
 
 export function formatCastCurrency(value: number): string {
-  return `${Math.max(0, Number(value || 0)).toLocaleString("ru-RU")} ₽`;
+  return `${Math.max(0, Number(value || 0)).toLocaleString("en-US")} RUB`;
 }
 
 export function sortCastRows(rows: BudgetCharacterRow[]): BudgetCharacterRow[] {
@@ -135,8 +135,8 @@ export function sortCastRows(rows: BudgetCharacterRow[]): BudgetCharacterRow[] {
 }
 
 export function formatBookCardMeta(book: BooksResponse["items"][number]): string {
-  const chapters = `${book.chapter_count} ${book.chapter_count === 1 ? "глава" : book.chapter_count < 5 ? "главы" : "глав"}`;
-  const characters = `${book.character_count} ${book.character_count === 1 ? "персонаж" : book.character_count < 5 ? "персонажа" : "персонажей"}`;
+  const chapters = `${book.chapter_count} ${book.chapter_count === 1 ? "chapter" : "chapters"}`;
+  const characters = `${book.character_count} ${book.character_count === 1 ? "character" : "characters"}`;
   return `${chapters} · ${characters}`;
 }
 
@@ -622,12 +622,12 @@ export function chapterMismatch(row: CastRow): ChapterMismatch | null {
 /** «заявлено 46, размечено 45 — нет разметки в главах 15 и 39»: слова и номера
  *  глав, а не голая разница в счёте. */
 export function describeChapterMismatch(mismatch: ChapterMismatch): string {
-  const parts = [`заявлено ${mismatch.claimed}, размечено ${mismatch.counted}`];
+  const parts = [`claimed ${mismatch.claimed}, annotated ${mismatch.counted}`];
   if (mismatch.missing.length) {
-    parts.push(`нет разметки в ${pluralRu(mismatch.missing.length, "главе", "главах", "главах")} ${mismatch.missing.join(", ")}`);
+    parts.push(`no annotations in ${pluralRu(mismatch.missing.length, "chapter", "chapters", "chapters")} ${mismatch.missing.join(", ")}`);
   }
   if (mismatch.extra.length) {
-    parts.push(`размечено, но не заявлено, в ${pluralRu(mismatch.extra.length, "главе", "главах", "главах")} ${mismatch.extra.join(", ")}`);
+    parts.push(`annotated but not claimed in ${pluralRu(mismatch.extra.length, "chapter", "chapters", "chapters")} ${mismatch.extra.join(", ")}`);
   }
   return parts.join(" — ");
 }
@@ -691,16 +691,11 @@ export function sortCastRowsBy(rows: CastRow[], key: CastSortKey | null, dir: Ca
 
 /** `860282` → `860 282` (no currency sign; the line adds ₽ once). */
 export function formatRub(value: number): string {
-  return Math.max(0, Math.round(Number(value || 0))).toLocaleString("ru-RU");
+  return Math.max(0, Math.round(Number(value || 0))).toLocaleString("en-US");
 }
 
-export function pluralRu(n: number, one: string, few: string, many: string): string {
-  const abs = Math.abs(n) % 100;
-  const last = abs % 10;
-  if (abs > 10 && abs < 20) return many;
-  if (last > 1 && last < 5) return few;
-  if (last === 1) return one;
-  return many;
+export function pluralRu(n: number, one: string, _few: string, many: string): string {
+  return n === 1 ? one : many;
 }
 
 export type CastSummary = { roles: number; withActor: number; lines: number };
@@ -717,9 +712,9 @@ export function summarizeCast(rows: CastRow[]): CastSummary {
 
 export function formatCastSubtitle(summary: CastSummary): string {
   return [
-    `${summary.roles.toLocaleString("ru-RU")} ${pluralRu(summary.roles, "роль", "роли", "ролей")}`,
-    `${summary.withActor.toLocaleString("ru-RU")} с актёром`,
-    `${summary.lines.toLocaleString("ru-RU")} ${pluralRu(summary.lines, "реплика", "реплики", "реплик")}`,
+    `${summary.roles.toLocaleString("en-US")} ${pluralRu(summary.roles, "role", "roles", "roles")}`,
+    `${summary.withActor.toLocaleString("en-US")} assigned`,
+    `${summary.lines.toLocaleString("en-US")} ${pluralRu(summary.lines, "line", "lines", "lines")}`,
   ].join(" · ");
 }
 

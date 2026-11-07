@@ -33,16 +33,16 @@ function Note({ tone = "info", children }: { tone?: "info" | "warning"; children
 }
 
 const toc = [
-  ["start", "Быстрый старт диктора"], ["bot", "Бот в Telegram"], ["roles", "Кто что делает"], ["flow", "Путь книги"],
-  ["recording", "Экран «Загрузка»"], ["script", "Чтение сценария"], ["role-lines", "Все реплики роли"],
-  ["stress", "Ударения"], ["palette", "Палитра ролей"], ["upload", "Файлы и загрузка"],
-  ["asr", "ASR и готовность"], ["mobile", "Работа с телефона"], ["troubleshooting", "Если что-то не получается"],
-  ["author-admin", "Автор и администратор"], ["cast-proposal", "Каст: «Имя?» и утверждение"],
-  ["consilium", "Консилиум ИИ"], ["sound", "Звуковая разметка"], ["ambient", "Эмбиент"], ["terms", "Термины"],
+  ["start", "Voice actor quick start"], ["bot", "Telegram bot"], ["roles", "Who does what"], ["flow", "Book workflow"],
+  ["recording", "Uploads"], ["script", "Reading the script"], ["role-lines", "All lines for a role"],
+  ["stress", "Word stress"], ["palette", "Role palette"], ["upload", "Files and uploads"],
+  ["asr", "ASR and recording progress"], ["mobile", "Using a phone"], ["troubleshooting", "Troubleshooting"],
+  ["author-admin", "Authors and administrators"], ["cast-proposal", "Suggested and approved cast"],
+  ["consilium", "AI review"], ["sound", "Sound annotation"], ["ambient", "Ambience"], ["terms", "Glossary"],
 ] as const;
 
 export function HelpPage() {
-  // Переход внутри приложения на /help#раздел сам к якорю не прокручивает — докручиваем.
+  // Роутер не прокручивает переходы внутри приложения к якорю автоматически.
   const { hash } = useLocation();
   useEffect(() => {
     const id = decodeURIComponent(hash.replace(/^#/, ""));
@@ -56,325 +56,300 @@ export function HelpPage() {
       <section className="help-hero ui-card ui-card--accent ui-card-pad">
         <div className="help-hero-copy">
           <span className="help-eyebrow">Noname Records</span>
-          <h1>Помощь по работе с системой</h1>
-          <p>Актуальный путь книги: от автоматической разметки и авторской проверки до записи, загрузки файлов и контроля готовности. Основная часть — подробная инструкция для диктора.</p>
+          <h1>Help with your recording workspace</h1>
+          <p>Follow a book from automatic annotation and author review to recording, uploads and delivery. Start with the voice actor guide below.</p>
         </div>
         <div className="help-hero-actions">
-          <Link className="ui-btn ui-btn--primary" to="/recording">Открыть сценарий</Link>
-          <Link className="ui-btn ui-btn--secondary" to="/asr">Посмотреть ASR</Link>
+          <Link className="ui-btn ui-btn--primary" to="/recording">Open script</Link>
+          <Link className="ui-btn ui-btn--secondary" to="/asr">View ASR</Link>
         </div>
       </section>
 
-      <nav className="help-toc ui-card ui-card-pad" aria-label="Содержание помощи">
-        <strong>Содержание</strong>
+      <nav className="help-toc ui-card ui-card-pad" aria-label="Help contents">
+        <strong>Contents</strong>
         <div className="help-toc-links">
           {toc.map(([id, label], index) => <a key={id} href={`#${id}`}><span className="num">{index + 1}</span>{label}</a>)}
         </div>
       </nav>
 
-      <HelpSection id="start" title="Быстрый старт диктора" lead="Если книга уже открыта для записи, текст роли — в разделе «Сценарий», файлы — в разделе «Загрузка».">
+      <HelpSection id="start" title="Voice actor quick start" lead="Once a book is open for recording, find your text in Script and submit your files in Uploads.">
         <ol className="help-steps help-steps--primary">
-          <li><strong>Один раз нажмите Start у бота в Telegram.</strong><span>Без этого бот не сможет сообщить, что вас утвердили, позвали на пробу или что в записи не хватает реплик. Бот пишет только тем, кто хотя бы раз входил на сайт через Telegram; если вы входите по паролю, попросите администратора привязать Telegram. Если учётка есть, но Start не нажат, письмо не дойдёт никому. Подробнее — в разделе <a href="#bot">«Бот в Telegram»</a>.</span></li>
-          <li><strong>Откройте <Link to="/recording">«Сценарий»</Link>.</strong><span>Здесь опубликованный текст и ваши роли. Записанный файл загрузите в разделе <Link to="/takes">«Загрузка»</Link> — туда ведёт кнопка «Загрузить дубль» над текстом.</span></li>
-          <li><strong>Проверьте книгу, роль и главу.</strong><span>Слева откроется нужный текст, справа система покажет, куда попадут файлы.</span></li>
-          <li><strong>Убедитесь, что написано <UiLabel>Дубль утверждённой роли</UiLabel>.</strong><span>Если показана «Проба», не загружайте основной дубль, пока назначение роли не исправлено.</span></li>
-          <li><strong>Читайте по цветам и фильтруйте свою роль.</strong><span>Нажмите <UiLabel>Каст главы</UiLabel>, затем свою роль; стрелки ↑ ↓ переводят между её репликами. <UiLabel>Мои реплики</UiLabel> собирает роль по всей книге.</span></li>
-          <li><strong>Исправьте ударение или палитру, если они мешают чтению.</strong><span>Диктор может делать это прямо в «Записи».</span></li>
-          <li><strong>Назовите, проверьте и загрузите файл.</strong><span>Скопируйте предложенное имя, дождитесь сообщения «Готово» и найдите файл в списке последних.</span></li>
+          <li><strong>Press Start in the Telegram bot once.</strong><span>The bot needs this permission to send casting, audition and missing-line notifications. Sign in through Telegram at least once, or ask an administrator to link Telegram to your password account. See <a href="#bot">Telegram bot</a>.</span></li>
+          <li><strong>Open <Link to="/recording">Script</Link>.</strong><span>Choose your published script and role. Use Upload take above the text to open <Link to="/takes">Uploads</Link> with the same selection.</span></li>
+          <li><strong>Check the book, role and chapter.</strong><span>Your selection determines the script, suggested filename and destination of the upload.</span></li>
+          <li><strong>Look for <UiLabel>Take for an assigned role</UiLabel>.</strong><span>If it says Audition, have the role assignment corrected before uploading your main recording.</span></li>
+          <li><strong>Filter your role.</strong><span>Open <UiLabel>Chapter cast</UiLabel> and select your role. Use ↑ ↓ to move between its lines. <UiLabel>My lines</UiLabel> collects them across the entire book.</span></li>
+          <li><strong>Adjust pronunciation and colors.</strong><span>Voice actors can edit stress marks and role palettes directly while reading.</span></li>
+          <li><strong>Name, check and upload the file.</strong><span>Copy the suggested filename, wait for the saved confirmation, then find your recording in the recent files list.</span></li>
         </ol>
-        <Note tone="warning">Раздел <strong>«Подготовка»</strong> предназначен для автора и администратора. Диктор работает с уже проверенными и опубликованными главами в <strong>«Записи»</strong>.</Note>
-        <Note>Окно «Как тут всё устроено», которое открывается при первом входе, можно вызвать снова: кнопка <UiLabel>?</UiLabel> справа в верхней панели, а на телефоне — строка <UiLabel>? Как тут всё устроено</UiLabel> внизу меню разделов.</Note>
+        <Note tone="warning"><strong>Preparation</strong> is for authors and administrators. Voice actors use reviewed, published chapters in <strong>Script</strong>.</Note>
+        <Note>Reopen the welcome guide using <UiLabel>?</UiLabel> in the top bar. On a phone, use the help item at the bottom of the navigation menu.</Note>
       </HelpSection>
 
-      <HelpSection id="bot" title="Бот в Telegram" lead="Студия пишет дикторам в Telegram, когда от них что-то нужно. Так не придётся заходить на сайт проверять, нет ли новостей.">
-        <h3>Зачем нажимать Start</h3>
-        <p>Бот в Telegram не может написать человеку первым. Откройте бота и один раз нажмите <UiLabel>Start</UiLabel>, больше ничего делать не нужно. Если вы входите через Telegram, первый шаг окна «Как тут всё устроено» показывает, может ли бот вам писать: <strong>«Бот на связи»</strong> или <strong>«Бот пока не может вам написать»</strong>. Там же есть кнопки <UiLabel>Открыть бота</UiLabel> и <UiLabel>Проверить ещё раз</UiLabel>.</p>
-        <h3>Какие сообщения приходят</h3>
+      <HelpSection id="bot" title="Telegram bot" lead="The bot lets you know when the studio needs something from you.">
+        <h3>Why you need to press Start</h3>
+        <p>Telegram bots cannot start a conversation. Open the studio bot and press <UiLabel>Start</UiLabel> once. The welcome guide shows whether the bot can reach you and provides buttons to open it and check again.</p>
+        <h3>Messages you may receive</h3>
         <div className="help-task-grid help-task-grid--three">
-          <article><h3>🎬 Вы утверждены на роль</h3><p>Роль закреплена за вами. Записывайте её целиком, по главам: файлы пойдут как дубли. В сообщении есть ссылка на все реплики роли.</p></article>
-          <article><h3>🎙 Вас зовут на пробу</h3><p>Вас предложили на роль: в касте рядом с вашим именем стоит знак вопроса («Имя?»). В «Записи» выберите книгу и роль, и файл уйдёт как проба. Её послушает автор.</p></article>
-          <article><h3>🎧 / ✏️ Реплики, которых нет в записи</h3><p><strong>«В записи не нашлось реплик»</strong>: распознавание не нашло в вашем файле части реплик. <strong>«В разметке поправили роль — эти реплики теперь ваши»</strong>: реплики передали вашей роли после исправления разметки, и вашей ошибки тут нет. В обоих случаях приводятся начала реплик. Их можно дослать отдельным файлом, как описано в разделе <a href="#upload">«Дозапись реплик»</a>.</p></article>
+          <article><h3>🎬 Role approved</h3><p>The role is assigned to you. Record its lines by chapter and submit them as takes. The message links to the role's full script.</p></article>
+          <article><h3>🎙 Audition invitation</h3><p>Your name appears with a question mark in the cast, such as Name?. Select the book and role in Uploads. The file will be saved as an audition for review by the author.</p></article>
+          <article><h3>🎧 / ✏️ Lines to record</h3><p>A missing-line message means transcription did not find some lines. A reassignment message means annotation changed and those lines now belong to your role. Both include the beginnings of the lines. Send an additional recording as described under <a href="#upload">Files and uploads</a>.</p></article>
         </div>
-        <Note>Бот пишет только тем, кто хотя бы раз входил на сайт через Telegram; если вы входите по паролю, попросите администратора привязать Telegram. Если учётка есть, но Start не нажат, письмо не дойдёт никому. Бот находит вас по имени в касте (письма о пропущенных репликах — по имени на файле). Если этому имени подходят несколько человек, бот никому не пишет лично: сообщение получают владелец студии и агенты и передают его сами. Так же они узнают о назначении или пробе, если учётки с вашим именем в системе нет. О пропущенных репликах в этом случае не узнает никто.</Note>
+        <Note>Telegram must be linked to your account and you must have pressed Start. Casting notifications match your name in the cast; missing-line notifications use the recording's actor name. If several accounts match a name, the bot forwards casting messages to the owner and agents instead of choosing a recipient. It also forwards casting messages when no account matches. Missing-line notifications cannot be delivered when no matching recipient exists.</Note>
       </HelpSection>
 
-      <HelpSection id="roles" title="Кто что делает" lead="В системе четыре роли. Роль определяет доступные действия в интерфейсе.">
+      <HelpSection id="roles" title="Who does what" lead="Account roles determine the actions available to you.">
         <div className="help-role-grid">
           <article className="help-role-card help-role-card--dictor">
-            <div className="help-role-title"><code>dictor</code><strong>Диктор</strong></div>
-            <p>Читает опубликованный сценарий, готовит и загружает аудио.</p>
-            <h3>Может</h3>
-            <ul><li>открывать «Библиотеку», «Сценарий», «Загрузку», «ASR» и «Помощь»;</li><li>фильтровать роли и собирать все реплики роли по книге;</li><li>ставить ударения и разбирать спорные чтения;</li><li>менять фон, цвет и начертание роли в палитре;</li><li>загружать утверждённые дубли и пробы;</li><li>удалять свой файл в первые сутки после загрузки;</li><li>смотреть покрытие и состояние аудио;</li><li>получать сообщения от бота в Telegram.</li></ul>
-            <h3>Не может</h3>
-            <ul><li>входить в «Подготовку» и сверять сценарий с оригиналом;</li><li>менять автора реплики, утверждать или публиковать главы;</li><li>запускать обработку, ASR, проверку целостности и экспорт;</li><li>менять назначенного актёра, ставки и другие данные каста.</li></ul>
+            <div className="help-role-title"><code>dictor</code><strong>Voice actor</strong></div>
+            <p>Reads published scripts and submits recordings.</p>
+            <h3>Can</h3>
+            <ul><li>open Library, Script, Uploads, ASR and Help;</li><li>filter roles and collect a role's lines across a book;</li><li>edit word stress and resolve ambiguous pronunciations;</li><li>change a role's background, text color and typography;</li><li>upload takes for assigned roles and auditions;</li><li>delete their own files within 24 hours of upload;</li><li>view coverage and recording status;</li><li>receive studio bot messages.</li></ul>
+            <h3>Cannot</h3>
+            <ul><li>open Preparation or compare the script with the original;</li><li>reassign dialogue, approve or publish chapters;</li><li>start processing, ASR, file verification or exports;</li><li>change casting assignments, rates or other cast data.</li></ul>
           </article>
           <article className="help-role-card">
-            <div className="help-role-title"><code>author</code><strong>Автор</strong></div>
-            <p>Отвечает за смысл и правильность подготовленного сценария.</p>
-            <ul><li>проверяет персонажей и распределение реплик;</li><li>сверяет сценарий с оригиналом;</li><li>исправляет спорные места и ударения;</li><li>отмечает главы проверенными и открывает их дикторам;</li><li>запускает консилиум ИИ и звуковую разметку;</li><li>утверждает актёров на роли и слушает пробы;</li><li>контролирует запись, ASR, эмбиент и выгрузки.</li></ul>
+            <div className="help-role-title"><code>author</code><strong>Author</strong></div>
+            <p>Reviews the meaning and accuracy of the script.</p>
+            <ul><li>checks characters, speaker assignments and the original text;</li><li>corrects ambiguous passages and pronunciation;</li><li>marks chapters reviewed and publishes them to voice actors;</li><li>runs AI review and sound annotation;</li><li>listens to auditions and approves voice actors;</li><li>monitors recordings, ASR, ambience and exports.</li></ul>
           </article>
           <article className="help-role-card">
-            <div className="help-role-title"><code>agent</code><strong>Агент</strong></div>
-            <ul><li>ведёт актёров: получает задание, передаёт своим людям, приносит записи;</li><li>читает опубликованный сценарий и собирает все реплики роли в PDF;</li><li>вписывает актёра в каст предварительно — со знаком вопроса («Имя?»): актёра зовут на пробу;</li><li>загружает пробы и дубли от имени своих актёров, в том числе тех, у кого нет учётки;</li><li>не запускает разметку, не правит сценарий и не удаляет файлы.</li></ul>
+            <div className="help-role-title"><code>agent</code><strong>Agent</strong></div>
+            <ul><li>coordinates voice actors and submits their recordings;</li><li>reads published scripts and exports full role scripts to PDF;</li><li>suggests voice actors for unassigned roles using Name?;</li><li>uploads auditions and takes for their actors, including people without accounts;</li><li>does not start annotation, edit scripts or delete files.</li></ul>
           </article>
           <article className="help-role-card">
-            <div className="help-role-title"><code>admin</code><strong>Администратор</strong></div>
-            <p>Управляет производственным контуром и доступами.</p>
-            <ul><li>загружает книги и управляет автоматической обработкой;</li><li>имеет возможности автора и контролирует публикацию;</li><li>управляет пользователями;</li><li>смотрит журнал действий и разбирает технические ошибки.</li></ul>
+            <div className="help-role-title"><code>admin</code><strong>Administrator</strong></div>
+            <p>Manages production and account access.</p>
+            <ul><li>uploads books and controls automatic processing;</li><li>has author capabilities and manages publication;</li><li>manages user accounts;</li><li>uses the activity log to investigate errors.</li></ul>
           </article>
         </div>
       </HelpSection>
 
-      <HelpSection id="flow" title="Как книга проходит систему" lead="Ход работы виден в карточке книги. Каждый этап использует результат предыдущего.">
+      <HelpSection id="flow" title="Book workflow" lead="The book page shows progress. Each stage uses the results of the previous one.">
         <ol className="help-flow">
-          <li><span>1</span><div><strong>Сегментация</strong><p>Текст делится на главы и удобные для обработки фрагменты.</p></div></li>
-          <li><span>2</span><div><strong>Персонажи</strong><p>Собираются персонажи, варианты имён и карта книги.</p></div></li>
-          <li><span>3</span><div><strong>Роли</strong><p>Реплики связываются с персонажами, формируются сценарий и каст.</p></div></li>
-          <li><span>4</span><div><strong>Ударения</strong><p>Словари и контекст расставляют известные ударения, остальные попадают в очередь.</p></div></li>
-          <li><span>5</span><div><strong>Проверка</strong><p>Автор или администратор читает сценарий, исправляет ошибки и подтверждает главы.</p></div></li>
-          <li><span>6</span><div><strong>Публикация</strong><p>Только подтверждённые главы открываются дикторам в «Записи».</p></div></li>
-          <li><span>7</span><div><strong>Сценарий и загрузка</strong><p>Дикторы читают свои роли в «Сценарии» и загружают аудиофайлы в «Загрузке».</p></div></li>
-          <li><span>8</span><div><strong>ASR и сборка</strong><p>Считается покрытие, сверяется аудио и готовятся материалы для сведения.</p></div></li>
+          <li><span>1</span><div><strong>Segmentation</strong><p>Split the text into chapters and paragraphs without rewriting it.</p></div></li>
+          <li><span>2</span><div><strong>Characters</strong><p>Extract characters, aliases and the cast.</p></div></li>
+          <li><span>3</span><div><strong>Roles</strong><p>Assign speakers to dialogue and build the script.</p></div></li>
+          <li><span>4</span><div><strong>Word stress</strong><p>For Russian text, dictionaries and context resolve stress marks. Unresolved words enter a queue.</p></div></li>
+          <li><span>5</span><div><strong>Review</strong><p>The author or administrator checks the script, makes corrections and approves chapters.</p></div></li>
+          <li><span>6</span><div><strong>Publication</strong><p>Only reviewed chapters become available to voice actors.</p></div></li>
+          <li><span>7</span><div><strong>Script and uploads</strong><p>Voice actors read their roles in Script and submit audio in Uploads.</p></div></li>
+          <li><span>8</span><div><strong>ASR and assembly</strong><p>Check audio coverage and assemble materials for mixing.</p></div></li>
         </ol>
-        <Note>Диктор начинает с раздела «Сценарий». Если нужной главы там нет, она ещё не опубликована — открыть её самостоятельно нельзя.</Note>
+        <Note>Voice actors start in Script. A missing chapter must be reviewed and published by an author or administrator first.</Note>
       </HelpSection>
 
-      <HelpSection id="recording" title="Экран «Загрузка»: выберите правильную цель" lead="Слева — что загружаем: книга, роль, глава и имя файла; справа — сами файлы и последние загрузки главы. Все поля должны описывать именно отправляемый файл.">
+      <HelpSection id="recording" title="Uploads: choose the right destination" lead="The selected book, role, chapter and actor must describe the file you are submitting.">
         <div className="help-task-grid">
-          <article><h3>1. Книга</h3><p>Если открыто несколько книг, выберите нужную в поле <UiLabel>Книга</UiLabel>. Когда книга одна, её название показано без списка.</p></article>
-          <article><h3>2. Роль</h3><p>В поле <UiLabel>Роль</UiLabel> показаны роли и число реплик. Под полем перечислены роли, закреплённые за вашим именем.</p></article>
-          <article><h3>3. Глава</h3><p>Выберите записанную главу. Меняется имя файла, а «Сценарий» потом откроется на этой же главе. Для настоящей пробы главу можно не указывать.</p></article>
-          <article><h3>4. Имя актёра</h3><p>Диктор видит своё имя в строке <UiLabel>Записал</UiLabel> и не может его менять. По этому имени система узнаёт ваши роли и считает покрытие. У агента, автора и администратора вместо этого есть поле <UiLabel>Записал</UiLabel>: туда вписывают имя актёра, если загружают файл за него.</p></article>
+          <article><h3>1. Book</h3><p>Choose the correct <UiLabel>Book</UiLabel> when several are open. A single book is shown without a selector.</p></article>
+          <article><h3>2. Role</h3><p>The <UiLabel>Role</UiLabel> list shows available roles and line counts. Your assigned roles are listed below it.</p></article>
+          <article><h3>3. Chapter</h3><p>Select the chapter you recorded. This updates the filename and keeps Script on the same chapter. A genuine audition may omit the chapter.</p></article>
+          <article><h3>4. Voice actor</h3><p>A voice actor's own name is fixed in <UiLabel>Recorded by</UiLabel>. Agents, authors and administrators may enter the actor's name when uploading on their behalf. This name is used for assignments and coverage.</p></article>
         </div>
-        <h3>Как система отличает дубль от пробы</h3>
+        <h3>How takes and auditions are distinguished</h3>
         <div className="help-compare">
-          <article className="help-compare-good"><strong>Дубль утверждённой роли</strong><p>Роль закреплена в касте за вашим именем. Файл попадёт в запись выбранной главы.</p></article>
-          <article className="help-compare-warn"><strong>Проба на роль</strong><p>Роль ещё никому не назначена или вас на неё только предложили («Имя?» в касте). Файл попадёт в пробы, а не в основной комплект главы. Если написано <strong>«Проба — а роль за «…»»</strong>, роль закреплена за другим человеком или его на неё предложили.</p></article>
+          <article className="help-compare-good"><strong>Take for an assigned role</strong><p>The cast assigns this role to the actor named on the upload. The file becomes a recording for the selected chapter.</p></article>
+          <article className="help-compare-warn"><strong>Role audition</strong><p>The role is unassigned or the actor is only suggested as Name?. The file goes to auditions. If the role belongs to someone else, check the assignment and Recorded by before continuing.</p></article>
         </div>
-        <Note tone="warning">Вид загрузки выбирает система, отдельной галочки нет. Если вы записали свою утверждённую роль, а на экране написано «Проба», попросите автора или администратора проверить ваше имя в касте.</Note>
+        <Note tone="warning">The server determines the upload type. If your assigned role appears as Audition, ask an author or administrator to check your name in the cast before submitting your main take.</Note>
       </HelpSection>
 
-      <HelpSection id="script" title="Как читать и перемещаться по сценарию" lead="Инструменты чтения находятся над текстом. Настройки ударений, контекста и шрифта сохраняются в этом браузере.">
+      <HelpSection id="script" title="Reading and navigating the script" lead="Reading controls are above the text. Stress display, context and font settings are saved in this browser.">
         <dl className="help-controls">
-          <div><dt><UiLabel>Главы</UiLabel></dt><dd>Список опубликованных глав. Черновые главы диктор здесь не видит.</dd></div>
-          <div><dt><UiLabel>Пред.</UiLabel> / <UiLabel>След.</UiLabel></dt><dd>Переход к соседней опубликованной главе. Большие кнопки повторяются под текстом.</dd></div>
-          <div><dt><UiLabel>Каст главы</UiLabel></dt><dd>Роли, актёры, число реплик, заметки и цвета. Нажмите роль — останутся её реплики и выбранный контекст, а кнопка станет <UiLabel>Моя роль: …</UiLabel>.</dd></div>
-          <div><dt><UiLabel>↑</UiLabel> <UiLabel>↓</UiLabel></dt><dd>Переходят между репликами выбранной роли. Клавиши ↑ и ↓ делают то же самое, пока не открыто поле или окно.</dd></div>
-          <div><dt><UiLabel>Показать всё</UiLabel></dt><dd>Снимает фильтр роли и возвращает полный текст главы.</dd></div>
-          <div><dt><UiLabel>Мои реплики</UiLabel></dt><dd>Собирает вашу роль по всей книге. Если роль одна, она открывается сразу, если несколько — предлагает выбрать. Когда за вами в касте нет ролей, кнопка называется <UiLabel>Все реплики роли</UiLabel>.</dd></div>
-          <div><dt><UiLabel>Найти в главе…</UiLabel></dt><dd>Оставляет видимыми абзацы, где встречается введённый текст.</dd></div>
-          <div><dt><UiLabel>Ударе́ния</UiLabel>: <UiLabel>нет</UiLabel> <UiLabel>ре́дкие</UiLabel> <UiLabel>все</UiLabel></dt><dd>Сколько ударений показывать. «Ре́дкие» — только в словах, где легко ошибиться, и все, что поставили люди. «Все» — даже в «и́ли» и «да́же». «Нет» скрывает знаки, но решения не удаляет.</dd></div>
-          <div><dt><UiLabel>± абзацев</UiLabel></dt><dd>Показывает от 0 до 5 соседних абзацев вокруг реплик выбранной роли.</dd></div>
-          <div><dt><UiLabel>S</UiLabel> <UiLabel>M</UiLabel> <UiLabel>L</UiLabel></dt><dd>Меняют размер шрифта сценария.</dd></div>
-          <div><dt><UiLabel>PDF / печать</UiLabel></dt><dd>Открывает системное окно печати: главу можно распечатать или сохранить в PDF.</dd></div>
+          <div><dt><UiLabel>Chapters</UiLabel></dt><dd>Published chapters. Voice actors do not see drafts.</dd></div>
+          <div><dt><UiLabel>Prev.</UiLabel> / <UiLabel>Next</UiLabel></dt><dd>Move to adjacent published chapters. The same controls appear below the text.</dd></div>
+          <div><dt><UiLabel>Chapter cast</UiLabel></dt><dd>Roles, actors, line counts, notes and colors. Select a role to show its lines with context. The button then shows <UiLabel>My role: …</UiLabel>.</dd></div>
+          <div><dt><UiLabel>↑</UiLabel> <UiLabel>↓</UiLabel></dt><dd>Move between the selected role's lines. Keyboard arrows work too, unless an input or dialog has focus.</dd></div>
+          <div><dt><UiLabel>Show all</UiLabel></dt><dd>Clear the role filter and restore the full chapter.</dd></div>
+          <div><dt><UiLabel>My lines</UiLabel></dt><dd>Open your role across the entire book. With several roles, choose one first. If none is assigned to you, use <UiLabel>All lines for role</UiLabel>.</dd></div>
+          <div><dt><UiLabel>Find in chapter…</UiLabel></dt><dd>Show paragraphs containing your search text.</dd></div>
+          <div><dt><UiLabel>Word stress</UiLabel>: <UiLabel>none</UiLabel> <UiLabel>rare</UiLabel> <UiLabel>all</UiLabel></dt><dd>Rare shows words prone to mispronunciation and all human-added marks. All also shows common words. None hides marks without deleting pronunciation decisions. Russian stress tools apply to Russian text.</dd></div>
+          <div><dt><UiLabel>± paragraphs</UiLabel></dt><dd>Show zero to five context paragraphs around each selected line.</dd></div>
+          <div><dt><UiLabel>S</UiLabel> <UiLabel>M</UiLabel> <UiLabel>L</UiLabel></dt><dd>Change the script's font size.</dd></div>
+          <div><dt><UiLabel>PDF / print</UiLabel></dt><dd>Open the browser's print dialog to print or save a PDF.</dd></div>
         </dl>
-        <Note>Тусклые абзацы — контекст вокруг выбранной роли. Кнопка между фрагментами разворачивает пропущенный текст. У автора и администратора над текстом есть ещё кнопки <UiLabel>Оригинал</UiLabel>, <UiLabel>Звук</UiLabel>, <UiLabel>Спорные</UiLabel>, <UiLabel>Консилиум</UiLabel>, <UiLabel>Места</UiLabel> и <UiLabel>Профиль</UiLabel> («Оригинал» — только на компьютере, «Консилиум» — после прогона). Диктор их не видит.</Note>
+        <Note>Dimmed paragraphs are context. Use the button between excerpts to reveal omitted text. Authors and administrators also have Original, Sound, Uncertain, AI review, Locations and Profile tools. Original is available on desktop; AI review appears after a review run.</Note>
       </HelpSection>
 
-      <HelpSection id="role-lines" title="Все реплики роли по всей книге" lead="Режим собирает реплики роли по книге в правильном порядке и оставляет вокруг них контекст.">
+      <HelpSection id="role-lines" title="All lines for a role" lead="Read the role across the whole book, in order, with context around every line.">
         <ol className="help-steps">
-          <li><strong>Из панели записи:</strong><span>выберите роль и нажмите <UiLabel>Все реплики роли в книге →</UiLabel>.</span></li>
-          <li><strong>Из каста главы:</strong><span>нажмите <UiLabel>все</UiLabel> рядом с ролью или сначала выберите роль, затем общую кнопку.</span></li>
-          <li><strong>Или над текстом:</strong><span><UiLabel>Мои реплики</UiLabel> сразу открывает вашу роль.</span></li>
-          <li><strong>Перемещайтесь:</strong><span>кнопки и клавиши ↑ ↓ переводят между репликами; счётчик показывает позицию. Если у вас несколько ролей, переключайтесь между ними в строке <UiLabel>Мои роли:</UiLabel>. Длинная роль подгружается кнопкой <UiLabel>Показать ещё … реплик</UiLabel>.</span></li>
-          <li><strong>Посмотрите <UiLabel>Слова-ловушки</UiLabel>:</strong><span>редкие слова из реплик роли по главам, с ударением. В них легко ошибиться, читая в потоке. <UiLabel>только новые</UiLabel> показывает слово лишь в той главе, где оно встречается роли впервые, <UiLabel>все</UiLabel> — во всех главах. Знак «?» значит, что ударение ещё не поставлено: проверьте слово. <UiLabel>К репликам</UiLabel> возвращает к тексту.</span></li>
-          <li><strong>Настройте вид:</strong><span>выберите число соседних абзацев, показ ударений, шрифт или печать.</span></li>
-          <li><strong>Вернитесь:</strong><span><UiLabel>К записи</UiLabel> возвращает в рабочее место. Заголовок показывает, из какой главы взят фрагмент; открыть в «Записи» можно только опубликованную главу.</span></li>
+          <li><strong>From Script or Uploads:</strong><span>select a role and use <UiLabel>All lines for this role →</UiLabel>.</span></li>
+          <li><strong>From the chapter cast:</strong><span>use <UiLabel>all</UiLabel> beside a role, or select it and use the main role script button.</span></li>
+          <li><strong>Above the text:</strong><span><UiLabel>My lines</UiLabel> opens your assigned role directly when there is only one.</span></li>
+          <li><strong>Navigate:</strong><span>buttons and ↑ ↓ move between lines; the counter shows your position. Use <UiLabel>My roles:</UiLabel> to switch roles. Long scripts load in batches with <UiLabel>Show more</UiLabel>.</span></li>
+          <li><strong>Review <UiLabel>Pronunciation traps</UiLabel>:</strong><span>rare words in the role's lines, grouped by chapter, with stress marks where available. <UiLabel>new only</UiLabel> shows each word where the role first meets it; <UiLabel>all</UiLabel> repeats it in every chapter. A ? means stress is unresolved. <UiLabel>Back to lines</UiLabel> returns to the script.</span></li>
+          <li><strong>Adjust the view:</strong><span>change context, stress display, font size or print settings.</span></li>
+          <li><strong>Return:</strong><span><UiLabel>Back to script</UiLabel> returns to your reading workspace. Each chapter heading opens the full chapter; voice actors can open only published chapters.</span></li>
         </ol>
-        <Note>Ударение можно поставить прямо здесь: нажмите слово, и откроется тот же конструктор, что в главе (см. <a href="#stress">«Ударения»</a>). Над каждой главой её заголовок открывает главу целиком.</Note>
+        <Note>Click a word to open the same stress editor used in the chapter reader. See <a href="#stress">Word stress</a>.</Note>
       </HelpSection>
 
-      <HelpSection id="stress" title="Ударения: очередь и точечное исправление" lead="Диктор может исправить произношение сам. Изменения применяются к сценарию и видны остальным участникам.">
-        <h3>Открыть очередь</h3>
+      <HelpSection id="stress" title="Word stress: queue and individual corrections" lead="Russian pronunciation tools let voice actors correct stress marks. Saved changes are shared with other readers.">
+        <h3>Open the queue</h3>
         <ol className="help-steps">
-          <li><strong>На компьютере:</strong><span>нажмите над текстом <UiLabel>Ударения: N без ответа</UiLabel>.</span></li>
-          <li><strong>На телефоне:</strong><span>сначала нажмите <UiLabel>Ещё</UiLabel>, затем кнопку очереди ударений.</span></li>
-          <li><strong>Выберите вкладку:</strong><span>«Авторские», «Общерусские» или «Спорные».</span></li>
+          <li><strong>On desktop:</strong><span>use <UiLabel>Word stress: N unresolved</UiLabel> above the text.</span></li>
+          <li><strong>On a phone:</strong><span>open <UiLabel>More</UiLabel>, then the word stress queue.</span></li>
+          <li><strong>Choose a category:</strong><span>Author terms, Common Russian or Ambiguous.</span></li>
         </ol>
         <div className="help-task-grid help-task-grid--three">
-          <article><h3>Авторские</h3><p>Имена, места и придуманные слова, которых нет в обычном русском словаре. Обычно начинать стоит отсюда.</p></article>
-          <article><h3>Общерусские</h3><p>Обычные слова, для которых словарь и контекст не выбрали надёжное ударение.</p></article>
-          <article><h3>Спорные</h3><p>Омографы: написание одинаковое, а чтение зависит от фразы. Решение часто ставится для одного места.</p></article>
+          <article><h3>Author terms</h3><p>Names, locations and invented words absent from ordinary dictionaries. Usually the best place to start.</p></article>
+          <article><h3>Common Russian</h3><p>Ordinary words whose stress could not be resolved reliably from dictionaries and context.</p></article>
+          <article><h3>Ambiguous</h3><p>Homographs: identical spellings with pronunciations that depend on meaning. Decisions often apply to one occurrence.</p></article>
         </div>
-        <h3>Что нажимать в очереди</h3>
-        <ul className="help-list"><li><strong>«Найти слово…»</strong> фильтрует текущую вкладку.</li><li><strong>Плашка слова</strong> открывает пример в главе и конструктор.</li><li><strong>Показать ещё 200</strong> подгружает следующую часть списка.</li><li><strong>Крестик ✕</strong> означает «этому слову ударение не нужно» и убирает его из очереди этой книги.</li></ul>
-        <h3>Поставить ударение прямо в тексте</h3>
+        <h3>Queue controls</h3>
+        <ul className="help-list"><li><strong>Find a word…</strong> filters the current category.</li><li><strong>A word chip</strong> opens a sample passage and the stress editor.</li><li><strong>Show more</strong> loads the next batch.</li><li><strong>✕</strong> marks a word as not needing stress and removes it from this book's queue.</li></ul>
+        <h3>Set stress in the text</h3>
         <ol className="help-steps">
-          <li><strong>Нажмите нужное слово</strong><span>в сценарии главы или на странице «Все реплики». Под инструментами откроется конструктор.</span></li>
-          <li><strong>Нажмите ударную гласную</strong><span>или перебирайте гласные клавишами ← →. Пример обновляется сразу.</span></li>
-          <li><strong>Выберите область:</strong><span><UiLabel>Для этой книги</UiLabel> — правило текущей книги; <UiLabel>Автору</UiLabel> — правило для всех книг того же автора.</span></li>
-          <li><strong>Дождитесь подтверждения</strong><span>с числом обновлённых фрагментов.</span></li>
+          <li><strong>Click a word</strong><span>in the chapter or role script to open the editor.</span></li>
+          <li><strong>Select the stressed vowel</strong><span>or move between vowels with ← →. The preview updates immediately.</span></li>
+          <li><strong>Choose the scope:</strong><span><UiLabel>For this book</UiLabel> applies to the current book; <UiLabel>For this author</UiLabel> applies across books by the linked author.</span></li>
+          <li><strong>Wait for confirmation</strong><span>showing the number of updated segments.</span></li>
         </ol>
-        <p className="help-shortcuts"><kbd>←</kbd><kbd>→</kbd> выбрать гласную <span>·</span> <kbd>Enter</kbd> сохранить для книги <span>·</span> <kbd>Esc</kbd> закрыть</p>
-        <h3>Разобрать омограф</h3>
-        <p>На вкладке <UiLabel>Спорные</UiLabel> раскройте слово. Нажатие варианта сохраняет чтение только для показанной фразы. Кнопка <UiLabel>В главе</UiLabel> открывает полный контекст.</p>
-        <Note tone="warning">Кнопка <UiLabel>Автору</UiLabel> доступна только при заполненном профиле автора. Используйте её лишь для устойчивого имени или термина, который во всех книгах читается одинаково.</Note>
+        <p className="help-shortcuts"><kbd>←</kbd><kbd>→</kbd> choose vowel <span>·</span> <kbd>Enter</kbd> save to book <span>·</span> <kbd>Esc</kbd> close</p>
+        <h3>Resolve a homograph</h3>
+        <p>Expand a word in <UiLabel>Ambiguous</UiLabel>. Choosing a pronunciation saves it for the displayed passage only. <UiLabel>In chapter</UiLabel> opens the full context.</p>
+        <Note tone="warning">Saving <UiLabel>For this author</UiLabel> requires a linked author profile. Use it for a stable name or term pronounced the same way throughout that author's books.</Note>
       </HelpSection>
 
-      <HelpSection id="palette" title="Палитра ролей" lead="Диктор может поправить визуальное оформление роли, не получая доступа к ставкам или распределению реплик.">
+      <HelpSection id="palette" title="Role palette" lead="Voice actors can adjust how roles look without changing casting, line assignments or rates.">
         <ol className="help-steps">
-          <li><strong>Нажмите <UiLabel>Каст главы</UiLabel>.</strong><span>На компьютере каст откроется справа, на телефоне — отдельным листом.</span></li>
-          <li><strong>Найдите роль и нажмите кнопку с тремя точками.</strong><span>Откроется окно <UiLabel>Палитра персонажа</UiLabel>.</span></li>
-          <li><strong>Настройте фон и шрифт.</strong><span>Можно выбрать цвет фона, цвет текста, насыщенность и стиль; превью показывает результат.</span></li>
-          <li><strong>Проверьте предупреждение.</strong><span>Если цвет похож на другую роль, система покажет конфликт, но оставит решение за вами.</span></li>
-          <li><strong>Нажмите <UiLabel>OK, сохранить</UiLabel>.</strong><span>Реплики этой роли перекрасятся.</span></li>
+          <li><strong>Open <UiLabel>Chapter cast</UiLabel>.</strong><span>It appears beside the text on desktop and as a sheet on a phone.</span></li>
+          <li><strong>Find the role and open its palette menu.</strong><span>This opens <UiLabel>Character palette</UiLabel>.</span></li>
+          <li><strong>Adjust colors and typography.</strong><span>Choose background, text color, weight and style; the preview updates immediately.</span></li>
+          <li><strong>Review any warning.</strong><span>Similar colors in the same chapter can be hard to distinguish, especially in print. You can still choose to keep them.</span></li>
+          <li><strong>Press <UiLabel>Save</UiLabel>.</strong><span>The role's lines update to the new palette.</span></li>
         </ol>
-        <Note>Диктор не может менять палитру Рассказчика, назначенного актёра, название роли или оплату. Палитра меняет только внешний вид роли.</Note>
+        <Note>Voice actors cannot change the Narrator palette, assigned actor, role name or payment data.</Note>
       </HelpSection>
 
-      <HelpSection id="upload" title="Подготовка имени и загрузка аудио" lead="Панель справа заранее показывает, как сервер назовёт и классифицирует файл. Проверьте её до отправки большого аудио.">
-        <h3>Перед загрузкой</h3>
+      <HelpSection id="upload" title="Filenames and audio uploads" lead="Check the suggested name and classification before sending a large recording.">
+        <h3>Before uploading</h3>
         <ol className="help-steps">
-          <li><strong>Сверьте книгу, роль и главу.</strong><span>После изменения дождитесь обновления подсказок.</span></li>
-          <li><strong>Сверьте вид файла.</strong><span>Для основной записи должно быть написано <UiLabel>Дубль утверждённой роли</UiLabel>.</span></li>
-          <li><strong>Нажмите <UiLabel>Скопировать</UiLabel>.</strong><span>Переименуйте исходник в точное имя из блока <UiLabel>Назовите файл так:</UiLabel>.</span></li>
-          <li><strong>Перетащите файл в область загрузки</strong><span>или нажмите на неё и выберите один либо несколько аудиофайлов.</span></li>
-          <li><strong>Прочитайте предпросмотр.</strong><span>Под каждым файлом показано итоговое имя, предупреждение или причина отказа.</span></li>
-          <li><strong>Нажмите <UiLabel>Загрузить файлы (N)</UiLabel>.</strong><span>Не закрывайте страницу, пока сервер не сообщит, что файлы сохранены.</span></li>
+          <li><strong>Check book, role and chapter.</strong><span>Wait for the filename suggestion to update after changing the selection.</span></li>
+          <li><strong>Check the file type.</strong><span>Main recordings should say <UiLabel>Take for an assigned role</UiLabel>.</span></li>
+          <li><strong>Press <UiLabel>Copy</UiLabel>.</strong><span>Rename your file using the exact suggestion under <UiLabel>Name your file:</UiLabel>.</span></li>
+          <li><strong>Drop files into the upload area</strong><span>or click to choose one or more audio files.</span></li>
+          <li><strong>Review the preview.</strong><span>Each file shows its final name, warnings or rejection reason.</span></li>
+          <li><strong>Press <UiLabel>Upload files</UiLabel>.</strong><span>Keep the page open until the server confirms the files are saved.</span></li>
         </ol>
-        <p>Форма принимает аудио в форматах WAV, MP3, M4A, FLAC, OGG, AAC, OPUS и WEBM. В одной пачке можно выбрать несколько файлов.</p>
-        <p>В точном имени файла <code>Ch01</code> — номер главы: <code>Ch01</code> — первая, <code>Ch34</code> — тридцать четвёртая. Глава берётся из выбора в форме, а не из имени файла: если они разойдутся, система откажет и покажет оба номера.</p>
-        <h3>Сообщения до загрузки</h3>
+        <p>Supported audio formats include WAV, MP3, M4A, FLAC, OGG, AAC, OPUS and WEBM. You can upload several files together.</p>
+        <p>In a suggested filename, <code>Ch01</code> means chapter one and <code>Ch34</code> means chapter thirty-four. The selected chapter determines the destination. A conflicting number in the filename must be checked before upload.</p>
+        <h3>Messages before uploading</h3>
         <dl className="help-errors">
-          <div><dt>«не указана роль»</dt><dd>Выберите роль; без неё файл некуда положить.</dd></div>
-          <div><dt>«не указана глава»</dt><dd>Для утверждённого дубля выберите главу. У настоящей пробы глава может быть пустой.</dd></div>
-          <div><dt>«в пачке два одинаковых файла»</dt><dd>Один и тот же файл выбран дважды. Оставьте один.</dd></div>
-          <div><dt>«этот же файл уже загружен»</dt><dd>Файл с точно таким же содержимым уже лежит в этой роли и главе. Повторно отправлять не нужно.</dd></div>
-          <div><dt>«в имени файла другая роль»</dt><dd>Это предупреждение. Сверьте роль справа и имя исходника перед продолжением.</dd></div>
-          <div><dt>«глава в имени файла не совпадает с выбранной»</dt><dd>В имени файла один номер главы, а в форме выбрана другая глава. Проверьте выбор. Если имя просто названо иначе, поставьте галочку «Глава выбрана верно».</dd></div>
+          <div><dt>Role not specified</dt><dd>Choose a role to save the file under.</dd></div>
+          <div><dt>Chapter not specified</dt><dd>A take needs a chapter; an audition may omit it.</dd></div>
+          <div><dt>Duplicate files in this batch</dt><dd>The same file was selected twice. Keep one copy.</dd></div>
+          <div><dt>This file was already uploaded</dt><dd>Identical content already exists under this role and chapter. No need to resend it.</dd></div>
+          <div><dt>Filename role differs</dt><dd>Check the selected role and original filename.</dd></div>
+          <div><dt>Filename chapter does not match your selection</dt><dd>Check both chapter numbers. If the selected chapter is correct and the filename is simply wrong, confirm that the selection is correct.</dd></div>
         </dl>
-        <p><strong>Дозапись реплик.</strong> Недостающие или исправленные реплики можно прислать двумя способами: заново весь файл роли под обычным именем или короткий файл только с этими репликами, добавив в конец имени <code>fix1</code> (<code>fix2</code>, <code>fix3</code>…), например <code>KP_Ch11_Gamuk_fix1.wav</code>. Система примет оба, учтёт их в покрытии и поставит в сессию главы звук из последнего присланного файла.</p>
-        <h3>После загрузки</h3>
-        <ul className="help-list"><li>Успех подтверждается сообщением <strong>«Готово: сохранено N файлов»</strong>.</li><li>В <UiLabel>Последние файлы главы</UiLabel> должны появиться время, роль и итоговое имя.</li><li>Если написано <strong>«Загружено N из M»</strong>, часть пачки уже сохранена. Проверьте список и повторяйте только непринятые файлы.</li><li><UiLabel>Очистить список</UiLabel> очищает форму, но не удаляет загруженное с сервера.</li><li>Если загрузили не тот файл, в первые сутки у своего файла в <UiLabel>Последние файлы главы</UiLabel> есть кнопка <UiLabel>Удалить</UiLabel>. Файл стирается с сервера и с копии на NAS, вернуть его нельзя. Позже удалить файл может только автор или администратор.</li></ul>
-        <Note tone="warning">Не удаляйте исходники у себя до выхода последней главы и сохраните копию в надёжном месте. Загрузка на сайт студии не заменяет ваш исходный архив.</Note>
+        <p><strong>Additional recordings.</strong> Send either the full role file again under its usual name, or just the missing/corrected lines with <code>fix1</code>, <code>fix2</code>, and so on appended to the filename, for example <code>Book_Ch11_Alice_fix1.wav</code>. Both forms count toward coverage; the chapter session uses the latest submitted recording for each line.</p>
+        <h3>After uploading</h3>
+        <ul className="help-list"><li>Look for <strong>Done; saved N files</strong>.</li><li>Check time, role and filename under <UiLabel>Recent chapter files</UiLabel>.</li><li><strong>Uploaded N of M</strong> means part of the batch was saved. Retry only rejected files.</li><li><UiLabel>Clear list</UiLabel> clears the form without deleting server files.</li><li>Voice actors can delete their own files within 24 hours using <UiLabel>Delete</UiLabel>. This removes the server file and NAS mirror and cannot be undone. Later deletion requires an author or administrator.</li></ul>
+        <Note tone="warning">Keep your originals until the final chapter is released and store a safe backup. Uploading to the studio does not replace your own recording archive.</Note>
       </HelpSection>
 
-      <HelpSection id="asr" title="ASR и готовность записи" lead="Для диктора раздел «ASR» — экран контроля: что система увидела после загрузки и чего ещё не хватает.">
-        <p>Откройте <Link to="/asr">«ASR»</Link>. Если книг несколько, выберите нужную вверху. Полоса над таблицей показывает, сколько глав книги собрано. <UiLabel>Только начатые</UiLabel> скрывает главы без загруженных ролей. Нажмите строку главы, чтобы увидеть, какие файлы в ней лежат.</p>
+      <HelpSection id="asr" title="ASR and recording progress" lead="ASR shows what the system found in uploaded recordings and what is still missing.">
+        <p>Open <Link to="/asr">ASR</Link> and select the book. The bar above the table shows assembled chapters. <UiLabel>Started only</UiLabel> hides chapters without recordings. Expand a chapter to inspect its files.</p>
         <dl className="help-controls">
-          <div><dt>Запись реплик</dt><dd>Сколько ожидаемых реплик найдено распознаванием внутри аудио и какой это процент от всех реплик главы.</dd></div>
-          <div><dt>Рассказчик</dt><dd>Результат строгой проверки полной сборки: подтверждённые находки и места, требующие внимания. Проверка платная и включается владельцем; повтор оплачивается отдельно.</dd></div>
-          <div><dt>Бэкап</dt><dd>Есть — все файлы главы подтверждены на NAS; «Копируется» — часть файлов ещё в пути; «Ошибка» требует проверки NAS или копий.</dd></div>
-          <div><dt>Проверка файлов</dt><dd>Доступна внутри раскрытой главы: контрольные суммы показывают, совпадают ли файлы с принятыми сервером.</dd></div>
+          <div><dt>Recorded lines</dt><dd>Expected script lines found by transcription and their percentage of the chapter.</dd></div>
+          <div><dt>Narrator</dt><dd>Strict audit of the assembled narrator recording, with confirmed findings and passages needing attention. The owner must enable this paid feature. Each retry is charged separately.</dd></div>
+          <div><dt>Backup</dt><dd>Verified means all chapter files have confirmed NAS copies. Copying means some are still pending. An error needs a storage or checksum check.</dd></div>
+          <div><dt>File verification</dt><dd>Inside an expanded chapter, checksums show whether files still match what the server received.</dd></div>
         </dl>
-        <div className="help-status-grid"><div><strong>—</strong><span>данных ещё нет;</span></div><div><strong>✓</strong><span>этап подтверждён;</span></div><div><strong>⚠</strong><span>проблему разбирает автор или администратор;</span></div><div><strong>всё записано</strong><span>архив главы скачан целиком, сведение началось;</span></div><div><strong>сдана</strong><span>глава сведена, прослушана и выложена, отмечено вручную.</span></div></div>
-        <Note>Диктор видит покрытие, но не запускает распознавание или сверку и не скачивает сессии, архивы и проекты. Эти действия доступны автору и администратору.</Note>
+        <div className="help-status-grid"><div><strong>—</strong><span>no data yet;</span></div><div><strong>✓</strong><span>step confirmed;</span></div><div><strong>⚠</strong><span>needs author or administrator attention;</span></div><div><strong>all recorded</strong><span>the full chapter archive has been downloaded for mixing;</span></div><div><strong>delivered</strong><span>mixed, reviewed and published; marked manually.</span></div></div>
+        <Note>Voice actors can view coverage. Starting transcription/alignment and downloading sessions, archives or projects requires author or administrator access.</Note>
       </HelpSection>
 
-      <HelpSection id="mobile" title="Работа с телефона" lead="Интерфейс прячет второстепенные инструменты, чтобы текст занимал больше экрана.">
-        <ul className="help-list"><li>Разделы находятся в кнопке меню верхней панели. Внизу меню — <UiLabel>? Как тут всё устроено</UiLabel> и переключатель темы.</li><li><UiLabel>Главы</UiLabel> и <UiLabel>Каст главы</UiLabel> открываются листами поверх текста.</li><li>Поиск, ударения, очередь, контекст, шрифт и печать находятся под <UiLabel>Ещё</UiLabel>.</li><li>Кнопки ↑ ↓ остаются рядом с выбранной ролью.</li><li>Для больших файлов используйте стабильный Wi‑Fi и не сворачивайте браузер до подтверждения.</li></ul>
+      <HelpSection id="mobile" title="Using a phone" lead="Secondary tools are folded away to leave more room for the text.">
+        <ul className="help-list"><li>Open navigation from the top menu. The welcome guide and theme switch are at the bottom.</li><li><UiLabel>Chapters</UiLabel> and <UiLabel>Chapter cast</UiLabel> open as sheets.</li><li>Search, stress, context, font and print tools are under <UiLabel>More</UiLabel>.</li><li>↑ ↓ stays beside the selected role.</li><li>Use stable Wi-Fi for large uploads and keep the browser open until saving is confirmed.</li></ul>
       </HelpSection>
 
-      <HelpSection id="troubleshooting" title="Если что-то не получается" lead="Сначала проверьте состояние в интерфейсе — оно обычно показывает, на каком шаге остановилась работа.">
+      <HelpSection id="troubleshooting" title="Troubleshooting" lead="Check the current state shown in the interface before repeating an action.">
         <div className="help-faq">
-          <details><summary>В «Записи» нет нужной книги или главы</summary><p>Диктор видит только опубликованные главы. Автор или администратор должен проверить главу и открыть её для записи.</p></details>
-          <details><summary>Моей роли нет или система не считает её моей</summary><p>Назначение строится по имени актёра в касте. Попросите автора или администратора сверить написание имени и назначение роли.</p></details>
-          <details><summary>Вместо дубля показана «Проба»</summary><p>Не загружайте основной дубль. Роль не закреплена за вашим именем либо закреплена за другим человеком.</p></details>
-          <details><summary>Кнопка загрузки неактивна</summary><p>Проверьте роль, главу и красные сообщения. Ошибка хотя бы одного файла блокирует всю выбранную пачку.</p></details>
-          <details><summary>Загрузка прервалась или сохранилась частично</summary><p>Не отправляйте всю пачку вслепую. Посмотрите сообщение и «Последние файлы главы»: сохранённые файлы повторять не нужно.</p></details>
-          <details><summary>Я случайно убрал слово из очереди крестиком</summary><p>В интерфейсе диктора отдельной кнопки возврата нет. Сообщите автору или администратору название книги и слово.</p></details>
-          <details><summary>Не вижу инструменты на телефоне</summary><p>Нажмите <UiLabel>Ещё</UiLabel>. Если доступ выдали только что, обновите страницу и при необходимости войдите заново.</p></details>
-          <details><summary>После загрузки в ASR ещё пусто</summary><p>Убедитесь, что файл появился в последних файлах. Покрытие обновляется после сохранения. Распознавание запускается само после загрузки и занимает несколько минут.</p></details>
-          <details><summary>Ударение исправлено, но я его не вижу</summary><p>В группе <UiLabel>Ударе́ния</UiLabel> выберите <UiLabel>ре́дкие</UiLabel> или <UiLabel>все</UiLabel> (не «нет») и дождитесь подтверждения сохранения.</p></details>
-          <details><summary>Бот мне ничего не пишет</summary><p>Откройте бота в Telegram и нажмите Start. Если вы входите через Telegram, затем кнопкой <UiLabel>?</UiLabel> в верхней панели откройте «Как тут всё устроено» и нажмите <UiLabel>Проверить ещё раз</UiLabel>. Если бот на связи, а сообщений всё равно нет, попросите автора сверить ваше имя в касте: бот ищет вас по нему.</p></details>
-          <details><summary>Загрузил не тот файл</summary><p>В первые сутки удалите его сами кнопкой <UiLabel>Удалить</UiLabel> в «Последних файлах главы». Позже удалить файл может автор или администратор.</p></details>
+          <details><summary>A book or chapter is missing from Script</summary><p>Voice actors see published chapters only. An author or administrator must review and publish the chapter first.</p></details>
+          <details><summary>My role is missing or is not recognized as mine</summary><p>Ask an author to compare your account name with the assigned actor name in the cast. A question mark means a suggestion, not an approved assignment.</p></details>
+          <details><summary>The upload says Audition instead of Take</summary><p>Check Recorded by and the cast assignment before sending the main recording. The server determines the file type from those names.</p></details>
+          <details><summary>ASR is still empty after upload</summary><p>Check recent files first. Transcription starts automatically after saving and may take several minutes.</p></details>
+          <details><summary>I changed a stress mark but cannot see it</summary><p>Select rare or all in Word stress and wait for the saved confirmation.</p></details>
+          <details><summary>The bot does not send messages</summary><p>Open it in Telegram and press Start. Reopen the welcome guide with ? and check reachability again. If it is reachable, ask the author to verify your cast name and linked Telegram account.</p></details>
+          <details><summary>I uploaded the wrong file</summary><p>Within 24 hours, delete your own file under Recent chapter files. Later, ask an author or administrator.</p></details>
         </div>
       </HelpSection>
 
-      <HelpSection id="author-admin" title="Что делают автор и администратор" lead="Карта ответственности: к кому относится проблема и почему некоторые кнопки не показываются диктору.">
+      <HelpSection id="author-admin" title="Authors and administrators" lead="Responsibilities explain who can resolve a problem and why some controls are hidden from voice actors.">
         <div className="help-task-grid">
-          <article><h3>Автор</h3><ol><li>Открывает «Подготовку» и сверяет сценарий с оригиналом.</li><li>Исправляет распределение реплик и спорные места.</li><li>Проверяет ударения и персонажей.</li><li>Отмечает главы проверенными и публикует их.</li><li>Контролирует запись и ASR.</li></ol></article>
-          <article><h3>Администратор</h3><ol><li>Загружает книгу и управляет обработкой.</li><li>Разбирает остановки и ошибки этапов.</li><li>Управляет пользователями и ролями доступа.</li><li>Контролирует публикацию, проверки и выгрузки.</li><li>Использует журнал для разбора действий и сбоев.</li></ol></article>
+          <article><h3>Author</h3><ol><li>Open Preparation and compare the script with the original.</li><li>Correct speaker assignments and ambiguous passages.</li><li>Review characters and pronunciation.</li><li>Mark chapters reviewed and publish them.</li><li>Monitor recording and ASR.</li></ol></article>
+          <article><h3>Administrator</h3><ol><li>Upload books and manage processing.</li><li>Investigate stopped runs and errors.</li><li>Manage users and access roles.</li><li>Control publication, verification and exports.</li><li>Inspect actions and failures in the log.</li></ol></article>
         </div>
 
-        <HelpSub id="cast-proposal" title="Каст: «Имя?» — предложить или утвердить">
-          <p>Каст открывается кнопкой <UiLabel>Каст</UiLabel> в карточке книги, на шаге «Роли». Актёра вписывают в столбец <UiLabel>Актёр</UiLabel>. От того, как записано имя, зависит, какое сообщение уйдёт актёру.</p>
+        <HelpSub id="cast-proposal" title="Cast: suggest or approve a voice actor">
+          <p>Open <UiLabel>Cast</UiLabel> from the book page. A plain actor name means an approved assignment; <strong>Name?</strong> means an audition suggestion.</p>
+          <ul className="help-list"><li>Suggesting an actor invites them to audition. Approving the actor assigns the role and notifies them.</li><li>Notifications are sent only when the actor or effective status changes. Rewriting an approved name as Name?, or adding another question mark, does not send another message.</li><li>When several accounts match a name, casting messages are forwarded to the owner and agents with a candidate list. Missing accounts are also reported to them.</li><li>The audition count in a role row opens its recordings. <UiLabel>Auditions · N</UiLabel> filters to roles with submitted auditions.</li><li>Agents may suggest actors only for unassigned roles. An existing assignment is preserved. The Narrator is selected by the owner or author.</li><li>Author and owner decisions follow voting priority. Review the result shown after assigning an actor.</li></ul>
+        </HelpSub>
+
+        <HelpSub id="consilium" title="AI review">
+          <p>Two independent AI reviewers identify speakers without seeing the script assignments. Where they disagree with the script, an arbiter checks the text for evidence.</p>
+          <ol className="help-steps">
+            <li><strong>Start.</strong><span>On the book's Review step, open <UiLabel>AI review panel</UiLabel>. Review the estimate and RouterAI balance first. <UiLabel>Recheck</UiLabel> reuses reviewer responses for unchanged chapters and charges for arbitration. <UiLabel>Reread all</UiLabel> reads the book again.</span></li>
+            <li><strong>Track progress.</strong><span>Use <UiLabel>stop</UiLabel> to finish and save the current section before stopping. The owner receives a Telegram message on completion.</span></li>
+            <li><strong>Inspect findings.</strong><span><UiLabel>AI review: N</UiLabel> opens unresolved findings in the reader. Each card shows the script assignment, independent responses, arbiter decision and evidence quote. Insufficient evidence leaves the decision to you.</span></li>
+            <li><strong>Decide.</strong><span>Choose a role, keep the script assignment or choose another role, then use <UiLabel>next finding →</UiLabel>. A warning identifies passages edited after the run.</span></li>
+          </ol>
+        </HelpSub>
+
+        <HelpSub id="sound" title="Sound annotation">
+          <p>Sound annotations help the engineer identify scenes, locations, transitions and significant sounds. Authors and administrators can use this layer.</p>
+          <h3>Starting a run</h3>
+          <ol className="help-steps">
+            <li><strong>Open <UiLabel>Sound annotation</UiLabel> on the Review step.</strong><span>Review the chapter estimate and RouterAI balance. <UiLabel>Annotate remaining chapters</UiLabel> handles missing, incomplete or changed chapters. <UiLabel>Annotate again</UiLabel> reads all chapters. Both preserve human edits and deletions.</span></li>
+            <li><strong>Watch progress.</strong><span>The status shows the current chapter and spending. Stopping finishes and saves the current chapter. The owner receives a Telegram message when the run ends.</span></li>
+            <li><strong>Open the result.</strong><span>The results link opens the reader's <UiLabel>Book locations</UiLabel> sheet.</span></li>
+          </ol>
+          <h3>The sound layer</h3>
+          <p><UiLabel>Sound</UiLabel> shows or hides the layer. On a phone, find it under <UiLabel>More</UiLabel>.</p>
           <dl className="help-controls">
-            <div><dt>Имя</dt><dd>Актёр утверждён. Ему приходит «Вы утверждены на роль», а его файлы идут в дубли главы.</dd></div>
-            <div><dt>Имя?</dt><dd>Знак вопроса в конце значит «предлагаем». Роль ещё не его, актёру приходит приглашение на пробу, его файлы уходят в пробы. Всплывёт подсказка «Актёр предложен» с текстом «&lt;роль&gt;. Позвали на пробу: &lt;имя&gt;».</dd></div>
-            <div><dt>Имя? → Имя</dt><dd>Убрать знак вопроса и значит утвердить: придёт «Вы утверждены». Назначение — это голос: голос автора весит два, владельца — один. Если автор выбрал другого, всплывёт «Ваш голос учтён» с текстом «Роль остаётся за «…» — так решил …», и письма не будет. Утверждает и кнопка <UiLabel>Утвердить на роль</UiLabel> в списке проб роли.</dd></div>
-            <div><dt>???</dt><dd>Одни вопросы без имени значат «ещё не решили». Роль остаётся свободной, писем нет.</dd></div>
+            <div><dt>▸ Scene bar</dt><dd>Appears before a scene's first paragraph with location, ambience and mood. Other chapter references show where that location recurs. Search buttons copy sound queries; the edit button opens the scene.</dd></div>
+            <div><dt>◆ Transition</dt><dd>A dashed row between paragraphs for flashbacks, dreams or fades to silence. Click to edit.</dd></div>
+            <div><dt>● Sound</dt><dd>A marker beside or after a paragraph. Hover to highlight the associated phrase.</dd></div>
+            <div><dt>Unplaced markers</dt><dd>After text edits, a marker may lose its paragraph. Use <UiLabel>Place on paragraph</UiLabel> to position it again.</dd></div>
           </dl>
-          <ul className="help-list">
-            <li>Письма уходят, только когда актёр или его статус правда меняются. Если утверждённого актёра переписать в «Имя?» или добавить ещё один знак вопроса, повторного письма не будет.</li>
-            <li>Если имени подходят несколько учёток, бот никому не пишет лично. Подсказка скажет «имя подходит нескольким людям — переслали вам и агентам», а в пересланном сообщении будет список подходящих людей. Если учётки у актёра нет, письмо о назначении или пробе тоже пересылается вам и агентам.</li>
-            <li>Пробы слушают прямо в касте: число в строке роли открывает её пробы. Фильтр <UiLabel>Пробы · N</UiLabel> оставляет роли, на которые пробы уже прислали.</li>
-            <li>Агент только предлагает актёра (имя сохраняется со знаком вопроса) и только на свободную роль: если за ролью уже кто-то стоит, его предложение ничего не меняет. Рассказчика агент не предлагает — его выбирают владелец или автор.</li>
-          </ul>
+          <h3>Editing a marker</h3>
+          <ul className="help-list"><li>Scenes have location, time, weather, ambience, mood and music queries. Transitions describe what happens. Sounds have a description, queries and an exact quote. Save protects your edit from future runs; Delete prevents the marker from returning.</li><li>Use <UiLabel>Move scene start to another paragraph</UiLabel> or <UiLabel>Move to another paragraph</UiLabel>, then click the new paragraph. Esc cancels.</li><li><UiLabel>+ Add sound to this paragraph</UiLabel> creates a sound; <UiLabel>to another paragraph…</UiLabel> changes its destination.</li><li><UiLabel>Annotate chapter again…</UiLabel> is a paid AI request. Only AI markers are replaced; manual edits and deletions remain.</li><li>AI scenes retain their identity and ambience when they stay on the same paragraph or move up to three paragraphs within the same location. A removed scene, a larger move, or a move to a different location may detach the old track. The file stays in the chapter folder but is no longer included in the project. Manually edited scenes are preserved.</li></ul>
+          <h3>Book locations</h3>
+          <p><UiLabel>Locations</UiLabel> opens Book locations. Under <strong>Same location or different?</strong>, merge keeps the first name and moves the other location's scenes to it. Separate dismisses that suggested pair for future runs. Edit names, descriptions and environmental queries under All locations; chapter references open their chapters.</p>
+          <Note>Scenes become range markers in the Audition session; transitions and sounds become point markers. Markers without recorded lines or with zero duration may be unplaced. Editing markers makes an active chapter project outdated and triggers a rebuild. Chapters already downloaded for mixing or marked delivered are preserved. Administrators mark delivery in ASR; delivered rows appear dimmed.</Note>
         </HelpSub>
 
-        <HelpSub id="consilium" title="Консилиум ИИ">
-          <p>Консилиум ищет реплики, где сценарий мог ошибиться с говорящим. Два ИИ-чтеца независимо друг от друга называют, кто говорит. Там, где они не согласны со сценарием, арбитр ищет доказательство в тексте.</p>
+        <HelpSub id="ambient" title="Ambience">
+          <p>Ambience is instrumental background music. Each scene receives its own track: AI writes the prompt and ElevenLabs generates the music. Earlier track descriptions help vary instruments and texture.</p>
           <ol className="help-steps">
-            <li><strong>Запуск.</strong><span>В карточке книги, на шаге «Проверка», нажмите <UiLabel>Консилиум ИИ</UiLabel>. Сначала покажется смета и баланс RouterAI. <UiLabel>Пересверить</UiLabel> — дешёвый вариант: главы с неизменённым текстом чтецы не перечитывают, платится только арбитр. <UiLabel>Перечитать всё</UiLabel> прогоняет книгу заново.</span></li>
-            <li><strong>Ход.</strong><span>Полоса хода видна там же, прогон можно <UiLabel>остановить</UiLabel>. Когда прогон закончится, владелец студии получит сообщение в Telegram.</span></li>
-            <li><strong>Разбор.</strong><span>В Читалке кнопка <UiLabel>Консилиум: N</UiLabel> (N — нерешённые находки) открывает их список. У каждой находки есть карточка: кто говорит по сценарию, что ответили чтецы, что решил арбитр и какой цитатой он это доказал. Если доказать не удалось, карточка скажет «решаете вы».</span></li>
-            <li><strong>Решение.</strong><span>Нажмите нужную роль, <UiLabel>оставить как в сценарии</UiLabel> или <UiLabel>другая роль…</UiLabel>, затем <UiLabel>к следующей →</UiLabel>. Если место правили после прогона, карточка об этом предупредит.</span></li>
+            <li><strong>Finish recording the chapter and add scene annotations.</strong><span>The chapter's ASR row then offers <UiLabel>ambience</UiLabel>.</span></li>
+            <li><strong>Confirm the estimate.</strong><span>The dialog shows track count, duration and ElevenLabs quota use. Scenes without a timeline position are skipped and listed in the confirmation.</span></li>
+            <li><strong>Wait for tracks.</strong><span>Each takes a few minutes. The counter shows progress; <UiLabel>stop</UiLabel> finishes the current track without starting another. A check mark means all eligible scenes have tracks.</span></li>
           </ol>
-        </HelpSub>
-
-        <HelpSub id="sound" title="Звуковая разметка">
-          <p>Это подсказка звукорежиссёру на полях сценария: где начинается сцена и где она происходит, где переход и какие звуки важны. Слой видят только автор и администратор.</p>
-          <h3>Запуск и смета</h3>
-          <ol className="help-steps">
-            <li><strong>В карточке книги, на шаге «Проверка», нажмите <UiLabel>Звуковая разметка</UiLabel>.</strong><span>Покажется смета: сколько глав ещё не размечено и баланс RouterAI. <UiLabel>Доразметить — ≈ N ₽</UiLabel> размечает главы, которые ещё не размечены, не доразметились или чей текст изменился. <UiLabel>Разметить заново — ≈ N ₽</UiLabel> — все главы. Ваши ручные правки и удаления прогон не трогает. Сцену ИИ он узнаёт по абзацу и месту и сохраняет вместе с её эмбиентом — платить ElevenLabs за тот же трек заново не придётся. Трек теряется, если сцены в новой разметке нет вовсе, если она уехала дальше трёх абзацев или если, уехав с прежнего абзаца, сменила место: файл остаётся в папке главы, но в проект не попадает.</span></li>
-            <li><strong>Следите за ходом.</strong><span>В строке видно, какая глава размечается и сколько уже потрачено. <UiLabel>остановить</UiLabel> даёт доделать текущую главу. Когда прогон закончится, владелец студии получит сообщение в Telegram.</span></li>
-            <li><strong>Откройте итог.</strong><span>Строка «Звуковая разметка …: новых маркеров N, мест M, пар на решение K →» ведёт в Читалку с открытым листом «Места книги».</span></li>
-          </ol>
-          <h3>Слой в Читалке</h3>
-          <p>Кнопка <UiLabel>Звук</UiLabel> над текстом показывает и скрывает слой (на телефоне она спрятана под <UiLabel>Ещё</UiLabel>).</p>
-          <dl className="help-controls">
-            <div><dt>▸ Полоса сцены</dt><dd>Стоит перед первым абзацем сцены: место, фон и настроение. «ещё N гл.» значит, что это место встречается и в других главах. Кнопки 🔎 копируют поисковый запрос для звука, ✎ открывает карточку сцены.</dd></div>
-            <div><dt>◆ Переход</dt><dd>Пунктирная строка между абзацами: флешбэк, сон, уход в тишину. Нажатие открывает карточку.</dd></div>
-            <div><dt>● Звук</dt><dd>Метка с описанием на правом поле или в конце абзаца. Если навести на неё курсор, в тексте подсветится фраза, к которой относится звук.</dd></div>
-            <div><dt>Потерявшиеся маркеры</dt><dd>Если текст главы изменился, маркер может не найти свой абзац. Карточка предложит <UiLabel>Поставить на абзац</UiLabel>.</dd></div>
-          </dl>
-          <h3>Карточка маркера</h3>
-          <ul className="help-list">
-            <li>Поля зависят от вида маркера. У сцены это место, время суток, погода, фон, настроение и запросы музыки. У перехода — что происходит. У звука — описание, запросы и цитата. <UiLabel>Сохранить</UiLabel>: повторный прогон эту правку не тронет. <UiLabel>Удалить</UiLabel>: повторный прогон маркер не вернёт.</li>
-            <li><UiLabel>Начало сцены — другой абзац</UiLabel> или <UiLabel>Перенести на другой абзац</UiLabel>: после нажатия щёлкните нужный абзац в тексте (<kbd>Esc</kbd> — отмена).</li>
-            <li><UiLabel>+ Добавить звук к этому абзацу</UiLabel> добавляет новый звук. Его можно поставить и на другой абзац: кнопка <UiLabel>к другому абзацу…</UiLabel>.</li>
-            <li><UiLabel>Переразметить главу…</UiLabel> — платный запрос к ИИ. Он заменяет только маркеры ИИ в этой главе, ваши правки и удаления остаются как есть. Сцену ИИ разметка узнаёт: если новая сцена стоит на том же абзаце или уехала не дальше трёх абзацев в том же месте, она остаётся собой вместе со своим эмбиентом — платить ElevenLabs за тот же трек заново не придётся. Трек теряется, если сцены в новой разметке нет вовсе, если она уехала дальше трёх абзацев или если, уехав с прежнего абзаца, сменила место: файл остаётся в папке главы, но в проект не попадает. Сцены, которые вы правили руками, прогон не трогает вовсе.</li>
-          </ul>
-          <h3>Места книги</h3>
-          <p>Кнопка <UiLabel>Места</UiLabel> над текстом открывает лист «Места книги». В блоке <strong>«Одно место или разные?»</strong> собраны пары мест, которые ИИ считает одним местом под разными именами. <UiLabel>склеить</UiLabel> оставляет первое имя и переносит к нему сцены второго, <UiLabel>разные</UiLabel> — больше не предлагать эту пару. В «Все места» можно исправить имя, описание и запросы фона (кнопка ✎), а номера глав ведут в эти главы.</p>
-          <Note>Маркеры попадают в сессию Audition главы: сцена отмечается отрезком «СЦЕНА N», переходы и звуки — точками. В «ASR» в раскрытой главе может стоять «N маркеров без места»: у такого абзаца нет записанной реплики или сцена получилась нулевой длины. Если поправить маркеры, проект главы помечается «проект устарел» и собирается заново. Главы со статусом «всё записано» (архив скачан для сведения) и «сдана» при этом не трогаются. Отметку «Сдана» ставит администратор кнопкой «Глава сдана» в «ASR»; сданная глава в таблице бледная.</Note>
-        </HelpSub>
-
-        <HelpSub id="ambient" title="Эмбиент">
-          <p>Эмбиент — фоновая инструментальная музыка под чтение. Для каждой сцены главы сочиняется свой трек: промпт пишет ИИ, музыку — ElevenLabs. ИИ получает описания прежних треков книги и старается не повторять их инструменты и фактуру.</p>
-          <ol className="help-steps">
-            <li><strong>Когда глава записана целиком и в ней есть сцены звуковой разметки,</strong><span>в её строке в разделе <Link to="/asr">«ASR»</Link> появляется кнопка <UiLabel>эмбиент</UiLabel>.</span></li>
-            <li><strong>Подтвердите смету.</strong><span>Окно спросит: «Сгенерировать N треков · M мин эмбиента? Спишется N треков из квоты ElevenLabs». Сцены без места на таймлайне пропускаются, и окно об этом скажет.</span></li>
-            <li><strong>Дождитесь треков.</strong><span>Один трек сочиняется несколько минут. В строке виден счёт «эмбиент 2/7», <UiLabel>стоп</UiLabel> даёт доделать текущий трек и не начинает следующие. Когда треки есть у всех сцен, в строке появится «эмбиент ✓».</span></li>
-          </ol>
-          <ul className="help-list">
-            <li>Трек длится столько же, сколько сцена на записи, но не меньше 3 и не больше 10 минут.</li>
-            <li>Файлы называются <code>Г{"{N}"}_Эмбиент - {"{место}"}.mp3</code>. Если место в главе повторяется, к имени добавляется номер: «… 2.mp3», «… 3.mp3». Они лежат в папке главы рядом с дублями и входят в архив главы (кнопка <UiLabel>архив</UiLabel> в «ASR»).</li>
-            <li>В сессии Audition треки лежат на дорожках <strong>Ambient 1</strong> и <strong>Ambient 2</strong>, по очереди: каждый начинается с начала своей сцены.</li>
-            <li><strong>Одна сцена заново:</strong> откройте в Читалке карточку сцены (✎ на полосе). В блоке «Эмбиент» есть состояние, плеер и поле <UiLabel>Промпт</UiLabel>. Поправленный промпт уйдёт в ElevenLabs как есть, а если его не трогать, ИИ напишет новый. <UiLabel>Сгенерировать эмбиент…</UiLabel> (или <UiLabel>Перегенерировать эмбиент…</UiLabel>, если трек уже есть) списывает 1 трек из квоты, прежний файл остаётся в папке главы.</li>
-          </ul>
+          <ul className="help-list"><li>Tracks follow the recorded scene length, with a minimum of three minutes and a maximum of ten.</li><li>Files are saved in the chapter folder beside takes and included in its archive. Repeated location names receive a number suffix. Keep generated filenames unchanged.</li><li>The Audition session alternates tracks between <strong>Ambient 1</strong> and <strong>Ambient 2</strong>, starting each at its scene boundary.</li><li><strong>Regenerate one scene:</strong> open its card in the reader. The Ambience block shows status, player and prompt. Edited prompts are sent as entered; otherwise AI writes a new prompt. Generate or Regenerate ambience uses one ElevenLabs track from your quota and keeps the previous file in the chapter folder.</li></ul>
           <dl className="help-errors">
-            <div><dt>«квота исчерпана»</dt><dd>ElevenLabs отказал. Готовые треки на месте, остальные можно догенерировать после пополнения.</dd></div>
-            <div><dt>«нет места на диске»</dt><dd>На сервере не хватило места под трек. Квота за него не списана.</dd></div>
-            <div><dt>«ключ ElevenLabs отклонён»</dt><dd>Генерация остановлена. Нужен рабочий ключ на сервере.</dd></div>
-            <div><dt>«ошибок N» / «прогон упал»</dt><dd>Часть треков не получилась. Их можно догенерировать той же кнопкой, причина видна в карточке сцены; такой трек мог быть оплачен.</dd></div>
+            <div><dt>Quota exhausted</dt><dd>Existing tracks are safe. Top up before generating the rest.</dd></div>
+            <div><dt>Out of disk space</dt><dd>The server could not save the track. No quota was charged for it.</dd></div>
+            <div><dt>ElevenLabs key rejected</dt><dd>Generation stopped. Configure a working key.</dd></div>
+            <div><dt>Errors / run failed</dt><dd>Some tracks failed. Review their scene cards before generating again; a failed request may already have been charged.</dd></div>
           </dl>
         </HelpSub>
       </HelpSection>
 
-      <HelpSection id="terms" title="Короткий словарь" lead="Термины из подписей, статусов и сообщений системы.">
+      <HelpSection id="terms" title="Glossary" lead="Terms used in labels, statuses and messages.">
         <dl className="help-terms">
-          <div><dt>Каст</dt><dd>Персонажи книги: роль, актёр, число реплик, заметки и палитра.</dd></div><div><dt>Рассказчик</dt><dd>Отдельный голос повествования; его палитру диктор не меняет.</dd></div>
-          <div><dt>Дубль</dt><dd>Основная запись роли, закреплённой за этим актёром.</dd></div><div><dt>Проба</dt><dd>Запись роли без утверждённого назначения этому актёру.</dd></div>
-          <div><dt>Контекст</dt><dd>Соседние абзацы вокруг выбранной роли, показанные тусклее.</dd></div><div><dt>Авторское ударение</dt><dd>Произношение имени, места или придуманного слова.</dd></div>
-          <div><dt>Омограф</dt><dd>Одинаково написанное слово с разным чтением в зависимости от смысла.</dd></div><div><dt>ASR</dt><dd>Распознавание речи и сверка реплик со сценарием.</dd></div>
-          <div><dt>Покрытие</dt><dd>Доля ролей или реплик, для которых система видит запись.</dd></div><div><dt>Целостность</dt><dd>Проверка, что аудиофайл не изменился и не повредился.</dd></div>
-          <div><dt>NAS</dt><dd>Отдельное хранилище подтверждённых копий.</dd></div><div><dt>Опубликована</dt><dd>Глава проверена и открыта дикторам в «Записи».</dd></div>
-          <div><dt>«Имя?»</dt><dd>Актёр предложен на роль, но ещё не утверждён. Его зовут на пробу.</dd></div><div><dt>Маркер</dt><dd>Отметка звуковой разметки: сцена, переход или звук.</dd></div>
-          <div><dt>Эмбиент</dt><dd>Фоновая музыка под сцену, свой трек на каждую сцену.</dd></div><div><dt>Всё записано</dt><dd>Полная глава ушла в сведение: все роли записаны, и архив со всеми дублями скачан. Архив недописанной главы скачать можно, но таким она от этого не станет. У такой главы правки маркеров и новый эмбиент больше не помечают проект устаревшим.</dd></div><div><dt>Сдана</dt><dd>Глава сведена, прослушана и выложена; отмечается вручную администратором. Когда сданы все главы, предлагается перевести книгу в «Озвучена».</dd></div>
+          <div><dt>Cast</dt><dd>Roles, actors, line counts, notes and palettes for a book.</dd></div><div><dt>Narrator</dt><dd>The narrative voice, with a neutral palette that voice actors cannot edit.</dd></div>
+          <div><dt>Take</dt><dd>A main recording of a role approved for that actor.</dd></div><div><dt>Audition</dt><dd>A sample recording without an approved assignment to that actor.</dd></div>
+          <div><dt>Context</dt><dd>Dimmed paragraphs around a selected role's lines.</dd></div><div><dt>Author term pronunciation</dt><dd>Stress assigned to a name, location or invented word.</dd></div>
+          <div><dt>Homograph</dt><dd>A word with identical spelling but different pronunciation depending on meaning.</dd></div><div><dt>ASR</dt><dd>Speech recognition and comparison of recorded lines with the script.</dd></div>
+          <div><dt>Coverage</dt><dd>The proportion of expected roles or lines found in recordings.</dd></div><div><dt>File verification</dt><dd>Checksums confirming that audio files remain intact.</dd></div>
+          <div><dt>NAS</dt><dd>Separate storage for verified backup copies.</dd></div><div><dt>Published</dt><dd>A reviewed chapter made available to voice actors.</dd></div>
+          <div><dt>Name?</dt><dd>An actor suggested for a role and invited to audition, but not yet approved.</dd></div><div><dt>Marker</dt><dd>A scene, transition or sound annotation.</dd></div>
+          <div><dt>Ambience</dt><dd>A unique background music track for each scene.</dd></div><div><dt>All recorded</dt><dd>All roles are recorded and the full chapter archive has been downloaded for mixing. Downloading a partial archive does not give this status. Marker edits and new ambience no longer mark that project outdated.</dd></div><div><dt>Delivered</dt><dd>The chapter has been mixed, reviewed and published. An administrator marks it manually. When all chapters are delivered, the system offers to mark the book as recorded.</dd></div>
         </dl>
-        <div className="help-footer-actions"><Link className="ui-btn ui-btn--primary" to="/recording">Перейти к сценарию</Link><Link className="ui-btn ui-btn--secondary" to="/">Вернуться в библиотеку</Link></div>
+        <div className="help-footer-actions"><Link className="ui-btn ui-btn--primary" to="/recording">Open script</Link><Link className="ui-btn ui-btn--secondary" to="/">Back to library</Link></div>
       </HelpSection>
     </div>
   );

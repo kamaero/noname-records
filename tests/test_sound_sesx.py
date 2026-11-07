@@ -15,8 +15,8 @@ from sqlalchemy.pool import StaticPool
 import app.models  # noqa: F401
 import app.v2.models  # noqa: F401
 from app.db import Base
-from app.models import AudioFile, AsrJob, ScriptChapter, SoundMarker
-from app.services.audio_uploads import TAKE
+from app.models import AudioFile, AsrJob, ScriptBook, ScriptChapter, SoundMarker
+from app.services.audio_uploads import TAKE, derive_book_code
 from app.services.chapter_delivery import book_recording_status, session_markers
 from app.services.sound_store import add_marker, touch_sessions
 from app.time_utils import utcnow_naive
@@ -68,7 +68,7 @@ class TestSceneRunsToTheNextScene:
         markers, skipped = session_markers(db, "c1", starts, end=90.0)
 
         assert skipped == 0
-        assert [m.name.split(" · ")[0] for m in markers] == ["СЦЕНА 1", "СЦЕНА 2"]
+        assert [m.name.split(" · ")[0] for m in markers] == ["SCENE 1", "SCENE 2"]
         assert (markers[0].start, markers[0].duration) == (0.0, 40.0)
         assert (markers[1].start, markers[1].duration) == (40.0, 50.0), "последняя сцена — до конца главы"
 
@@ -83,7 +83,7 @@ class TestAnUnrecordedParagraphShiftsTheMarker:
         assert skipped == 0
         assert len(markers) == 1
         assert markers[0].start == 12.0
-        assert "абзац не записан, маркер сдвинут" in markers[0].comment
+        assert "paragraph not recorded; marker shifted" in markers[0].comment
 
 
 class TestAMarkerPastTheLastRecordedParagraphIsDropped:
@@ -133,7 +133,7 @@ class TestTheSceneNameSkipsEmptyParts:
 
         markers, _ = session_markers(db, "c1", starts, end=5.0)
 
-        assert markers[0].name == "СЦЕНА 1 · без места"
+        assert markers[0].name == "SCENE 1 · no location"
 
 
 class TestDismissedAndLostStayOffTheTimeline:
@@ -202,7 +202,8 @@ class TestBuildChapterSessionCarriesTheMarkers:
         chapter_id = "c1"
         for role in ("Гамук", "Рассказчик", "Тупуг"):
             item = AudioFile(
-                book_code="B1", original_filename=f"{role}.wav", stored_key=f"uploads/{role}.wav",
+                book_code=derive_book_code(db.get(ScriptBook, BOOK).title),
+                original_filename=f"{role}.wav", stored_key=f"uploads/{role}.wav",
                 canonical_filename=f"B1_Ch1_{role}.wav", mime_type="audio/wav", size_bytes=100,
                 chapter="1", role=role, kind=TAKE, duration_seconds=12.0,
             )
@@ -233,7 +234,7 @@ class TestBuildChapterSessionCarriesTheMarkers:
         with_markers = build_chapter_session(db, chapter_id)
 
         assert with_markers is not None
-        assert "<xmpDM:name>СЦЕНА 1" in with_markers
+        assert "<xmpDM:name>SCENE 1" in with_markers
 
     def test_session_fingerprint_is_stable_across_rebuilds(self, db):
         from app.services.chapter_delivery import build_chapter_session, session_fingerprint

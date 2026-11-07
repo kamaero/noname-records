@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-WORDING = {"mismatch": "не сходится сумма", "missing": "нет на месте"}
+WORDING = {"mismatch": 'checksum mismatch', "missing": 'file missing'}
 
 
 def integrity_notice(chapter_label: str, rows: list[dict]) -> str:
     """Строка в Телеграм о файлах главы, не прошедших сверку."""
     if not rows:
         return ""
-    lines = [f"⚠️ Целостность: {chapter_label}"]
+    lines = [f'⚠️ File integrity: {chapter_label}']
     for row in rows:
-        what = WORDING.get(str(row.get("verify_state") or ""), "проблема")
-        who = str(row.get("actor_name") or "").strip() or "актёр не указан"
+        what = WORDING.get(str(row.get("verify_state") or ""), 'problem')
+        who = str(row.get("actor_name") or "").strip() or 'actor not specified'
         lines.append(f"• {row.get('role') or '?'} — {who}: {what} ({row.get('canonical_filename') or ''})")
-    lines.append("Файл не удалён. Нужно попросить перезалить.")
+    lines.append('The file has not been deleted. Please request another upload.')
     return "\n".join(lines)
 
 
@@ -53,15 +53,14 @@ def mirror_notice(chapter_label: str, rows: list[dict]) -> str:
     """
     if not rows:
         return ""
-    lines = [f"⚠️ Зеркало: {chapter_label}"]
+    lines = [f'⚠️ Mirror: {chapter_label}']
     for row in rows:
-        who = str(row.get("actor_name") or "").strip() or "актёр не указан"
-        lines.append(f"• {row.get('role') or '?'} — {who}: не сошлась копия на NAS ({row.get('canonical_filename') or ''})")
+        who = str(row.get("actor_name") or "").strip() or 'actor not specified'
+        lines.append(f'• {row.get('role') or '?'} — {who}: NAS copy verification failed ({row.get('canonical_filename') or ''})')
     # Не обещаем повтора: файл с расхождением исключён из кругов зеркалирования
     # насовсем и ждёт человека. Обещать кнопку, которой нет, хуже, чем сказать,
     # что запись пока живёт в одном экземпляре.
-    lines.append("Файл на сервере цел, перезаливать его не нужно. Копирование само не повторится: "
-                 "пока зеркало не починено, запись существует в одном экземпляре.")
+    lines.append('The server file is intact; no upload is needed. Copying will not retry automatically. Until the mirror is repaired, only one copy exists.')
     return "\n".join(lines)
 
 

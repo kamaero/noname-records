@@ -250,7 +250,7 @@ def test_the_gate_hands_the_unknown_price_warning_to_the_response(factory):
     with factory() as db:
         assert _spend_gate.limit_gate(db, request, estimate_rub=0, unknown_price=True, what="звук") is None
     body = _spend_gate.with_warning(request, {"ok": True})
-    assert "не войдут в лимит" in body["spend_warning"]
+    assert "will not count towards the limit" in body["spend_warning"]
 
 
 # --- I8: неотправленное письмо не помечается отправленным ---------------------------------

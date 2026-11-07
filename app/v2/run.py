@@ -17,14 +17,15 @@ def merge_stats(into: dict, more: dict) -> dict:
     return into
 
 
-def attribute_chapter(units, *, cast, cast_lines, llm, review: bool = True, on_batch=None):
+def attribute_chapter(units, *, cast, cast_lines, llm, review: bool = True, on_batch=None,
+                      language: str = "ru"):
     """`(records, problems, stats)` — the main pass, then the second look at what came back weak."""
     records, problems, stats = attribute_units(
-        units, cast=cast, cast_lines=cast_lines, llm=llm, on_batch=on_batch,
+        units, cast=cast, cast_lines=cast_lines, llm=llm, on_batch=on_batch, language=language,
     )
     if review:
         records, more_problems, more_stats = review_low_confidence(
-            records, units, cast=cast, cast_lines=cast_lines, llm=llm,
+            records, units, cast=cast, cast_lines=cast_lines, llm=llm, language=language,
         )
         problems = problems + more_problems
         stats = merge_stats(dict(stats), more_stats)

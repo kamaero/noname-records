@@ -60,11 +60,11 @@ def test_shape_without_a_run_comes_from_the_counts_and_the_status():
     assert payload["model"]["rub_in"] > 0 and payload["model"]["peak_rub_in"] == payload["model"]["rub_in"] * 2
     assert payload["mode"] == "v2" and payload["run"] is None and payload["stop_requested"] is False
     assert [s["key"] for s in payload["steps"]] == list(STEP_KEYS)
-    assert [s["label"] for s in payload["steps"]] == ["Сегментация", "Персонажи", "Роли", "Ударения", "Проверка", "Публикация"]
+    assert [s["label"] for s in payload["steps"]] == ["Segments", "Characters", "Attribution", "Stress marks", "Review", "Publication"]
     assert _states(payload) == {"segment": "done", "cast": "done", "attribute": "pending", "stress": "pending", "review": "pending", "publish": "pending"}
     assert payload["review"] == {"total": 3, "approved": 0, "published": 0, "attributed": 2}
     details = {s["key"]: s["detail"] for s in payload["steps"]}
-    assert details["attribute"] == "глав 2/3" and details["stress"] == "глав 1/3" and details["segment"] == "сегментов 6"
+    assert details["attribute"] == "2/3 chapters" and details["stress"] == "1/3 chapters" and details["segment"] == "6 segments"
 
 
 def test_publish_is_done_only_when_published_and_review_before_it():
@@ -86,7 +86,7 @@ def test_the_review_step_counts_chapters_the_author_marked():
         payload = book_progress(db, BOOK)
 
     step = next(s for s in payload["steps"] if s["key"] == "review")
-    assert (step["state"], step["detail"]) == ("running", "проверено 1 из 3")
+    assert (step["state"], step["detail"]) == ("running", "1 of 3 reviewed")
     assert payload["review"] == {"total": 3, "approved": 1, "published": 0, "attributed": 3}
 
 
@@ -105,7 +105,7 @@ def test_a_running_run_marks_its_step_and_the_ones_after_it():
     states = _states(payload)
     # cast went by with nobody found → skipped; attribute is in flight; stress waits
     assert states == {"segment": "done", "cast": "skipped", "attribute": "running", "stress": "pending", "review": "pending", "publish": "pending"}
-    assert "идёт 2/3" in {s["key"]: s["detail"] for s in payload["steps"]}["attribute"]
+    assert "running 2/3" in {s["key"]: s["detail"] for s in payload["steps"]}["attribute"]
 
 
 def test_a_failed_run_marks_the_step_it_fell_on_with_the_error():
@@ -169,4 +169,4 @@ def test_publishing_is_running_while_only_some_chapters_are_out():
         payload = book_progress(db, BOOK)
 
     step = next(s for s in payload["steps"] if s["key"] == "publish")
-    assert (step["state"], step["detail"]) == ("running", "опубликовано 1 из 3")
+    assert (step["state"], step["detail"]) == ("running", "1 of 3 published")

@@ -57,7 +57,7 @@ function leadColor(segment: ReaderSegment, styleOf: ParagraphProps["styleOf"]): 
   return lead ? styleOf(lead.speaker)?.color || "transparent" : "transparent";
 }
 
-const OPERATOR_MARK = "изменено оператором";
+const OPERATOR_MARK = "edited by operator";
 
 export const Paragraph = memo(function Paragraph({
   segment,
@@ -122,8 +122,8 @@ export const Paragraph = memo(function Paragraph({
     <p id={segmentDomId(segment.id)} data-seg={segment.id} className={className} style={{ "--p-color": leadColor(segment, styleOf) } as CSSProperties}>
       {mark}
       {consilium ? (
-        <button type="button" className="v2r-cons-mark" data-seg={segment.id} title="Находка консилиума — открыть" aria-label="Открыть находку консилиума">
-          ИИ
+        <button type="button" className="v2r-cons-mark" data-seg={segment.id} title="Open AI review finding" aria-label="Open AI review finding">
+          AI
         </button>
       ) : null}
       {narration ? (
@@ -132,10 +132,10 @@ export const Paragraph = memo(function Paragraph({
           className={rolePicking ? "v2r-role-hint is-active" : "v2r-role-hint"}
           data-start={0}
           data-end={segment.text.length}
-          title="Переназначить роль"
-          aria-label="Переназначить роль абзаца"
+          title="Reassign role"
+          aria-label="Reassign paragraph role"
         >
-          роль
+          role
         </button>
       ) : null}
       {nodes}

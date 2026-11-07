@@ -6,7 +6,7 @@ char_memory_sync copies the canonical reply colour + voice actor onto matching
 characters. This module only supplies the missing trigger: pick the author.
 
 Conservative stem-aware surname match — tokens >=5 chars, prefix match — so
-'Примеродины Сад великанов' binds to 'Александр Примеродин' without false binds on
+'Примеровы Сад великанов' binds to 'Алексей Примеров' without false binds on
 common words. No confident match -> "" (book stays unbound).
 """
 from __future__ import annotations

@@ -132,40 +132,40 @@ export const ambientAudioUrl = (audioFileId: string) => `/api/v2/ambient/${encod
 
 /** Коды ошибок ручек эмбиента → слова для человека. */
 const AMBIENT_ERROR_LABELS: Record<string, string> = {
-  already_running: "Генерация уже идёт",
-  not_ready: "Глава записана не полностью",
-  nothing_to_do: "Нечего генерировать",
-  no_key: "Ключ ElevenLabs не задан на сервере",
-  not_placed: "У сцены нет места на таймлайне — сначала нужна запись",
-  not_scene: "Эмбиент бывает только у сцены",
-  bad_prompt: "Промпт не распознан или длиннее 2000 знаков",
-  queue_unavailable: "Очередь недоступна, попробуйте позже",
-  read_only: "Эмбиент запускает только редактор",
-  not_found: "Этой сцены уже нет — обновите страницу",
+  already_running: "Generation already running",
+  not_ready: "Chapter recording is incomplete",
+  nothing_to_do: "Nothing to generate",
+  no_key: "No ElevenLabs key configured on the server",
+  not_placed: "This scene has no timeline position; record it first",
+  not_scene: "Ambience is available for scenes only",
+  bad_prompt: "Prompt is invalid or exceeds 2,000 characters",
+  queue_unavailable: "Queue unavailable; try again later",
+  read_only: "Only editors can generate ambience",
+  not_found: "This scene no longer exists; refresh the page",
 };
 
-export function describeAmbientError(error: unknown, fallback = "сервер не ответил"): string {
+export function describeAmbientError(error: unknown, fallback = "the server did not respond"): string {
   const code = error instanceof ApiError ? error.errorCode : "";
   return AMBIENT_ERROR_LABELS[code] || describeApiError(error, fallback);
 }
 
 /** Коды ошибок ручек слоя → слова для человека. */
 const SOUND_ERROR_LABELS: Record<string, string> = {
-  bad_quote: "Этой цитаты нет в абзаце",
-  bad_segment: "Абзац из другой главы",
-  bad_place: "Такого места в книге нет — обновите страницу",
-  bad_kind: "Неизвестный вид маркера",
-  bad_name: "Имя места не может быть пустым",
-  bad_merge: "Решение по паре не распознано",
-  not_found: "Этого уже нет — его удалили или склеили. Обновите страницу",
-  already_running: "прогон уже идёт",
-  book_busy: "книга сейчас размечается",
-  no_credits: "не хватает денег на балансе RouterAI",
-  no_markup: "в главе нет разметки — читать нечего",
-  bad_mode: "Неизвестный режим прогона",
+  bad_quote: "This quote is not in the paragraph",
+  bad_segment: "This paragraph belongs to another chapter",
+  bad_place: "This location no longer exists; refresh the page",
+  bad_kind: "Unknown marker type",
+  bad_name: "Location name cannot be empty",
+  bad_merge: "Invalid decision for this pair",
+  not_found: "This item was deleted or merged. Refresh the page",
+  already_running: "a run is already in progress",
+  book_busy: "book annotation is running",
+  no_credits: "insufficient RouterAI balance",
+  no_markup: "this chapter has no annotation to process",
+  bad_mode: "Unknown run mode",
 };
 
-export function describeSoundError(error: unknown, fallback = "Не сохранилось."): string {
+export function describeSoundError(error: unknown, fallback = "Not saved."): string {
   const code = error instanceof ApiError ? error.errorCode : "";
   return SOUND_ERROR_LABELS[code] || describeApiError(error, fallback);
 }

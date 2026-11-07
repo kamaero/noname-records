@@ -91,13 +91,13 @@ export function AsrCoveragePage() {
     onSuccess: async (_result, chapter) => {
       pushToast({
         tone: "success",
-        title: "Распознавание запущено",
-        detail: `Глава ${chapter.chapter_index}. Минута машинного времени на файл — результат появится здесь сам.`,
+        title: "Transcription started",
+        detail: `Chapter ${chapter.chapter_index}. Allow about a minute per file; results will appear here automatically.`,
       });
       await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
     },
     onError: (error) =>
-      pushToast({ tone: "error", title: "Не запустилось", detail: describeApiError(error, "сервер не ответил") }),
+      pushToast({ tone: "error", title: "Could not start", detail: describeApiError(error, "the server did not respond") }),
   });
 
   /* Строгая проверка рассказчика — платный прогон. Сама ставится,
@@ -108,26 +108,26 @@ export function AsrCoveragePage() {
     onSuccess: async (_result, chapter) => {
       pushToast({
         tone: "success",
-        title: "Строгая проверка запущена",
-        detail: `Глава ${chapter.chapter_index}. Платный прогон запущен; результат появится здесь.`,
+        title: "Strict audit started",
+        detail: `Chapter ${chapter.chapter_index}. The paid audit has started; results will appear here.`,
       });
       await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
     },
     onError: async (error) => {
       const detail = error instanceof ApiError && error.errorCode === "chapter_not_assembled"
-        ? "Глава изменилась — соберите её заново"
+        ? "The chapter has changed. Rebuild it first"
         : error instanceof ApiError && error.errorCode === "already_queued"
-          ? "Проверка уже ожидает или выполняется; повтор не запущен"
+          ? "An audit is already queued or running; no duplicate was started"
           : error instanceof ApiError && error.errorCode === "audit_disabled"
-            ? "Строгая проверка отключена"
+            ? "Strict audit is disabled"
             : error instanceof ApiError && error.errorCode === "audit_missing_key"
-              ? "Добавьте ключ RouterAI в настройках нейросетей"
+              ? "Add a RouterAI key in AI settings"
               : error instanceof ApiError && error.errorCode === "audit_over_limit"
-                ? "Месячный лимит исчерпан; проверьте настройки трат"
+                ? "Monthly limit reached; check spending settings"
                 : error instanceof ApiError && error.errorCode === "audit_budget_unavailable"
-                  ? "Не удалось проверить месячный лимит"
-            : describeApiError(error, "сервер не ответил");
-      pushToast({ tone: "error", title: "Не запустилось", detail });
+                  ? "Could not check the monthly limit"
+            : describeApiError(error, "the server did not respond");
+      pushToast({ tone: "error", title: "Could not start", detail });
       await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
     },
   });
@@ -143,18 +143,18 @@ export function AsrCoveragePage() {
       ),
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
-      if (result.all_released && !result.voiced && window.confirm("Все главы сданы. Перевести книгу в «Озвучена»?")) {
+      if (result.all_released && !result.voiced && window.confirm("All chapters are delivered. Mark the book as recorded?")) {
         try {
           await apiPostJson(`/api/v2/books/${encodeURIComponent(bookId)}/voiced`, { voiced: true });
           await queryClient.invalidateQueries({ queryKey: ["books"] });
           navigate(`/books/${encodeURIComponent(bookId)}?thanks=1`);
         } catch (error) {
-          pushToast({ tone: "error", title: "Книга не переведена", detail: describeApiError(error, "сервер не ответил") });
+          pushToast({ tone: "error", title: "Book status not changed", detail: describeApiError(error, "the server did not respond") });
         }
       }
     },
     onError: (error) =>
-      pushToast({ tone: "error", title: "Отметка не сохранилась", detail: describeApiError(error, "сервер не ответил") }),
+      pushToast({ tone: "error", title: "Mark not saved", detail: describeApiError(error, "the server did not respond") }),
   });
 
   const verify = useMutation({
@@ -163,8 +163,8 @@ export function AsrCoveragePage() {
     onSuccess: async (_result, chapter) => {
       pushToast({
         tone: "success",
-        title: "Сверка запущена",
-        detail: `Глава ${chapter.chapter_index}. Файлы перечитываются с диска сервера — на большую главу это несколько минут.`,
+        title: "Alignment started",
+        detail: `Chapter ${chapter.chapter_index}. Files are being read from the server; large chapters may take several minutes.`,
       });
       await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
     },
@@ -172,10 +172,10 @@ export function AsrCoveragePage() {
       // Дедупликация на сервере отвечает 409 already_queued: сверка уже идёт, а не
       // «не вышло» — кнопка не должна врать про провал там, где просто нельзя запускать дважды.
       if (error instanceof ApiError && error.errorCode === "already_queued") {
-        pushToast({ tone: "error", title: "Не вышло", detail: "Сверка уже идёт." });
+        pushToast({ tone: "error", title: "Could not complete the action", detail: "Alignment is already running." });
         return;
       }
-      pushToast({ tone: "error", title: "Не вышло", detail: describeApiError(error, "сервер не ответил") });
+      pushToast({ tone: "error", title: "Could not complete the action", detail: describeApiError(error, "the server did not respond") });
     },
   });
 
@@ -189,10 +189,10 @@ export function AsrCoveragePage() {
       const plan = await ambientPlan(chapter.chapter_id);
       if (!plan.tracks) return { started: false, nothing: true, skipped: plan.skipped };
       const skipped = plan.skipped
-        ? `, ${plan.skipped} ${plural(plan.skipped, "сцена", "сцены", "сцен")} без места на таймлайне ${plural(plan.skipped, "пропускается", "пропускаются", "пропускаются")}`
+        ? `, ${plan.skipped} ${plural(plan.skipped, "scene", "scenes", "scenes")} without a timeline position ${plural(plan.skipped, "will be skipped", "will be skipped", "will be skipped")}`
         : "";
-      const tracks = `${plan.tracks} ${plural(plan.tracks, "трек", "трека", "треков")}`;
-      if (!window.confirm(`Сгенерировать ${tracks} · ${plan.minutes} мин эмбиента?\n\nСпишется ${tracks} из квоты ElevenLabs${skipped}.`)) {
+      const tracks = `${plan.tracks} ${plural(plan.tracks, "track", "tracks", "tracks")}`;
+      if (!window.confirm(`Generate ${tracks} · ${plan.minutes} min of ambience? This will use ${tracks} from your ElevenLabs quota${skipped}.`)) {
         return { started: false, nothing: false, skipped: 0 };
       }
       await startChapterAmbient(chapter.chapter_id);
@@ -202,22 +202,22 @@ export function AsrCoveragePage() {
       if (result.nothing) {
         pushToast({
           tone: "error",
-          title: "Нечего генерировать",
+          title: "Nothing to generate",
           detail: result.skipped
-            ? `Глава ${chapter.chapter_index}: у сцен без трека нет места на таймлайне.`
-            : `Глава ${chapter.chapter_index}: у всех сцен уже есть трек.`,
+            ? `Chapter ${chapter.chapter_index}: scenes without tracks have no timeline position.`
+            : `Chapter ${chapter.chapter_index}: all scenes already have tracks.`,
         });
         return;
       }
       if (!result.started) return;
       pushToast({
         tone: "success",
-        title: "Эмбиент запущен",
-        detail: `Глава ${chapter.chapter_index}. Трек сочиняется минутами — ход виден здесь, треки лягут в проект главы.`,
+        title: "Ambience generation started",
+        detail: `Chapter ${chapter.chapter_index}. Each track takes minutes to generate. Track progress here; completed tracks appear in the chapter project.`,
       });
       await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не запустилось", detail: describeAmbientError(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Could not start", detail: describeAmbientError(error) }),
   });
 
   // Без подтверждения: остановка ничего не тратит, а текущий трек (уже оплачиваемый)
@@ -227,12 +227,12 @@ export function AsrCoveragePage() {
     onSuccess: async (result, chapter) => {
       pushToast(
         result.stopped
-          ? { tone: "success", title: "Остановка запрошена — текущий трек доделается", detail: `Глава ${chapter.chapter_index}.` }
-          : { tone: "error", title: "Нечего останавливать", detail: `Глава ${chapter.chapter_index}: генерация уже закончилась.` },
+          ? { tone: "success", title: "Stop requested; the current track will finish", detail: `Chapter ${chapter.chapter_index}.` }
+          : { tone: "error", title: "Nothing to stop", detail: `Chapter ${chapter.chapter_index}: generation has already finished.` },
       );
       await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не остановилось", detail: describeAmbientError(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Could not stop", detail: describeAmbientError(error) }),
   });
 
   const chapters = coverage.data?.chapters ?? [];
@@ -246,17 +246,17 @@ export function AsrCoveragePage() {
     if (row.ambient_state === "running") {
       return (
         <>
-          <span className="asr-ambient num" title="Треки сочиняются по одному, каждый ложится в проект главы сразу">
-            эмбиент {row.ambient_done}/{row.ambient_done + row.ambient_todo}
+          <span className="asr-ambient num" title="Tracks are generated one at a time and added to the chapter project immediately">
+            ambience {row.ambient_done}/{row.ambient_done + row.ambient_todo}
           </span>
           <button
             type="button"
             className="asr-run"
             disabled={stopAmbient.isPending}
             onClick={stopRow(() => stopAmbient.mutate(row))}
-            title="Остановить генерацию: текущий трек доделается, следующие не начнутся"
+            title="Stop generation after the current track finishes"
           >
-            стоп
+            stop
           </button>
         </>
       );
@@ -268,16 +268,16 @@ export function AsrCoveragePage() {
           className="asr-run"
           disabled={ambient.isPending}
           onClick={stopRow(() => ambient.mutate(row))}
-          title={`Сгенерировать в ElevenLabs по уникальному треку сценам без готового: ${row.ambient_todo - row.ambient_skipped}`}
+          title={`Generate a unique ElevenLabs track for each scene without one: ${row.ambient_todo - row.ambient_skipped}`}
         >
-          эмбиент
+          ambience
         </button>
       );
     }
     if (row.ambient_state === "done") {
       return (
-        <span className="asr-ambient" title={`У всех сцен главы, что стоят на таймлайне, есть трек: ${row.ambient_done}`}>
-          эмбиент ✓
+        <span className="asr-ambient" title={`All chapter scenes on the timeline have tracks: ${row.ambient_done}`}>
+          ambience ✓
         </span>
       );
     }
@@ -293,22 +293,22 @@ export function AsrCoveragePage() {
       return (
         <span
           className="asr-ambient-note asr-broken"
-          title="Файл трека эмбиента не прошёл сверку — архив главы не соберётся. Перегенерируйте трек в карточке сцены (Читалка → Звук)"
+          title="An ambience file failed verification, so the chapter archive cannot be built. Regenerate it in the scene card (Reader → Sound)"
         >
-          · битый эмбиент: {row.ambient_broken}
+          · damaged ambience: {row.ambient_broken}
         </span>
       );
     }
     const [note, title] =
       row.ambient_state === "quota"
-        ? ["квота исчерпана", "ElevenLabs отказал: квота треков исчерпана. Готовые треки на месте — остальные можно догенерировать после пополнения"]
+        ? ["quota exhausted", "ElevenLabs track quota is exhausted. Existing tracks are safe; generate the rest after topping up"]
         : row.ambient_state === "bad_key"
-          ? ["ключ ElevenLabs отклонён", "ElevenLabs не принял ключ сервера — генерация остановлена. Готовые треки на месте; нужен рабочий ELEVENLABS_API_KEY"]
+          ? ["ElevenLabs key rejected", "ElevenLabs rejected the server key. Existing tracks are safe; set a valid ELEVENLABS_API_KEY"]
           : row.ambient_state === "disk_full"
-          ? ["нет места на диске", "На диске сервера не хватило места под трек — квота за него не списана"]
+          ? ["out of disk space", "The server ran out of disk space for this track; no quota was charged"]
           : row.ambient_state === "failed"
-            ? [row.ambient_failed ? `ошибок ${row.ambient_failed}` : "прогон упал",
-               "Часть треков не вышла — их можно догенерировать кнопкой; причина в карточке сцены"]
+            ? [row.ambient_failed ? `errors ${row.ambient_failed}` : "run failed",
+               "Some tracks failed. Use the button to generate them again; see each scene card for details"]
             : ["", ""];
     if (!note) return null;
     return (
@@ -322,66 +322,70 @@ export function AsrCoveragePage() {
     () => [
       {
         key: "title",
-        header: "Глава",
+        header: "Chapter",
         render: (row) => (
           <span className="asr-title">
             {/* Треугольник не кнопка, а указатель: нажимается вся строка, и своя
                 мишень рядом с общей только сбивала бы с толку. */}
             <span className="asr-caret" aria-hidden="true">{openChapters.has(row.chapter_id) ? "▾" : "▸"}</span>
             <span className="asr-index num">{row.chapter_index}.</span>
-            <span className="asr-title-text" title={row.chapter_title || "Без названия"}>{row.chapter_title || "Без названия"}</span>
-            {row.integrity_bad > 0 || row.session_outdated || row.session_markers_skipped > 0 ? <span className="asr-broken" title="Есть проблема с файлами или проектом — раскройте главу">⚠</span> : null}
-            {row.released_at ? <span className="asr-done" title="Сведена, прослушана, выложена">Сдана · {shortDate(row.released_at)}</span> : null}
-            {row.delivered_at && !row.released_at ? <span className="asr-done" title="Архив скачан целиком — сведение началось">всё записано</span> : null}
+            <span className="asr-title-text" title={row.chapter_title || "Untitled"}>{row.chapter_title || "Untitled"}</span>
+            {row.integrity_bad > 0 || row.session_outdated || row.session_markers_skipped > 0 ? <span className="asr-broken" title="There is a file or project issue; expand the chapter">⚠</span> : null}
+            {row.released_at ? <span className="asr-done" title="Mixed, reviewed and published">Delivered · {shortDate(row.released_at)}</span> : null}
+            {row.delivered_at && !row.released_at ? <span className="asr-done" title="The full archive was downloaded; mixing has started">all recorded</span> : null}
           </span>
         ),
       },
       {
         key: "asr",
-        header: "Запись реплик",
+        header: "Recorded lines",
         className: "asr-col-bar",
         render: (row) => {
           if (row.asr_coverage === null) {
             return row.recorded_roles && canDownload ? (
               <button type="button" className="asr-run" disabled={recognise.isPending}
                 onClick={stopRow(() => recognise.mutate(row))}
-                title="Распознать записанное и сверить со сценарием">распознать</button>
+                title="Transcribe recordings and compare with the script">transcribe</button>
             ) : <span className="cast-muted">—</span>;
           }
           const whole = row.asr_coverage >= 1;
           const value = whole ? 100 : Math.min(99, Math.round(row.asr_coverage * 100));
           return (
-            <span className="asr-bar" role="progressbar" aria-label={`Найдено реплик: ${row.matched_lines} из ${row.total_lines}`}
+            <div>
+            <span className={row.asr_language_stale ? "asr-bar is-profile-stale" : "asr-bar"} role="progressbar"
+              aria-label={`${row.asr_language_stale ? "Previous language, saved lines" : "Lines found"}: ${row.matched_lines} of ${row.total_lines}`}
               aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.max(0, value))}>
               <span className={whole ? "asr-bar-fill is-ready" : "asr-bar-fill"} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
               <span className={whole ? "asr-bar-value num" : "asr-bar-value num asr-holes"}>{value}% · {row.matched_lines}/{row.total_lines}</span>
             </span>
+            {row.asr_language_stale ? <small className="asr-profile-stale">Previous book language · review needed</small> : null}
+            </div>
           );
         },
       },
       {
         key: "audit",
-        header: "Рассказчик",
+        header: "Narrator",
         align: "right",
         className: "asr-col-audit",
         nowrap: true,
         render: (row) => {
           const audit = row.audit;
           const busy = audit?.status === "queued" || audit?.status === "running" || audit?.status === "unknown";
-          const label = !audit ? "—" : audit.status === "unknown" ? "исход неизвестен" : busy ? "проверяется…"
-            : audit.status === "stale" ? "устарела"
-            : audit.status === "failed" ? "ошибка"
-            : audit.status === "skipped" ? "пропущен"
-            : audit.confirmed > 0 ? `${audit.confirmed} подтр.`
-            : audit.flags > 0 ? `${audit.flags} флаг.` : "✓";
-          const title = !audit ? "Аудит ещё не запускался"
-            : audit.status === "unknown" ? "Исход неизвестен — повтор не выполняется. Проверьте журнал задач."
-            : audit.status === "stale" ? "Сценарий или запись изменились после проверки; соберите главу заново"
-            : audit.status === "failed" ? "Прогон остановлен; причину смотрите в журнале задач"
+          const label = !audit ? "—" : audit.status === "unknown" ? "outcome unknown" : busy ? "auditing…"
+            : audit.status === "stale" ? "outdated"
+            : audit.status === "failed" ? "error"
+            : audit.status === "skipped" ? "skipped"
+            : audit.confirmed > 0 ? `${audit.confirmed} confirmed`
+            : audit.flags > 0 ? `${audit.flags} flagged` : "✓";
+          const title = !audit ? "No audit yet"
+            : audit.status === "unknown" ? "Outcome unknown; no automatic retry. Check the task log."
+            : audit.status === "stale" ? "The script or recording changed after the audit. Rebuild the chapter"
+            : audit.status === "failed" ? "The run stopped. See the task log for details"
             : audit.status === "skipped" ? (audit.error_message?.includes("narrator_input_changed_after_payment")
-              ? "Состав рассказчика изменился во время проверки. Оплаченный результат сохранён; автоматический повтор запрещён."
-              : "Проверка пропущена; условия и исход оплаты смотрите в журнале задач")
-            : `Строгая проверка (${audit.model}): отклонений ${audit.flags}, подтверждено ${audit.confirmed}. Цена STT ${audit.stt_cost_rub == null ? "неизвестна" : `${audit.stt_cost_rub.toFixed(2)} ₽`}`;
+              ? "The narrator recording changed during the audit. The paid result is saved; automatic retry is disabled."
+              : "Audit skipped. See the task log for conditions and payment status")
+            : `Strict audit (${audit.model}): flagged ${audit.flags}, confirmed ${audit.confirmed}. STT cost ${audit.stt_cost_rub == null ? "unknown" : `${audit.stt_cost_rub.toFixed(2)} ₽`}`;
           return (
             <span className="asr-links">
               <span className={audit?.confirmed ? "num asr-holes" : "cast-muted"} title={title}>{label}</span>
@@ -391,9 +395,9 @@ export function AsrCoveragePage() {
                   className="asr-run"
                   disabled={auditChapter.isPending}
                   onClick={stopRow(() => auditChapter.mutate(row))}
-                  title="Платная проверка сборки рассказчика; стоимость зависит от длительности и тарифов, повтор оплачивается заново"
+                  title="Paid audit of the assembled narrator recording. Cost depends on duration and rates; each retry is charged separately"
                 >
-                  {audit ? "повторить" : "проверить"}
+                  {audit ? "retry" : "audit"}
                 </button>
               ) : null}
             </span>
@@ -402,19 +406,19 @@ export function AsrCoveragePage() {
       },
       {
         key: "backup",
-        header: "Бэкап",
+        header: "Backup",
         className: "asr-col-backup",
         render: (row) => {
           const total = row.mirrored_files + row.unmirrored_files;
           if (!total) return <span className="cast-muted">—</span>;
-          if (row.mirror_broken || row.stale_unmirrored) return <span className="asr-broken" title={row.mirror_broken ? "Копия на NAS не прошла сверку; файл на сервере цел" : "Копия ожидается больше суток; проверьте NAS"}>Ошибка</span>;
-          if (row.unmirrored_files) return <span className="cast-muted" title={`На NAS скопировано ${row.mirrored_files} из ${total} файлов`}>Копируется</span>;
-          return <span title={`Все ${total} файлов главы подтверждены на NAS`}>Есть ✓</span>;
+          if (row.mirror_broken || row.stale_unmirrored) return <span className="asr-broken" title={row.mirror_broken ? "NAS copy failed verification; the server file is intact" : "Copy pending for over a day; check the NAS"}>Error</span>;
+          if (row.unmirrored_files) return <span className="cast-muted" title={`Copied to NAS: ${row.mirrored_files} of ${total} files`}>Copying</span>;
+          return <span title={`All ${total} chapter files verified on NAS`}>Verified ✓</span>;
         },
       },
       {
         key: "get",
-        header: <span className="asr-sr">Архив</span>,
+        header: <span className="asr-sr">Archive</span>,
         align: "right",
         className: "asr-col-get",
         nowrap: true,
@@ -426,9 +430,9 @@ export function AsrCoveragePage() {
               className="asr-get asr-release"
               disabled={release.isPending}
               onClick={stopRow(() => release.mutate(row))}
-              title={row.released_at ? "Убрать отметку «Сдана»" : "Глава сведена, прослушана и выложена"}
+              title={row.released_at ? "Remove delivered mark" : "Chapter mixed, reviewed and published"}
             >
-              {row.released_at ? "Снять отметку" : "Глава сдана"}
+              {row.released_at ? "Remove mark" : "Chapter delivered"}
             </button>
           ) : null}
           {row.recorded_roles && canDownload ? (
@@ -441,9 +445,9 @@ export function AsrCoveragePage() {
                   className="asr-get"
                   href={`/api/v2/chapters/${encodeURIComponent(row.chapter_id)}/archive.zip`}
                   onClick={stopRow()}
-                  title={`${row.ready ? "Дубли главы" : "То, что уже записано"}, эмбиент и сессия Audition одним архивом. Распакуйте и откройте сессия.sesx — файлы найдутся сами`}
+                  title={`${row.ready ? "Chapter takes" : "Existing recordings"}, ambience and the Audition session in one archive. Extract it and open the .sesx session; files are linked automatically`}
                 >
-                  {row.ready ? "архив" : "часть архива"}
+                  {row.ready ? "archive" : "partial archive"}
                 </a>
                 {ambientControl(row)}
               </span>
@@ -470,12 +474,12 @@ export function AsrCoveragePage() {
       if (!openChapters.has(row.chapter_id)) return null;
       return <>
         <div className="asr-detail-status">
-          {row.integrity_bad > 0 ? <span className="asr-broken">Не прошли проверку файлов: {row.integrity_bad}</span>
-            : row.integrity_checked ? <span>Файлы проверены: {row.integrity_ok} ✓</span>
-            : row.integrity_files > 0 && row.integrity_skipped === row.integrity_files ? <span>Для проверки файлов нет контрольных сумм</span>
-            : row.recorded_roles && canDownload ? <button type="button" className="asr-run" disabled={verify.isPending} onClick={() => verify.mutate(row)}>Проверить файлы</button> : null}
-          {row.session_outdated ? <span className="asr-broken">Проект устарел</span> : null}
-          {row.session_markers_skipped > 0 ? <span className="asr-broken">{row.session_markers_skipped} {plural(row.session_markers_skipped, "маркер", "маркера", "маркеров")} без места</span> : null}
+          {row.integrity_bad > 0 ? <span className="asr-broken">File verification failed: {row.integrity_bad}</span>
+            : row.integrity_checked ? <span>Files verified: {row.integrity_ok} ✓</span>
+            : row.integrity_files > 0 && row.integrity_skipped === row.integrity_files ? <span>No checksums available for file verification</span>
+            : row.recorded_roles && canDownload ? <button type="button" className="asr-run" disabled={verify.isPending} onClick={() => verify.mutate(row)}>Verify files</button> : null}
+          {row.session_outdated ? <span className="asr-broken">Project outdated</span> : null}
+          {row.session_markers_skipped > 0 ? <span className="asr-broken">{row.session_markers_skipped} {plural(row.session_markers_skipped, "marker", "markers", "markers")} without a position</span> : null}
         </div>
         <ChapterFilesRow chapterId={row.chapter_id} bookId={bookId} canDelete={canDeleteTakes} />
       </>;
@@ -501,20 +505,20 @@ export function AsrCoveragePage() {
   return (
     <div className="asr">
       <PageHeader
-        title="ASR · покрытие"
+        title="ASR · coverage"
         subtitle={
           coverage.isLoading
-            ? "Считаю покрытие…"
+            ? "Calculating coverage…"
             : total
-              ? `Глав: ${total} · в работе ${started} · готовы ${ready} · всё записано ${delivered} · сданы ${released}${missingLines ? ` · не найдено реплик ${missingLines}` : ""}`
-              : "Ни одной главы"
+              ? `Chapters: ${total} · in progress ${started} · ready ${ready} · all recorded ${delivered} · delivered ${released}${missingLines ? ` · missing lines ${missingLines}` : ""}`
+              : "No chapters"
         }
         actions={
           books.length > 1 ? (
             <select
               className="ui-input asr-book"
               value={bookId}
-              aria-label="Книга"
+              aria-label="Book"
               onChange={(event) => setParams({ book_id: event.target.value }, { replace: true })}
             >
               {books.map((item) => (
@@ -531,16 +535,16 @@ export function AsrCoveragePage() {
         <div
           className="asr-book-bar"
           role="progressbar"
-          aria-label={`Собрано глав книги ${book ? `«${book.display_title || book.title}»` : ""}`}
+          aria-label={`Assembled chapters for book ${book ? `«${book.display_title || book.title}»` : ""}`}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={bookPercent}
-          title="Собранная глава — все роли записаны и файл проекта .sesx лежит на NAS. «Запись реплик» показывает найденные распознаванием реплики сценария"
+          title="A chapter is assembled when all roles are recorded and its .sesx project is on the NAS. Recorded lines shows script lines found by transcription"
         >
           <span className={chapters.length && assembled === chapters.length ? "asr-book-fill is-ready" : "asr-book-fill"} style={{ width: `${bookPercent}%` }} />
           <span className="asr-book-title">{book ? book.display_title || book.title : "—"}</span>
           <span className="asr-book-value num">
-            собрано глав {assembled}<span className="asr-of"> из {chapters.length}</span> · {bookPercent}%
+            chapters assembled {assembled}<span className="asr-of"> of {chapters.length}</span> · {bookPercent}%
           </span>
         </div>
         <Button
@@ -550,25 +554,32 @@ export function AsrCoveragePage() {
           icon={<Icon name="filter" />}
           onClick={() => setOnlyStarted((value) => !value)}
         >
-          Только начатые
+          Started only
         </Button>
-        {onlyStarted ? <span className="asr-count num">{rows.length} из {total}</span> : null}
+        {onlyStarted ? <span className="asr-count num">{rows.length} of {total}</span> : null}
       </div>
+
+      {coverage.data?.asr_language_stale ? (
+        <p className="ui-note" role="status">
+          Some ASR results use the previous book language. Their coverage is retained for reference and needs review.
+          Changing the language does not transcribe recordings again; starting transcription is a separate paid action.
+        </p>
+      ) : null}
 
       {coverage.isError ? (
         <div className="ui-note ui-note--error" role="alert">
-          Не удалось загрузить покрытие: {describeApiError(coverage.error, "сервер не ответил")}.
+          Could not load coverage: {describeApiError(coverage.error, "the server did not respond")}.
         </div>
       ) : (
         <DataTable
           className="asr-table"
-          aria-label="Покрытие книги по главам"
+          aria-label="Book coverage by chapter"
           columns={columns}
           rows={rows}
           rowKey={(row) => row.chapter_id}
           onRowClick={toggleChapter}
           rowClassName={(row) => (row.released_at ? "asr-row-released" : undefined)}
-          rowLabel={(row) => `Опись главы ${row.chapter_index}. ${row.chapter_title}`}
+          rowLabel={(row) => `Chapter inventory ${row.chapter_index}. ${row.chapter_title}`}
           renderDetail={renderDetail}
           loading={coverage.isLoading || booksQuery.isLoading}
           skeletonRows={8}
@@ -577,12 +588,12 @@ export function AsrCoveragePage() {
               icon="mic"
               text={
                 onlyStarted
-                  ? "Ни одну главу ещё не начали записывать."
+                  ? "No chapters have recordings yet."
                   : book
-                    ? "У книги нет глав, открытых для записи."
-                    : "Ни одна книга ещё не опубликована для дикторов."
+                    ? "This book has no chapters open for recording."
+                    : "No books have been published to voice actors yet."
               }
-              action={<LinkButton to="/recording">Открыть сценарий</LinkButton>}
+              action={<LinkButton to="/recording">Open script</LinkButton>}
             />
           }
         />

@@ -58,7 +58,7 @@ def test_a_balance_that_is_not_json_says_no_data():
 
 
 def test_claude_and_openai_have_no_balance_api():
-    assert pc.balance("claude", "k", http=Http(Resp(200, {})))["detail"] == "провайдер не сообщает баланс"
+    assert pc.balance("claude", "k", http=Http(Resp(200, {})))["detail"] == "The provider does not report a balance"
 
 
 def test_routerai_balance_reads_the_same_field_as_the_run_meter():
@@ -87,4 +87,4 @@ def test_insufficient_balance_in_the_body_is_no_money():
 ])
 def test_junk_or_unknown_balance_is_no_data_not_zero(provider, payload):
     got = pc.balance(provider, "k", http=Http(Resp(200, payload)))
-    assert got["available"] is False and got["amount"] is None and got["detail"] == "нет данных"
+    assert got["available"] is False and got["amount"] is None and got["detail"] == "No data"

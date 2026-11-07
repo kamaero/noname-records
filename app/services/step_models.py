@@ -31,17 +31,17 @@ class Step:
 
 _ROUTED = ("routerai", "openrouter")
 STEPS: dict[str, Step] = {s.key: s for s in (
-    Step("attribution", "разметки", "Разметка реплик", ("deepseek", "claude", "routerai", "openrouter", "openai"),
+    Step("attribution", "attribution", "Dialogue attribution", ("deepseek", "claude", "routerai", "openrouter", "openai"),
          ("deepseek", "deepseek-v4-pro")),
-    Step("characters", "поиска персонажей", "Персонажи книги", ("deepseek", "claude", "routerai", "openrouter", "openai"),
+    Step("characters", "character extraction", "Book characters", ("deepseek", "claude", "routerai", "openrouter", "openai"),
          ("deepseek", "deepseek-v4-pro")),
-    Step("consilium_reader_1", "консилиума", "Консилиум: первый чтец", _ROUTED, ("routerai", "anthropic/claude-opus-5")),
-    Step("consilium_reader_2", "консилиума", "Консилиум: второй чтец", _ROUTED, ("routerai", "openai/gpt-5.6-sol")),
-    Step("consilium_arbiter", "консилиума", "Консилиум: арбитр", _ROUTED, ("routerai", "anthropic/claude-opus-5")),
-    Step("sound", "звуковой разметки", "Звуковая разметка", _ROUTED, ("routerai", "anthropic/claude-opus-5")),
-    Step("ambient_text", "эмбиента", "Эмбиент: описание сцены", _ROUTED, ("routerai", "anthropic/claude-opus-5")),
-    Step("ambient_audio", "эмбиента", "Эмбиент: звук", ("elevenlabs",), ("elevenlabs", "music_v2")),
-    Step("asr", "сверки записей", "Распознавание речи", ("openai", "routerai", "azure"), ("openai", "whisper-1")),
+    Step("consilium_reader_1", "review", "Review: first reader", _ROUTED, ("routerai", "anthropic/claude-opus-5")),
+    Step("consilium_reader_2", "review", "Review: second reader", _ROUTED, ("routerai", "openai/gpt-5.6-sol")),
+    Step("consilium_arbiter", "review", "Review: arbiter", _ROUTED, ("routerai", "anthropic/claude-opus-5")),
+    Step("sound", "sound planning", "Sound planning", _ROUTED, ("routerai", "anthropic/claude-opus-5")),
+    Step("ambient_text", "ambience", "Ambience: scene description", _ROUTED, ("routerai", "anthropic/claude-opus-5")),
+    Step("ambient_audio", "ambience", "Ambience: audio", ("elevenlabs",), ("elevenlabs", "music_v2")),
+    Step("asr", "recording alignment", "Speech recognition", ("openai", "routerai", "azure"), ("openai", "whisper-1")),
 )}
 
 CACHE_SECONDS = 30
@@ -85,10 +85,10 @@ def step_model(key: str) -> tuple[str, str]:
 def set_step_model(db, key: str, provider: str, model: str, *, actor: str) -> None:
     step = STEPS.get(key)
     if step is None:
-        raise ValueError("нет такого шага")
+        raise ValueError("Unknown step")
     provider, model = str(provider or "").strip(), str(model or "").strip()
     if provider not in step.providers or not model:
-        raise ValueError("этот шаг не работает с таким провайдером")
+        raise ValueError("This step does not support that provider")
     row = db.get(StepModel, key) or StepModel(step=key)
     row.provider, row.model, row.updated_by = provider, model, actor
     db.add(row)
@@ -109,8 +109,8 @@ def require_key_for(key: str) -> None:
 
     provider, _model = step_model(key)
     if not provider_key(provider):
-        raise MissingKeyError(f"Для {STEPS[key].label} нужен ключ {PROVIDER_LABELS.get(provider, provider)} — "
-                              "добавьте его в «Настройки → Нейросети».")
+        raise MissingKeyError(f"{STEPS[key].title} requires a {PROVIDER_LABELS.get(provider, provider)} key. "
+                              "Add it in Settings → AI providers.")
 
 
 _CURRENCY = {"RUB": "₽", "USD": "$"}
@@ -125,7 +125,7 @@ def _options(step: Step) -> list[dict]:
 
         return [{"provider": item.provider, "model": item.model, "label": item.label,
                  "price": (f"{item.price_in:g} / {item.price_out:g}".replace(".", ",")
-                           + f" {_CURRENCY.get(item.currency, item.currency)} за 1 млн токенов (вход / выход)"),
+                           + f" {_CURRENCY.get(item.currency, item.currency)} per 1M tokens (input / output)"),
                  "trains_on_text": item.trains_on_text, "note": item.note}
                 for item in CATALOG if item.provider in step.providers]
     provider, model = _default(step)

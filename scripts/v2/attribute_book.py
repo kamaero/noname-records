@@ -55,6 +55,7 @@ def main() -> int:
     from app.models import Character, LlmUsageLog, ScriptBook, ScriptChapter
     from app.v2.llm import make_llm
     from app.v2.store import load_chapter_segments, store_attributions
+    from app.v2.reader import effective_attributions
     from app.v2.units import units_from_segments
 
     engine = create_engine(f"sqlite:///{args.db}")
@@ -90,10 +91,15 @@ def main() -> int:
                 print(f"  глава {chapter.chapter_index}: нет v2_segments — сначала segment_book.py")
                 continue
             units = units_from_segments(segments)
+            manual_ids = {
+                segment_id for segment_id, rows in effective_attributions(db, [s.id for s in segments]).items()
+                if any(row.source == "operator" for row in rows)
+            }
+            units = [unit for unit in units if unit.id not in manual_ids]
             if limit:
                 units = units[:limit]
             heading_ids = {s.id for s in segments if s.kind == "heading"}
-            cast, cast_lines = cast_for_chapter(characters, chapter.chapter_index)
+            cast, cast_lines = cast_for_chapter(characters, chapter.chapter_index, language=getattr(book, "language", "ru"))
             jobs.append({
                 "chapter_id": chapter.id,
                 "chapter_index": chapter.chapter_index,
@@ -102,6 +108,7 @@ def main() -> int:
                 "units": [u for u in units if u.id not in heading_ids],
                 "cast": cast,
                 "cast_lines": cast_lines,
+                "language": getattr(book, "language", "ru"),
             })
         if not jobs:
             return 1
@@ -115,6 +122,7 @@ def main() -> int:
             records, problems, stats = attribute_chapter(
                 job["units"], cast=job["cast"], cast_lines=job["cast_lines"], llm=llm,
                 review=not args.no_review,
+                language=job["language"],
             )
             return {**job, "records": heading_records(job["headings"]) + records,
                     "problems": problems, "stats": stats, "elapsed": time.monotonic() - started}

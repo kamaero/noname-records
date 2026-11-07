@@ -60,21 +60,21 @@ def _normalize_person_name(value: str) -> str:
 
 
 def _book_status_message(book, curr: str, detail: str) -> str:
-    title = str(getattr(book, "title", "") or getattr(book, "display_title", "") or "Без названия").strip()
+    title = str(getattr(book, "title", "") or getattr(book, "display_title", "") or "Untitled").strip()
     if curr == "failed":
         text = (
-            f"❌ {studio.name()} — ошибка\n"
-            f"Книга: {title}\n"
-            f"Пайплайн остановился с ошибкой. Открой «Подготовка книги», проверь лог и перезапусти после правки."
+            f"❌ {studio.name()} — processing failed\n"
+            f"Book: {title}\n"
+            "Book processing stopped with an error. Open the book hub, check the log and restart after resolving it."
         )
         if detail:
-            text += f"\nПричина: {detail[:220]}"
+            text += f"\nReason: {detail[:220]}"
         return text
     # Success completion (author_review): the pipeline finished, ready to review.
     return (
-        f"✅ {studio.name()} — книга обработана\n"
-        f"Книга: {title}\n"
-        f"Пайплайн завершён, можно проверять разметку во вкладке «Валидация»."
+        f"✅ {studio.name()} — book processed\n"
+        f"Book: {title}\n"
+        "Book processing is complete. You can review the attribution in the Reader."
     )
 
 
@@ -250,16 +250,16 @@ def notify_book_ready_for_recording(db, book) -> tuple[int, int]:
     ).count()
     if opened and opened < total:
         scope = (
-            f"Открыто глав: {opened} из {total} — автор проверяет книгу дальше,\n"
-            "остальные будут появляться по мере проверки."
+            f"Chapters available: {opened} of {total}. The author is continuing the review;\n"
+            "more chapters will become available as they are approved."
         )
     else:
-        scope = "Авторская проверка завершена, все главы опубликованы."
+        scope = "Author review is complete; all chapters are published."
     text = (
-        f"ЭВМ им. Н. Кадышевой информирует: книга \"{book.title}\" готова к записи.\n"
-        "Статус: опубликовано для Dictor Pro/Neo\n"
+        f"{studio.name()}: the book \"{book.title}\" is ready to record.\n"
+        "Status: available to voice actors\n"
         f"{scope}\n"
-        "Всем занять места у микрофонов!"
+        "You can start recording your assigned roles."
     )
     sent = send_telegram_message(db, text, chat_ids=cast_chat_ids or None)
     db.add(
@@ -316,8 +316,8 @@ def max_download_bytes() -> int:
 def size_text(num_bytes: int) -> str:
     """Предел словами для диктора: «2 ГБ», а не «2000 МБ», которые читаются как опечатка."""
     if num_bytes >= 1000 * 1024 * 1024:
-        return f"{round(num_bytes / 1024 ** 3)} ГБ"
-    return f"{num_bytes // (1024 * 1024)} МБ"
+        return f"{round(num_bytes / 1024 ** 3)} GB"
+    return f"{num_bytes // (1024 * 1024)} MB"
 
 
 @contextlib.contextmanager

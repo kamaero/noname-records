@@ -39,44 +39,44 @@ export function RoleTraps({ bookId, role, fresh, onFresh, chapterHref, heading }
     enabled: Boolean(bookId && role),
   });
 
-  if (query.isLoading) return <SkeletonPanel label={`Собираю редкие слова роли «${role}»…`} lines={6} />;
+  if (query.isLoading) return <SkeletonPanel label={`Collecting rare words for role «${role}»…`} lines={6} />;
   if (query.isError || !query.data) {
-    return <div className="v2r-empty"><p>{describeApiError(query.error, "Не удалось собрать слова-ловушки.")}</p></div>;
+    return <div className="v2r-empty"><p>{describeApiError(query.error, "Could not load pronunciation traps.")}</p></div>;
   }
   const chapters = query.data.chapters;
   const total = chapters.reduce((sum, chapter) => sum + chapter.words.length, 0);
   const unmarked = chapters.reduce((sum, chapter) => sum + chapter.words.filter((word) => !word.stressed).length, 0);
 
   return (
-    <article className="v2r-page v2r-traps" lang="ru">
+    <article className="v2r-page v2r-traps">
       <div className="v2r-traps-head">
         <p className="v2r-traps-lead">
-          Редкие слова из реплик роли — в них легко ошибиться, читая в потоке. Пробегите главу глазами до записи.
-          {unmarked > 0 ? <> Слово с «?» — ударение ещё не проставлено: проверьте его.</> : null}
+          Rare words in this role's lines that are easy to mispronounce. Review them before recording.
+          {unmarked > 0 ? <> A word marked with ? has no stress assigned yet. Check it.</> : null}
         </p>
-        <div className="v2r-seg" role="group" aria-label="Какие слова показывать">
+        <div className="v2r-seg" role="group" aria-label="Words to show">
           <button type="button" className={fresh ? "v2r-seg-btn is-on" : "v2r-seg-btn"} aria-pressed={fresh}
-            onClick={() => onFresh(true)} title="Слово — только в главе, где роль встречает его впервые">
-            только новые
+            onClick={() => onFresh(true)} title="Show each word only in the chapter where the role first encounters it">
+            new only
           </button>
           <button type="button" className={!fresh ? "v2r-seg-btn is-on" : "v2r-seg-btn"} aria-pressed={!fresh}
-            onClick={() => onFresh(false)} title="Все редкие слова каждой главы, даже знакомые по прошлым">
-            все
+            onClick={() => onFresh(false)} title="All rare words in each chapter, including previously seen words">
+            all
           </button>
         </div>
       </div>
 
       {total === 0 ? (
-        <div className="v2r-empty"><p>В репликах роли «{role}» редких слов нет.</p></div>
+        <div className="v2r-empty"><p>Role «{role}» has no rare words in its lines.</p></div>
       ) : (
         chapters.map((chapter) => (
           <section key={chapter.chapter_id} className="v2r-rolescript-chapter">
             <h2 className="v2r-rolescript-h">
-              <Link to={chapterHref(chapter.chapter_id)} title="Открыть главу целиком">
+              <Link to={chapterHref(chapter.chapter_id)} title="Open full chapter">
                 {heading(chapter.chapter_index, chapter.chapter_title)}
               </Link>
               <span className="num">
-                {chapter.words.length} {plural(chapter.words.length, "слово", "слова", "слов")}
+                {chapter.words.length} {plural(chapter.words.length, "word", "words", "words")}
               </span>
             </h2>
             <p className="v2r-traps-words">
@@ -86,8 +86,8 @@ export function RoleTraps({ bookId, role, fresh, onFresh, chapterHref, heading }
                   <span
                     className={word.stressed ? "v2r-trap" : "v2r-trap v2r-trap--unmarked"}
                     title={word.stressed
-                      ? `${stressSourceLabel(word.source)}${word.count > 1 ? ` · ${word.count} раза в главе` : ""}`
-                      : "Ударение не проставлено — проверьте"}
+                      ? `${stressSourceLabel(word.source)}${word.count > 1 ? ` · ${word.count} times in chapter` : ""}`
+                      : "No stress assigned; check this word"}
                   >
                     {word.stressed ?? word.word}
                     {word.stressed ? null : <sup>?</sup>}

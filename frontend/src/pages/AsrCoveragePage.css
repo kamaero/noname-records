@@ -125,6 +125,9 @@
 .asr-run:disabled { color: var(--text-faint); cursor: default; }
 
 .asr-holes { color: var(--amber); }
+.asr-profile-stale { color: var(--text); }
+.asr-bar.is-profile-stale .asr-bar-fill { background: var(--text-dim); opacity: 0.15; }
+.asr-bar.is-profile-stale .asr-bar-value { color: var(--text); }
 .asr-holes-count { font-size: 11px; }
 
 .asr-links { display: inline-flex; gap: 2px; }

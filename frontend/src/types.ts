@@ -940,6 +940,8 @@ export type BookRecordingChapter = {
   /** null — распознавание не запускали; ноль означал бы «ничего не произнесено» */
   asr_coverage: number | null;
   asr_files: number;
+  asr_language_stale?: boolean;
+  asr_stale_files?: number;
   /** все реплики главы — знаменатель покрытия, включая роли, которых ещё не записали */
   total_lines: number;
   matched_lines: number;
@@ -1019,6 +1021,7 @@ export type ChapterRecordingRole = {
   /** сколько дублей у роли — длина `takes` */
   files: number;
   asr_coverage: number | null;
+  asr_language_stale?: boolean;
   matched_lines: number;
   missing_lines: number;
   duration_seconds: number;
@@ -1029,6 +1032,9 @@ export type ChapterRecordingRole = {
 export type ChapterRecordingResponse = {
   ok: boolean;
   chapter_id: string;
+  language?: "ru" | "en";
+  asr_language_stale?: boolean;
+  asr_stale_files?: number;
   chapter_index: number;
   chapter_title: string;
   roles: ChapterRecordingRole[];
@@ -1045,6 +1051,8 @@ export type ChapterRecordingResponse = {
 
 export type BookRecordingResponse = {
   ok: boolean;
+  language?: "ru" | "en";
+  asr_language_stale?: boolean;
   chapters: BookRecordingChapter[];
   total_chapters: number;
   ready_chapters: number;

@@ -84,15 +84,15 @@ def test_the_admin_has_the_broadcast_button(db):
 def test_the_book_flow_reaches_only_approved_cast_and_narrator(db):
     out = handle_update(db, _msg(BROADCAST_BUTTON), now=NOW)
     labels = [b["text"] for b in _buttons(out)]
-    assert "Сад великанов. Книга 3" in labels and "Всем дикторам" in labels
+    assert "Сад великанов. Книга 3" in labels and "All voice actors" in labels
     out = handle_update(db, _press(_pick(out, "Книга 3")), now=NOW)
-    out = handle_update(db, _press(_pick(out, "Утверждённым")), now=NOW)
-    assert "2 человека" in _texts(out)[0]  # Ольга (две роли — один раз) и рассказчик
+    out = handle_update(db, _press(_pick(out, "Approved actors")), now=NOW)
+    assert "2 people" in _texts(out)[0]  # Ольга (две роли — один раз) и рассказчик
     out = handle_update(db, _msg("Главы 1–10 готовы к записи!"), now=NOW)
     preview = "\n".join(_texts(out))
     assert "📢 Сад великанов. Книга 3" in preview and "Главы 1–10 готовы к записи!" in preview
-    assert "без Telegram: Без Телеграма" in preview
-    out = handle_update(db, _press(_pick(out, "Отправить")), now=NOW)
+    assert "without Telegram: Без Телеграма" in preview
+    out = handle_update(db, _press(_pick(out, "Send")), now=NOW)
     job = [o for o in out if o.method == "broadcast"]
     assert len(job) == 1
 
@@ -102,21 +102,21 @@ def test_the_book_flow_reaches_only_approved_cast_and_narrator(db):
     db.commit()
     assert [chat for chat, _ in sent] == ["41"]
     assert sent[0][1].startswith("📢 Сад великанов. Книга 3\n\nГлавы 1–10")
-    assert "Ушло: 1" in summary and "Без Телеграма" in summary
+    assert "sent: 1" in summary and "Без Телеграма" in summary
     assert db.query(AuditLog).filter_by(action="bot_broadcast").count() == 1
 
 
 def test_proposed_ones_are_added_on_request(db):
     out = handle_update(db, _msg(BROADCAST_BUTTON), now=NOW)
     out = handle_update(db, _press(_pick(out, "Книга 3")), now=NOW)
-    out = handle_update(db, _press(_pick(out, "позванным на пробу")), now=NOW)
-    assert "3 человека" in _texts(out)[0]
+    out = handle_update(db, _press(_pick(out, "invited to audition")), now=NOW)
+    assert "3 people" in _texts(out)[0]
 
 
 def test_everyone_means_every_dictor(db):
     out = handle_update(db, _msg(BROADCAST_BUTTON), now=NOW)
-    out = handle_update(db, _press(_pick(out, "Всем дикторам")), now=NOW)
-    assert "4 человека" in _texts(out)[0]
+    out = handle_update(db, _press(_pick(out, "All voice actors")), now=NOW)
+    assert "4 people" in _texts(out)[0]
     handle_update(db, _msg("Всем привет"), now=NOW)
     bc = db.query(BotBroadcast).one()
     chats = sorted(chat for _, chat in bot_broadcast.recipients(db, bc) if chat)
@@ -125,9 +125,9 @@ def test_everyone_means_every_dictor(db):
 
 def test_pressing_send_twice_sends_once(db):
     out = handle_update(db, _msg(BROADCAST_BUTTON), now=NOW)
-    out = handle_update(db, _press(_pick(out, "Всем дикторам")), now=NOW)
+    out = handle_update(db, _press(_pick(out, "All voice actors")), now=NOW)
     out = handle_update(db, _msg("Текст"), now=NOW)
-    send = _pick(out, "Отправить")
+    send = _pick(out, "Send")
     first = handle_update(db, _press(send), now=NOW)
     second = handle_update(db, _press(send), now=NOW)
     assert len([o for o in first if o.method == "broadcast"]) == 1
@@ -136,7 +136,7 @@ def test_pressing_send_twice_sends_once(db):
 
 def test_cancel_stops_the_broadcast(db):
     out = handle_update(db, _msg(BROADCAST_BUTTON), now=NOW)
-    out = handle_update(db, _press(_pick(out, "Отмена")), now=NOW)
+    out = handle_update(db, _press(_pick(out, "Cancel")), now=NOW)
     assert db.query(BotBroadcast).one().state == "cancelled"
     out = handle_update(db, _msg("Просто текст"), now=NOW)
     assert db.query(BotBroadcast).one().text == ""
@@ -146,13 +146,13 @@ def test_a_dictor_can_neither_start_nor_press(db):
     out = handle_update(db, _msg(BROADCAST_BUTTON, tid="41"), now=NOW)
     assert db.query(BotBroadcast).count() == 0
     admin = handle_update(db, _msg(BROADCAST_BUTTON), now=NOW)
-    out = handle_update(db, _press(_pick(admin, "Всем дикторам"), tid="41"), now=NOW)
+    out = handle_update(db, _press(_pick(admin, "All voice actors"), tid="41"), now=NOW)
     assert db.query(BotBroadcast).one().state == "choose"
 
 
 def test_a_broadcast_left_for_an_hour_is_forgotten(db):
     out = handle_update(db, _msg(BROADCAST_BUTTON), now=NOW)
-    handle_update(db, _press(_pick(out, "Всем дикторам")), now=NOW)
+    handle_update(db, _press(_pick(out, "All voice actors")), now=NOW)
     handle_update(db, _msg("Поздний текст"), now=NOW + timedelta(hours=2))
     assert db.query(BotBroadcast).one().text == ""
 
@@ -161,7 +161,7 @@ def test_a_broadcast_left_for_an_hour_is_forgotten(db):
 
 def _ready(db, text="Текст"):
     out = handle_update(db, _msg(BROADCAST_BUTTON), now=NOW)
-    out = handle_update(db, _press(_pick(out, "Всем дикторам")), now=NOW)
+    out = handle_update(db, _press(_pick(out, "All voice actors")), now=NOW)
     out = handle_update(db, _msg(text), now=NOW)
     return out
 
@@ -177,7 +177,7 @@ def test_two_presses_from_stale_sessions_send_once(tmp_path):
         db.commit()
         out = _ready(db)
         db.commit()
-        send = _pick(out, "Отправить")
+        send = _pick(out, "Send")
     a, b = make(), make()
     held = (a.query(BotBroadcast).one(), b.query(BotBroadcast).one())  # обе сессии прочли «confirm» и держат его
     first = handle_update(a, _press(send), now=NOW)
@@ -217,18 +217,18 @@ def test_a_failed_send_is_not_blamed_on_start(db):
     _ready(db)
     bc = db.query(BotBroadcast).one()
     summary = bot_broadcast.deliver(db, bc.id, send=lambda chat, text: False, now=NOW)
-    assert "Не дошло" in summary and "Start" not in summary
+    assert "Not delivered" in summary and "Start" not in summary
 
 
 def test_too_long_text_is_refused_not_cut(db):
     out = _ready(db, text="а" * 5000)
-    assert "длинн" in " ".join(_texts(out)) and db.query(BotBroadcast).one().state == "text"
+    assert "too long" in " ".join(_texts(out)) and db.query(BotBroadcast).one().state == "text"
 
 
 def test_the_old_password_button_is_not_taken_as_text(db):
     from app.services.bot_dialog import BUTTON_TEXT
     out = handle_update(db, _msg(BROADCAST_BUTTON), now=NOW)
-    handle_update(db, _press(_pick(out, "Всем дикторам")), now=NOW)
+    handle_update(db, _press(_pick(out, "All voice actors")), now=NOW)
     handle_update(db, _msg(BUTTON_TEXT), now=NOW)
     assert db.query(BotBroadcast).one().text == ""
 

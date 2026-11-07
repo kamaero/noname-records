@@ -3,10 +3,10 @@ set -euo pipefail
 
 NONAME_REPO="${NONAME_REPO:-https://github.com/kamaero/noname-records.git}"
 NONAME_ARCHIVE_URL="${NONAME_ARCHIVE_URL:-${NONAME_REPO%.git}/archive/refs/heads/main.tar.gz}"
-target="${HOME:?Не задан домашний каталог}/noname-records"
+target="${HOME:?Home directory is not set}/noname-records"
 
 if [[ -f "$target/.env" ]]; then
-  echo "Система уже установлена в $target. Обновление: cd \"$target\" && ./update.sh"
+  echo "Noname Records is already installed in $target. To update: cd \"$target\" && ./update.sh"
   exit 0
 fi
 noninteractive=0
@@ -14,7 +14,7 @@ for arg in "$@"; do
   if [[ "$arg" == "--yes" || "$arg" == "--dry-run" ]]; then noninteractive=1; fi
 done
 if ((!noninteractive)) && ! (: </dev/tty) 2>/dev/null; then
-  echo "Для ответов на вопросы нужен терминал. Откройте Терминал и запустите команду там." >&2
+  echo "An interactive terminal is required. Open Terminal and run this command there." >&2
   exit 1
 fi
 run_installer() {
@@ -26,11 +26,11 @@ run_installer() {
 }
 if [[ -e "$target" ]]; then
   if [[ -f "$target/install.sh" && -f "$target/Dockerfile" ]]; then
-    echo "Продолжаю установку из $target..."
+    echo "Continuing installation from $target..."
     run_installer "$@"
     exit
   fi
-  echo "Папка $target уже существует, но файлов системы в ней нет. Переименуйте её и запустите установку снова; существующие файлы не изменены." >&2
+  echo "The directory $target already exists, but contains no Noname Records installation. Rename it and run the installer again; existing files have not been changed." >&2
   exit 1
 fi
 
@@ -44,17 +44,17 @@ download_archive() {
   elif command -v wget >/dev/null 2>&1; then
     wget -qO "$stage/source.tar.gz" "$NONAME_ARCHIVE_URL"
   else
-    echo "Для загрузки нужен curl или wget. Установите одну из этих программ и повторите команду." >&2
+    echo "Downloading requires curl or wget. Install either tool and run this command again." >&2
     exit 1
   fi
 }
 
 if command -v git >/dev/null 2>&1 && [[ "${NONAME_FORCE_ARCHIVE:-0}" != 1 ]]; then
-  echo "Скачиваю Noname Records через Git..."
+  echo "Downloading Noname Records with Git..."
   git clone --depth 1 "$NONAME_REPO" "$stage/checkout"
   source_dir="$stage/checkout"
 else
-  echo "Скачиваю архив Noname Records..."
+  echo "Downloading the Noname Records archive..."
   download_archive
   mkdir "$stage/extract"
   tar -xzf "$stage/source.tar.gz" -C "$stage/extract"
@@ -62,17 +62,17 @@ else
   roots=("$stage/extract"/*)
   shopt -u nullglob
   if (("${#roots[@]}" != 1)) || [[ ! -d "${roots[0]}" ]]; then
-    echo "Архив имеет неожиданный вид. Установка остановлена; попробуйте скачать его снова." >&2
+    echo "The archive has an unexpected structure. Installation stopped; try downloading it again." >&2
     exit 1
   fi
   source_dir="${roots[0]}"
 fi
 
 if [[ ! -f "$source_dir/install.sh" || ! -f "$source_dir/update.sh" || ! -f "$source_dir/Dockerfile" ]]; then
-  echo "В загрузке нет нужных файлов системы. Установка остановлена." >&2
+  echo "The download is missing required application files. Installation stopped." >&2
   exit 1
 fi
 mv "$source_dir" "$target"
-echo "Система скачана в $target"
+echo "Noname Records downloaded to $target"
 
 run_installer "$@"

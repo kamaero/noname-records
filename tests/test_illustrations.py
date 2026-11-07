@@ -130,7 +130,7 @@ def factory():
     Base.metadata.create_all(engine)
     make = sessionmaker(bind=engine, autocommit=False, autoflush=False)
     with make() as db:
-        db.add(Author(id="a1", name="Александр Примеродин", slug="primerodin"))
+        db.add(Author(id="a1", name="Алексей Примеров", slug="primerov"))
         db.add(ScriptBook(id="b1", title="Карта Переправы", source_filename="k.fb2", source_format="fb2",
                           author_id="a1", pipeline_mode="v2"))
         db.add(AuthorCharacter(id="c1", author_id="a1", canonical_name="Дгарнин",
@@ -260,7 +260,7 @@ def test_portret_bez_stati_vsyo_ravno_pokazyvaetsya(factory, tmp_path):
 
 
 def test_tip_beryotsya_iz_baytov_a_ne_iz_podpisi(factory, tmp_path, monkeypatch):
-    """У Примеродина все картинки подписаны `image/jpg`, а внутри PNG/WebP/JPEG."""
+    """У Примерова все картинки подписаны `image/jpg`, а внутри PNG/WebP/JPEG."""
     _load(factory, tmp_path)
     first = _ids(factory)[0]
     with factory() as db:

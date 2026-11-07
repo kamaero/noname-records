@@ -9,7 +9,7 @@ def _reset():
 
 
 def _book_with_author(db, slug):
-    a = ap.get_or_create_author(db, slug, "Примеродин")
+    a = ap.get_or_create_author(db, slug, "Примеров")
     book = ScriptBook(title="t", display_title="t", source_filename="t.txt", source_format="txt", author_id=a.id)
     db.add(book); db.flush()
     return a, book
@@ -18,7 +18,7 @@ def _book_with_author(db, slug):
 def test_roster_text_confirmed_only_compact():
     _reset()
     with SessionLocal() as db:
-        a = ap.get_or_create_author(db, "primerodin_roster", "Примеродин")
+        a = ap.get_or_create_author(db, "primerov_roster", "Примеров")
         ap.upsert_character(db, a.id, canonical_name="Хубол", aliases=["Полумракский Купец"], status="confirmed")
         ap.upsert_character(db, a.id, canonical_name="Агг", aliases=[], status="confirmed")
         ap.upsert_character(db, a.id, canonical_name="Шум", aliases=[], status="unconfirmed")
@@ -39,11 +39,13 @@ def test_roster_text_empty_without_author():
 def test_roster_system_suffix_wraps_or_empty():
     _reset()
     with SessionLocal() as db:
-        a = ap.get_or_create_author(db, "primerodin_suffix", "Примеродин")
+        a = ap.get_or_create_author(db, "primerov_suffix", "Примеров")
         ap.upsert_character(db, a.id, canonical_name="Хубол", aliases=["Купец"], status="confirmed")
         db.commit()
         suffix = author_seed.author_roster_system_suffix(db, a.id)
         assert "ИЗВЕСТНЫЙ КАНОН АВТОРА" in suffix and "Хубол (Купец)" in suffix
+        english = author_seed.author_roster_system_suffix(db, a.id, language="en")
+        assert "CONFIRMED AUTHOR ROSTER" in english and "Хубол (Купец)" in english
         assert author_seed.author_roster_system_suffix(db, "") == ""
 
 
@@ -53,14 +55,14 @@ def test_link_matches_and_fills_color_actor_when_empty():
         a, book = _book_with_author(db, "rud_link")
         ap.upsert_character(db, a.id, canonical_name="Хубол", aliases=["Полумракский Купец"], status="confirmed")
         canon = ap.find_character(db, a.id, "Хубол")
-        canon.reply_color = "#660000"; canon.actor_name = "Примеродин Александр"; db.flush()
+        canon.reply_color = "#660000"; canon.actor_name = "Примеров Алексей"; db.flush()
         ch = Character(book_id=book.id, name="Полумракский Купец")
         db.add(ch); db.flush()
         result = author_seed.link_character_to_author(db, book, ch)
         assert result == {"matched": True, "color_set": True, "actor_set": True}
         assert ch.author_character_id == canon.id
         assert ch.character_color == "#660000"
-        assert ch.actor_name == "Примеродин Александр"
+        assert ch.actor_name == "Примеров Алексей"
 
 
 def test_link_never_overwrites_existing_book_values():

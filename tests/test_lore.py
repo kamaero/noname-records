@@ -55,8 +55,8 @@ def factory():
     Base.metadata.create_all(engine)
     make = sessionmaker(bind=engine, autocommit=False, autoflush=False)
     with make() as db:
-        db.add(Author(id="a1", name="Александр Примеродин", slug="primerodin"))
-        db.add(ScriptBook(id="b1", title="Карта Переправы", display_title='Примеродины - "Карта Переправы"',
+        db.add(Author(id="a1", name="Алексей Примеров", slug="primerov"))
+        db.add(ScriptBook(id="b1", title="Карта Переправы", display_title='Примеровы - "Карта Переправы"',
                           source_filename="k.docx", source_format="docx", author_id="a1", pipeline_mode="v2"))
         db.add(ScriptBook(id="b2", title="Чужая книга", source_filename="x.txt", source_format="txt"))
         db.add(AuthorCharacter(id="c1", author_id="a1", canonical_name="Бимькмолепус",
@@ -83,7 +83,7 @@ def _loaded(factory, tmp_path):
     sections = parse_lore_fb2(FB2.encode("utf-8"), wanted=BOOK_WORLD)
     images = parse_images(FB2.encode("utf-8"))
     with factory() as db:
-        summary = import_lore(db, "a1", sections, images, author_slug="primerodin", root=str(tmp_path))
+        summary = import_lore(db, "a1", sections, images, author_slug="primerov", root=str(tmp_path))
         db.commit()
     return summary
 
@@ -151,7 +151,7 @@ def test_diktor_vidit_lor(factory, tmp_path, monkeypatch):
     answer = _client(factory, ["dictor"], monkeypatch).get("/api/v2/books/b1/lore")
     assert answer.status_code == 200
     body = answer.json()
-    assert body["author"]["name"] == "Александр Примеродин"
+    assert body["author"]["name"] == "Алексей Примеров"
     assert [a["title"] for a in body["articles"]] == ["Полумрак. Бароны", "Полумрак. Карта мира", "Нежить"]
 
 
@@ -225,7 +225,7 @@ def _book_with_role(canon_id: str = "c1"):
     Base.metadata.create_all(engine)
     make = sessionmaker(bind=engine, autocommit=False, autoflush=False)
     with make() as db:
-        db.add(Author(id="a1", name="Александр Примеродин", slug="primerodin"))
+        db.add(Author(id="a1", name="Алексей Примеров", slug="primerov"))
         db.add(ScriptBook(id="b1", title="Карта Переправы", source_filename="k.docx",
                           source_format="docx", author_id="a1", pipeline_mode="v2"))
         db.add(ScriptChapter(id="ch1", book_id="b1", chapter_index=1, chapter_title="Глава 1",

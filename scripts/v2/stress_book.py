@@ -57,6 +57,21 @@ def main() -> int:
         print("ОТКАЗ: это продовая база. v2 строится рядом с работающей системой, а не в ней.")
         return 2
 
+    engine = create_engine(f"sqlite:///{args.db}")
+    SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    from app.models import ScriptBook, ScriptChapter
+
+    with SessionLocal() as db:
+        book = db.get(ScriptBook, args.book_id)
+        if book is None:
+            print(f"Book {args.book_id} was not found.")
+            return 1
+        if getattr(book, "language", "ru") == "en":
+            print("Skipped: Russian stress marking does not apply to English books.")
+            return 0
+        author_map = load_author_map(pathlib.Path(args.author))
+        author_map.update(load_author_layer(db, book))
+
     context = None
     if not args.no_context:
         from app.v2.stress_ruaccent import context_layer
@@ -64,16 +79,6 @@ def main() -> int:
         started = time.time()
         context = context_layer()
         print("RUAccent:", "загружен за %.0f с" % (time.time() - started) if context else "недоступен — слой пропущен")
-
-    engine = create_engine(f"sqlite:///{args.db}")
-    SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-    from app.models import ScriptBook, ScriptChapter
-
-    author_map = load_author_map(pathlib.Path(args.author))
-    with SessionLocal() as db:
-        book = db.get(ScriptBook, args.book_id)
-        if book is not None:
-            author_map.update(load_author_layer(db, book))
     print(f"авторский слой: {len(author_map)} слов")
     resolver = Resolver.default(author=author_map, context=context)
 

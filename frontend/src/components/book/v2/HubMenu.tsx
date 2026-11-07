@@ -56,10 +56,10 @@ export function HubMenu({ items, bookTitle, onDelete, deletePending }: HubMenuPr
 
   return (
     <details ref={ref} className="hub-menu" onToggle={(event) => !(event.currentTarget as HTMLDetailsElement).open && setConfirming(false)}>
-      <summary className="ui-btn ui-btn--secondary ui-btn--icon hub-menu-summary" aria-label="Ещё действия" title="Ещё действия">
+      <summary className="ui-btn ui-btn--secondary ui-btn--icon hub-menu-summary" aria-label="More actions" title="More actions">
         <Icon name="dots" />
       </summary>
-      <div className="hub-menu-pop" role="menu" aria-label="Действия с книгой">
+      <div className="hub-menu-pop" role="menu" aria-label="Book actions">
         {items.map((item) => (
           <button
             key={item.key}
@@ -82,7 +82,7 @@ export function HubMenu({ items, bookTitle, onDelete, deletePending }: HubMenuPr
           <DeleteBookConfirm title={bookTitle} pending={deletePending} onConfirm={onDelete} onCancel={() => setConfirming(false)} />
         ) : (
           <button type="button" role="menuitem" className="hub-menu-item is-danger" onClick={() => setConfirming(true)}>
-            <span>Удалить книгу</span>
+            <span>Delete book</span>
           </button>
         )}
       </div>

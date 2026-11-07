@@ -58,16 +58,25 @@ def store_attributions(db, records) -> int:
         .all()
     )
 
+    from app.services.role_identity import book_roles
+    segment_books = dict(db.query(V2Segment.id, V2Segment.book_id).filter(V2Segment.id.in_(list(by_segment))).all())
+    identities = {book_id: book_roles(db, book_id) for book_id in set(segment_books.values())}
+    # Все ссылки проверяются до первой вставки: неоднозначное имя не оставляет
+    # половину новой версии разметки в транзакции вызывающего.
+    refs = {(segment_id, index): identities[segment_books[segment_id]].ref(str(record["speaker"]))
+            if segment_id in segment_books else ""
+            for segment_id, spans in by_segment.items() for index, record in enumerate(spans)}
     stored = 0
     for segment_id, spans in by_segment.items():
         version = int(current.get(segment_id) or 0) + 1
-        for record in spans:
+        for index, record in enumerate(spans):
             db.add(V2Attribution(
                 id=str(uuid.uuid4()),
                 segment_id=segment_id,
                 span_start=int(record["span_start"]),
                 span_end=int(record["span_end"]),
                 speaker=str(record["speaker"]),
+                role_ref=refs[(segment_id, index)],
                 confidence=float(record.get("confidence") or 0.0),
                 source=str(record.get("source") or "llm"),
                 version=version,

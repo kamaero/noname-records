@@ -181,7 +181,7 @@ def test_pick_existing_card_attaches_telegram_only_when_free(db):
     second = db.query(BotDemoIntake).filter_by(sender_key="tg:888").one()
     out = handle_update(db, _press(f"dm:p:{second.id}:u61"), now=NOW)
     assert db.query(TelegramAuthAccount).filter_by(telegram_user_id="888").count() == 0
-    assert any("Telegram не привязан" in t for t in _texts(out))
+    assert any("Telegram was not linked" in t for t in _texts(out))
     assert db.get(BotDemoIntake, second.id).user_id == "u61"
 
 
@@ -189,7 +189,7 @@ def test_foreign_id_not_revived(db):
     _user(db, "u90", "Старый Аккаунт", tid="900", active="false")
     db.commit()
     out = handle_update(db, _fwd(900, first="Анна", last="Новая"), now=NOW)
-    assert "выключена" in _question(out)
+    assert "disabled" in _question(out)
     intake = db.query(BotDemoIntake).one()
     handle_update(db, _press(f"dm:n:{intake.id}"), now=NOW)
     made = db.get(User, db.get(BotDemoIntake, intake.id).user_id)
@@ -212,7 +212,7 @@ def test_two_open_intakes_need_reply(db):
     one = handle_update(db, _fwd(777, mid=100), now=NOW)
     two = handle_update(db, _fwd(888, mid=200, first="Павел", last="Орлов"), now=NOW)
     hint = handle_update(db, _text("Орлов Павел"), now=NOW)
-    assert any("открыто 2" in t for t in _texts(hint))
+    assert any("open questions: 2" in t for t in _texts(hint))
     handle_update(db, _text("Орлов Павел", reply_to=_question(two)), now=NOW)
     second = db.query(BotDemoIntake).filter_by(sender_key="tg:888").one()
     first = db.query(BotDemoIntake).filter_by(sender_key="tg:777").one()
@@ -235,7 +235,7 @@ def test_cancel_closes_pack(db):
     out = handle_update(db, _press(f"dm:x:{intake.id}"), now=NOW)
     assert db.get(BotDemoIntake, intake.id).state == "cancelled"
     assert {i.state for i in db.query(BotDemoItem)} == {"cancelled"}
-    assert any("Отменено" in t for t in _texts(out))
+    assert any("Cancelled" in t for t in _texts(out))
 
 
 def test_text_goes_to_note(db):
@@ -243,7 +243,7 @@ def test_text_goes_to_note(db):
     db.commit()
     handle_update(db, _fwd(41, caption="баритон, опыт 5 лет"), now=NOW)
     note = db.get(DictorProfile, "u41").note
-    assert note.startswith("Старое\n") and "23.10 из Telegram: баритон, опыт 5 лет" in note
+    assert note.startswith("Старое\n") and "23.10 from Telegram: баритон, опыт 5 лет" in note
 
 
 def test_portfolio_link_saved_in_dialog(db):
@@ -260,7 +260,7 @@ def test_channel_forward_refused(db):
     update["message"]["forward_origin"] = {"type": "channel", "date": 1, "chat": {"id": -100, "title": "К"},
                                            "message_id": 3}
     out = handle_update(db, update, now=NOW)
-    assert any("не от человека" in t for t in _texts(out)) and db.query(BotDemoItem).count() == 0
+    assert any("not from a person" in t for t in _texts(out)) and db.query(BotDemoItem).count() == 0
 
 
 def test_reply_to_closed_question_never_lands_elsewhere(db):
@@ -270,7 +270,7 @@ def test_reply_to_closed_question_never_lands_elsewhere(db):
     handle_update(db, _press(f"dm:x:{first.id}"), now=NOW)
     handle_update(db, _fwd(888, mid=200, first="Мария", last="Белова"), now=NOW)
     out = handle_update(db, _text("Сидоров Пётр", reply_to=_question(old)), now=NOW)
-    assert any("уже закрыт" in t for t in _texts(out))
+    assert any("is closed" in t for t in _texts(out))
     assert db.query(BotDemoIntake).filter_by(sender_key="tg:888").one().state == "ask"
     assert db.query(User).filter_by(display_name="Сидоров Пётр").count() == 0
 
@@ -344,4 +344,4 @@ def test_pick_existing_reply_reads_naturally(db):
     handle_update(db, _fwd(777), now=NOW)
     intake = db.query(BotDemoIntake).one()
     out = handle_update(db, _press(f"dm:p:{intake.id}:u60"), now=NOW)
-    assert any(t.startswith("Добавляю в карточку: Сидоров Пётр.") for t in _texts(out))
+    assert any(t.startswith("Adding to profile: Сидоров Пётр.") for t in _texts(out))

@@ -95,7 +95,7 @@ class AsrAuditError(RuntimeError):
     """Аудит не запустился. Текст — код для лога, не фраза для человека."""
 
 
-def classify_narrator_line(text: str) -> str:
+def classify_narrator_line(text: str, *, language: str = "ru") -> str:
     """Как аудит относится к строке рассказчика: required | tag | title.
 
     Правило владельца (2026-11-06): простые ремарки-репризы и титулы в микс не входят,
@@ -104,6 +104,14 @@ def classify_narrator_line(text: str) -> str:
     """
     raw = str(text or "").strip()
     if not raw:
+        return "required"
+    if language == "en":
+        if re.match(r"^(?:chapter|part|book)\s+(?:\d+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b", raw, re.I) or re.fullmatch(r"(?:prologue|epilogue|interlude)[.!:]?", raw, re.I):
+            return "title"
+        # Только простая реприза: событийные и неоднозначные фразы оставляем чтецу.
+        body = raw.strip("-–— ,.!?\"")
+        if re.fullmatch(r"(?:(?:he|she|they|[A-Z][\w’'-]*)\s+(?:said|asked|replied|answered|whispered)|(?:said|asked|replied|answered|whispered)\s+(?:he|she|they|[A-Z][\w’'-]*))", body):
+            return "tag"
         return "required"
     if _TITLE_RE.match(raw):
         return "title"
@@ -140,8 +148,10 @@ def narrator_lines(db, chapter_id: str) -> dict:
     if not narrator:
         raise AsrAuditError("narrator_role_not_found")
     out = {"required": [], "tags": [], "titles": []}
+    from app.services.asr_run import chapter_language
+    language = chapter_language(db, chapter_id)
     for index, (text, segment_id) in enumerate(pieces):
-        kind = classify_narrator_line(text)
+        kind = classify_narrator_line(text, language=language)
         out[{"tag": "tags", "title": "titles"}.get(kind, "required")].append(
             {"index": index, "segment_id": str(segment_id), "text": text}
         )
@@ -155,6 +165,8 @@ def latest_narrator_take(db, chapter) -> "object | None":
     и строка роли связаны через `is_narrator_name`, чтобы «Автор»/«От автора»
     не проскочили мимо.
     """
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, chapter.book_id)
     from app.models import AudioFile, ScriptBook, ScriptChapter
     from app.services.audio_uploads import TAKE, derive_book_code
 
@@ -167,7 +179,7 @@ def latest_narrator_take(db, chapter) -> "object | None":
     # В старой схеме файлы не связаны с книгой и главой по ID. Совпадение
     # кодов делает источник неоднозначным: запрещаем платный запуск.
     books = db.query(ScriptBook).all()
-    if not code or sum(book_token(derive_book_code(str(b.title or ""))) == code for b in books) != 1:
+    if not identities.typed and (not code or sum(book_token(derive_book_code(str(b.title or ""))) == code for b in books) != 1):
         raise AsrAuditError("ambiguous_book_code")
     label = str(chapter.chapter_title or "").strip() or f"Глава {chapter.chapter_index}"
     chapters = db.query(ScriptChapter).filter(ScriptChapter.book_id == book.id).all()
@@ -175,18 +187,30 @@ def latest_narrator_take(db, chapter) -> "object | None":
         raise AsrAuditError("ambiguous_chapter_label")
     takes = (
         db.query(AudioFile)
-        .filter(AudioFile.kind == TAKE, AudioFile.chapter == label, AudioFile.book_code == derive_book_code(str(book.title or "")))
+        .filter(AudioFile.kind == TAKE, AudioFile.chapter == label,
+                (AudioFile.role_book_id == book.id if identities.typed else AudioFile.book_code == derive_book_code(str(book.title or ""))))
         .order_by(AudioFile.uploaded_at.desc())
         .all()
     )
     for take in takes:
-        if is_narrator_name(str(take.role or "")):
+        if not identities.owns_audio(take):
+            continue
+        if identities.is_narrator(str(take.role or ""), getattr(take, "role_ref", "")):
             return take
     return None
 
 
 def _narrator_snapshot(db, chapter_id: str) -> dict:
-    from app.models import AudioFile
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter_id)
+    from app.models import AudioFile, AsrJob
+    # Явная старая джоба этой главы с чужим исходником — признак повреждённой
+    # привязки. Не оплачиваем аудит оставшейся части под видом полной сборки.
+    bound = db.query(AudioFile).join(AsrJob, AsrJob.audio_file_id == AudioFile.id).filter(
+        AsrJob.chapter_id == chapter_id, AsrJob.status == "done", AudioFile.kind == "take").all()
+    for audio in bound:
+        if not identities.owns_audio(audio):
+            raise AsrAuditError(f"narrator_source_scope_mismatch:{audio.id}")
     from app.services.chapter_delivery import _script_layout
     from app.services.asr_run import chapter_replicas
 
@@ -194,23 +218,26 @@ def _narrator_snapshot(db, chapter_id: str) -> dict:
     layout = _script_layout(db, chapter_id)
     if layout is None:
         raise AsrAuditError("chapter_not_found")
-    replicas = [row for row in chapter_replicas(db, chapter_id) if is_narrator_name(row["role"])]
+    replicas = [row for row in chapter_replicas(db, chapter_id) if identities.is_narrator(row["role"], row.get("role_ref", ""))]
     return _snapshot_from_parts(lines, replicas, layout[3], layout[1],
-                                lambda source_id: db.get(AudioFile, source_id))
+                                lambda source_id: db.get(AudioFile, source_id), identities=identities)
 
 
-def _snapshot_from_parts(lines, replicas, placed, book, audio_source) -> dict:
+def _snapshot_from_parts(lines, replicas, placed, book, audio_source, *, identities=None) -> dict:
     from app.services.author_profile import normalize_name
     from app.services.audio_uploads import derive_book_code
     from app.services.audio_naming import book_token
+    from app.services.asr_run import ALIGNMENT_VERSION, asr_language
+    language = asr_language(getattr(book, "language", "ru"))
 
     all_lines = sorted([r for rows in lines.values() for r in rows], key=lambda r: r["index"])
     indices = {row["index"] for row in all_lines}
     addresses = {(normalize_name(row["role"]), row["role_index"], row["segment_id"]): i
                  for i, row in enumerate(replicas)}
     clips, sources = [], {}
+    is_narrator = identities.is_narrator if identities else is_narrator_name
     for role, clip in placed:
-        if not is_narrator_name(role):
+        if not is_narrator(role):
             continue
         role_index = getattr(clip, "role_index", None)
         index = addresses.get((normalize_name(role), role_index, clip.segment_id))
@@ -229,7 +256,7 @@ def _snapshot_from_parts(lines, replicas, placed, book, audio_source) -> dict:
         # Старые записи ищутся и по заголовку главы, который повторяется в разных
         # книгах. Такой кандидат может попасть в саму раскладку; оплачивать и
         # обвинять чужую книгу при этом нельзя.
-        if book_token(str(audio.book_code or "")) != book_token(derive_book_code(str(book.title or ""))):
+        if not identities.owns_audio(audio):
             raise AsrAuditError(f"narrator_source_scope_mismatch:{source_id}")
         sources[source_id] = {key: getattr(audio, key) for key in
             ("id", "stored_key", "location", "actor_name", "role", "uploaded_at", "md5", "size_bytes", "verify_state")}
@@ -241,9 +268,12 @@ def _snapshot_from_parts(lines, replicas, placed, book, audio_source) -> dict:
         {"id": key, "uploaded_at": str(item["uploaded_at"] or ""),
          "md5": str(item["md5"] or ""), "size_bytes": int(item["size_bytes"] or 0)}
         for key, item in sorted(sources.items())]}
+    signature.update(language=language, normalizer_version=ALIGNMENT_VERSION)
+    if identities and identities.typed:
+        signature["role_identity_mode"] = "typed_v1"
     fingerprint = hashlib.sha256(json.dumps(signature, ensure_ascii=False, sort_keys=True,
                                            separators=(",", ":")).encode()).hexdigest()
-    return {"lines": lines, "clips": clips, "sources": sources, "fingerprint": fingerprint}
+    return {"lines": lines, "clips": clips, "sources": sources, "fingerprint": fingerprint, "language": language}
 
 
 def narrator_input_fingerprint(db, chapter_id: str) -> str:
@@ -251,7 +281,7 @@ def narrator_input_fingerprint(db, chapter_id: str) -> str:
     return _narrator_snapshot(db, chapter_id)["fingerprint"]
 
 
-def _narrator_fingerprints(db, chapter_ids: list[str]) -> dict[str, str]:
+def _narrator_fingerprints(db, chapter_ids: list[str], *, identities_by_book=None) -> dict[str, str]:
     """Таблица ASR проверяет главы одним чтением входов, без полной сборки каждой.
 
     Кэш живёт только в этом вызове: правка сценария или выравнивания должна сразу
@@ -270,8 +300,10 @@ def _narrator_fingerprints(db, chapter_ids: list[str]) -> dict[str, str]:
     chapters = db.query(ScriptChapter).filter(ScriptChapter.id.in_(chapter_ids)).all()
     if not chapters:
         return {}
-    books = {book.id: book for book in db.query(ScriptBook).filter(
-        ScriptBook.id.in_({chapter.book_id for chapter in chapters})).all()}
+    books = {bid: identities._book for bid, identities in (identities_by_book or {}).items() if identities._book is not None}
+    missing_books = {chapter.book_id for chapter in chapters} - books.keys()
+    if missing_books:
+        books.update({book.id: book for book in db.query(ScriptBook).filter(ScriptBook.id.in_(missing_books)).all()})
     segments = db.query(V2Segment).filter(V2Segment.chapter_id.in_(chapter_ids)).order_by(
         V2Segment.ordinal.asc()).all()
     attributions = effective_attributions(db, [segment.id for segment in segments])
@@ -290,25 +322,33 @@ def _narrator_fingerprints(db, chapter_ids: list[str]) -> dict[str, str]:
             AsrJob.audio_file_id.in_([item.id for item in audio_files]), AsrJob.status == "done"
         ).all():
             jobs_by_audio.setdefault(str(job.audio_file_id), []).append(job)
+    from app.services.role_identity import book_roles
+    identities_by_book = {bid: (identities_by_book or {}).get(bid) or book_roles(db, bid) for bid in books}
     out = {}
     for chapter in chapters:
         try:
-            replicas = _replicas_from_segments(segments_by_chapter.get(chapter.id, []), attributions)
-            narrator = [row for row in replicas if is_narrator_name(row["role"])]
+            identities = identities_by_book[chapter.book_id]
+            replicas = _replicas_from_segments(segments_by_chapter.get(chapter.id, []), attributions, identities=identities)
+            narrator = [row for row in replicas if identities.is_narrator(row["role"], row.get("role_ref", ""))]
             lines = {"required": [], "tags": [], "titles": []}
             for index, row in enumerate(narrator):
-                kind = classify_narrator_line(row["text"])
+                kind = classify_narrator_line(row["text"], language=books[chapter.book_id].language)
                 lines[{"tag": "tags", "title": "titles"}.get(kind, "required")].append(
                     {"index": index, "segment_id": row["segment_id"], "text": row["text"]})
-            files = files_by_label.get(_chapter_label(chapter), [])
+            candidates = files_by_label.get(_chapter_label(chapter), [])
+            if any(not identities.owns_audio(item) and any(str(job.chapter_id) == str(chapter.id)
+                   for job in jobs_by_audio.get(str(item.id), [])) for item in candidates):
+                raise AsrAuditError("narrator_source_scope_mismatch")
+            files = [item for item in candidates if identities.owns_audio(item)]
             by_role = {}
             for item in files:
-                by_role.setdefault(str(item.role or "").strip(), []).append(item)
+                by_role.setdefault(identities.name(getattr(item, "role_ref", ""), item.role), []).append(item)
             by_id = {str(item.id): item for item in files}
-            chapter_heard = _lines_from_jobs([job for key in by_id for job in jobs_by_audio.get(key, [])])
+            chapter_heard = _lines_from_jobs([job for key in by_id for job in jobs_by_audio.get(key, [])
+                                               if not job.chapter_id or str(job.chapter_id) == str(chapter.id)])
             placed = _place_by_script(replicas, by_role, chapter_heard, relative=False, files_by_id=by_id)
             out[str(chapter.id)] = _snapshot_from_parts(
-                lines, narrator, placed, books[chapter.book_id], by_id.get)["fingerprint"]
+                lines, narrator, placed, books[chapter.book_id], by_id.get, identities=identities)["fingerprint"]
         except Exception:
             # Повреждение одной главы не скрывает актуальные результаты остальных.
             logger.debug("Не удалось проверить актуальность аудита главы %s", chapter.id, exc_info=True)
@@ -350,7 +390,7 @@ def _assembled_transcript(snapshot: dict, transcripts: dict) -> tuple[dict, dict
         source = transcripts.get(clip["source_audio_file_id"], {})
         words = [{"word": word, "start": clock + max(0., start - clip["start"]),
                   "end": clock + min(clip["end"], end) - clip["start"]}
-                 for word, start, end in word_stream(source.get("segments") or [])
+                 for word, start, end in word_stream(source.get("segments") or [], language=snapshot.get("language", "ru"))
                  if start >= clip["start"] and end <= clip["end"]]
         duration = max(0., clip["end"] - clip["start"])
         segments.append({"text": " ".join(w["word"] for w in words), "start": clock,
@@ -392,7 +432,7 @@ def _attach_source_windows(flags: list, alignment: dict) -> None:
             flag["anchor"] = None
 
 
-def _transcribe_fresh(path: str, *, model: str, phrases: list[str]) -> "tuple[dict, float | None]":
+def _transcribe_fresh(path: str, *, model: str, phrases: list[str], language: str = "ru") -> "tuple[dict, float | None]":
     """Свежий платный прогон аудит-моделью. Своя обёртка, а не `_transcribe_with_service`:
     нужен `usage.cost` ответа для цены прогона в отчёте владельцу."""
     from app.services.asr_run import OPENAI_BASE_URL
@@ -413,7 +453,7 @@ def _transcribe_fresh(path: str, *, model: str, phrases: list[str]) -> "tuple[di
                 api_key=provider_key("routerai"),
                 base_url=settings.routerai_base_url or OPENAI_BASE_URL,
                 model=model,
-                language=settings.asr_language,
+                language=language,
                 prompt=settings.asr_prompt or ", ".join((phrases or [])[:80]),
             )
         except Exception:
@@ -457,7 +497,7 @@ def default_judge_ask(system: str, user: str, schema: dict, *, model: str | None
 
     api_key, base_url, mode = _resolve_provider("routerai")
     if not api_key:
-        raise RuntimeError("ROUTERAI_API_KEY не задан")
+        raise RuntimeError("ROUTERAI_API_KEY is not configured")
     out = call_chat(base_url, api_key, model or settings.llm_audit_model, system, user,
                     mode=mode, force_json=True, json_schema=schema)
     content = (out or {}).get("content") if isinstance(out, dict) else out
@@ -629,18 +669,19 @@ def _anchor_of(alignment: dict, index: int, *, stream=None) -> dict | None:
     return {"start": start, "end": max(start, end), "approximate": True}
 
 
-def _word_anchors(text: str, missing_words: list[str], anchor: dict | None, stream: list) -> list[dict]:
+def _word_anchors(text: str, missing_words: list[str], anchor: dict | None, stream: list,
+                  *, language: str = "ru") -> list[dict]:
     from app.services.asr_align import normalize_words
 
     if not anchor or not missing_words:
         return []
     heard = [(token, start, end) for word, start, end in stream
              if end >= anchor["start"] and start <= anchor["end"]
-             for token in normalize_words(word)]
-    expected = normalize_words(text)
+             for token in normalize_words(word, language=language)]
+    expected = normalize_words(text, language=language)
     matching = SequenceMatcher(None, expected, [w for w, _, _ in heard], autojunk=False)
     positions = {i + step: j + step for i, j, size in matching.get_matching_blocks() for step in range(size)}
-    missing = {word for phrase in missing_words for word in normalize_words(phrase)}
+    missing = {word for phrase in missing_words for word in normalize_words(phrase, language=language)}
     output = []
     for i, word in enumerate(expected):
         if word not in missing:
@@ -656,15 +697,16 @@ def _word_anchors(text: str, missing_words: list[str], anchor: dict | None, stre
 
 
 def _judge_required(*, required: list[dict], alignment: dict, heard: dict,
-                    glossary: list[str], judge) -> list[dict]:
+                    glossary: list[str], judge, language: str = "ru") -> list[dict]:
     from app.services.asr_align import word_stream
 
-    stream = word_stream(heard.get("segments") or [])
+    stream = word_stream(heard.get("segments") or [], language=language)
     excerpts = _build_excerpts(alignment.get("lines") or [], stream)
     flags = []
     for offset in range(0, len(required), JUDGE_BATCH):
         batch = required[offset:offset + JUDGE_BATCH]
-        answer = judge(_JUDGE_SYSTEM, _judge_user_prompt(batch, excerpts, glossary), _VERDICT_SCHEMA)
+        system = _JUDGE_SYSTEM + ("\nThe book is in English. Compare its English wording and contractions; return all notes in English." if language == "en" else "")
+        answer = judge(system, _judge_user_prompt(batch, excerpts, glossary), _VERDICT_SCHEMA)
         by_index = _verdicts(answer, "verdicts", {item["index"] for item in batch})
         for item in batch:
             verdict = by_index[item["index"]]
@@ -674,20 +716,20 @@ def _judge_required(*, required: list[dict], alignment: dict, heard: dict,
                 # Нейросеть не может оправдать строку, для которой в проекте нет
                 # клипа: соседнее похожее предложение не звучит вместо неё.
                 verdict = {"status": "missing", "missing_words": [],
-                           "note": "обязательная строка не размещена в собранной главе"}
+                           "note": "required line is not placed in the assembled chapter"}
             if verdict["status"] == "ok":
                 continue
             anchor = _anchor_of(alignment, item["index"], stream=stream)
             flags.append({**item, "status": verdict["status"],
                           "missing_words": verdict["missing_words"], "note": verdict["note"],
                           "anchor": anchor,
-                          "word_anchors": _word_anchors(item["text"], verdict["missing_words"], anchor, stream),
+                          "word_anchors": _word_anchors(item["text"], verdict["missing_words"], anchor, stream, language=language),
                           "confirmed": False, "confirm_note": ""})
     return flags
 
 
 def _confirm_flags(*, flags: list[dict], source_path: str = "", judge,
-                   confirm_transcribe, record_cost=None, source_paths=None) -> list[dict]:
+                   confirm_transcribe, record_cost=None, source_paths=None, language: str = "ru") -> list[dict]:
     from app.services.asr_align import normalize_words
 
     confirmed = []
@@ -696,7 +738,7 @@ def _confirm_flags(*, flags: list[dict], source_path: str = "", judge,
         if windows is None:
             windows = [flag["anchor"]] if flag.get("anchor") else []
         if not windows:
-            flag["confirm_note"] = "строка не размещена в собранной главе"
+            flag["confirm_note"] = "line is not placed in the assembled chapter"
             continue
         all_confirmed = True
         notes = []
@@ -716,21 +758,21 @@ def _confirm_flags(*, flags: list[dict], source_path: str = "", judge,
                     record_cost(cost)
                 billed = False
                 transcript = str(fresh.get("text") or "").strip()
-                spoken_words = normalize_words(transcript)
+                spoken_words = normalize_words(transcript, language=language)
                 if not spoken_words:
                     raise AsrAuditError("empty_confirmation_transcript")
                 answer = judge(
-                    _CONFIRM_SYSTEM,
+                    _CONFIRM_SYSTEM + ("\nThe book is in English. Compare its English wording and contractions; return all notes in English." if language == "en" else ""),
                     f"Индекс строки: {flag['index']}\nСтрока сценария: {flag['text']}\n"
                     f"Ранее отмечено как пропуск: {flag['status']}\n"
                     f"Слова: {', '.join(flag['missing_words'])}\nСвежая расшифровка места: {transcript}",
                     _CONFIRM_SCHEMA,
                 )
                 verdict = _verdicts(answer, "results", {flag["index"]}, confirmation=True)[flag["index"]]
-                suspect_words = normalize_words(" ".join(flag["missing_words"]) or flag["text"])
+                suspect_words = normalize_words(" ".join(flag["missing_words"]) or flag["text"], language=language)
                 words_present = bool(suspect_words) and not (set(suspect_words) - set(spoken_words))
                 accepted = verdict["confirmed"] and not words_present
-                notes.append(f"Подход {number}: " + ("спорные слова присутствуют во второй расшифровке" if words_present else verdict["note"]))
+                notes.append(f"Подход {number}: " + ("the disputed words are present in the second transcript" if words_present else verdict["note"]))
                 all_confirmed = all_confirmed and accepted
                 if not accepted:
                     break
@@ -738,7 +780,7 @@ def _confirm_flags(*, flags: list[dict], source_path: str = "", judge,
                 if billed and record_cost:
                     record_cost(None)
                 logger.warning("Подтверждение флага %s не вышло: %s", flag["index"], exc)
-                notes.append(f"подтверждение не завершено: {exc}"[:200])
+                notes.append(f"confirmation incomplete: {exc}"[:200])
                 all_confirmed = False
                 break
             finally:
@@ -752,7 +794,8 @@ def _confirm_flags(*, flags: list[dict], source_path: str = "", judge,
 
 
 def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
-                  confirm_transcribe=None, expected_narrator_fingerprint: str = "") -> "object":
+                  confirm_transcribe=None, expected_narrator_fingerprint: str = "",
+                  language: str | None = None) -> "object":
     """Снимок входа и результат фиксируются короткими транзакциями.
 
     Платные вызовы могут идти минуты: незакрытый flush на SQLite блокировал бы
@@ -760,10 +803,12 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
     """
     from app.models import AsrAudit, ScriptBook, ScriptChapter
     from app.services import audio_storage
+    from app.services.asr_run import ALIGNMENT_VERSION, asr_language, chapter_language
 
     chapter_row = db.get(ScriptChapter, str(chapter_id or "").strip())
     if chapter_row is None:
         raise AsrAuditError("chapter_not_found")
+    language = asr_language(language) if language is not None else chapter_language(db, chapter_row.id)
     chapter = SimpleNamespace(id=str(chapter_row.id), book_id=str(chapter_row.book_id),
                               chapter_title=str(chapter_row.chapter_title or ""))
     try:
@@ -773,10 +818,11 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
         snapshot = None
         snapshot_error = exc
     audit = AsrAudit(chapter_id=chapter.id, status="running", model=settings.asr_audit_model,
-                     confirm_model=settings.asr_audit_confirm_model, judge_model=settings.llm_audit_model)
+                     confirm_model=settings.asr_audit_confirm_model, judge_model=settings.llm_audit_model,
+                     language=language)
     db.add(audit)
-    if (expected_narrator_fingerprint and snapshot
-            and snapshot["fingerprint"] != expected_narrator_fingerprint):
+    if snapshot and (snapshot["language"] != language or (expected_narrator_fingerprint
+            and snapshot["fingerprint"] != expected_narrator_fingerprint)):
         audit.status = "skipped"
         audit.error_message = "narrator_input_changed"
         db.commit()
@@ -801,7 +847,8 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
     flags, confirmed = [], []
     meta = {"take_id": str(take.id), "take_uploaded_at": str(take.uploaded_at or ""),
             "classified_at": iso_utc(utcnow_naive()), "cost_complete": True,
-            "cost_scope": "stt_only", "stt_calls": 0}
+            "cost_scope": "stt_only", "stt_calls": 0, "language": language,
+            "normalizer_version": ALIGNMENT_VERSION}
     costs = []
 
     def record_cost(cost):
@@ -835,7 +882,8 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
         _preflight_sources(snapshot["sources"], source_paths)
         # Ошибки шлюза и таймауты не доказывают, что провайдер не списал деньги.
         transcribe_call = transcribe or (lambda path: _transcribe_retrying(
-            lambda: _transcribe_fresh(path, model=model, phrases=glossary), retry_errors={"asr_http_429"}))
+            lambda: _transcribe_fresh(path, model=model, phrases=glossary,
+                                      **({"language": language} if language != "ru" else {})), retry_errors={"asr_http_429"}))
         transcripts = {}
         for source_id, source in source_paths.items():
             try:
@@ -850,19 +898,20 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
             audit.lines_json = json.dumps(meta, ensure_ascii=False)
             db.commit()
             from app.services.asr_align import word_stream
-            if not word_stream(payload.get("segments") or []):
+            if not word_stream(payload.get("segments") or [], language=language):
                 raise AsrAuditError("audit_transcript_has_no_word_timestamps")
         heard, alignment = _assembled_transcript(snapshot, transcripts)
         audit.transcript_json = json.dumps(heard, ensure_ascii=False)
         db.commit()
         judge_call = judge or (lambda system, user, schema: default_judge_ask(system, user, schema, model=judge_model))
         flags = _judge_required(required=lines["required"], alignment=alignment, heard=heard,
-                                glossary=glossary, judge=judge_call)
+                                glossary=glossary, judge=judge_call, language=language)
         _attach_source_windows(flags, alignment)
         confirm_call = confirm_transcribe or (lambda path: _transcribe_retrying(
-            lambda: _transcribe_fresh(path, model=confirm_model, phrases=glossary), retry_errors={"asr_http_429"}))
+            lambda: _transcribe_fresh(path, model=confirm_model, phrases=glossary,
+                                      **({"language": language} if language != "ru" else {})), retry_errors={"asr_http_429"}))
         confirmed = _confirm_flags(flags=flags, source_paths=source_paths, judge=judge_call,
-                                   confirm_transcribe=confirm_call, record_cost=record_cost)
+                                   confirm_transcribe=confirm_call, record_cost=record_cost, language=language)
         # Пока модели слушали, редактор мог заменить фикс или текст. Оплаченное
         # сохраняем, но старые выводы не должны обвинить уже исправившегося диктора.
         db.expire_all()
@@ -944,29 +993,29 @@ def _notify_owner(db, *, chapter, book, audit, lines: dict, flags: list[dict],
     """Отчёт владельцу — всегда: чистый результат тоже новость, он закрывает контур."""
     from app.services.telegram import send_telegram_message
 
-    header = f"🔍 Строгая проверка рассказчика: {getattr(book, 'title', '') or ''} · {chapter.chapter_title}".strip(" ·")
+    header = f"🔍 Strict narrator check: {getattr(book, 'title', '') or ''} · {chapter.chapter_title}".strip(" ·")
     try:
         meta = json.loads(audit.lines_json or "{}")
     except (TypeError, ValueError):
         meta = {}
-    price = f"{audit.stt_cost_rub:.2f} ₽" if meta.get("cost_complete", True) else "не подтверждена"
-    counts = (f"Проверено строк: {len(lines['required'])} · отклонений: {len(flags)} "
-              f"(подтверждено {len(confirmed)}) · цена STT {price} (без LLM)")
+    price = f"{audit.stt_cost_rub:.2f} ₽" if meta.get("cost_complete", True) else "unconfirmed"
+    counts = (f"Lines checked: {len(lines['required'])} · flags: {len(flags)} "
+              f"(confirmed {len(confirmed)}) · STT cost {price} (excluding LLM)")
     if audit.status == "failed":
-        counts = f"Проверка не завершена: {audit.error_message} · цена STT {price} (без LLM)"
+        counts = f"Check incomplete: {audit.error_message} · STT cost {price} (excluding LLM)"
     elif audit.status == "skipped":
-        counts = f"Результат устарел: состав рассказчика изменился во время проверки · цена STT {price} (без LLM)"
+        counts = f"Stale result: narrator inputs changed during the check · STT cost {price} (excluding LLM)"
     if not flags:
         text = f"{header}\n{counts}"
     else:
         rows = []
         for flag in flags:
-            mark = "подтверждено" if flag.get("confirmed") else "нет подтверждения"
+            mark = "confirmed" if flag.get("confirmed") else "unconfirmed"
             words = ", ".join(flag.get("missing_words") or []) or flag.get("status") or ""
             rows.append(f"• ({mark}) [{words}] {_quote(flag.get('text'), 90)}")
         text = "\n".join([header, counts, "", *rows])
     if confirmed and audit.status == "done":
-        text += "\n\nМаркеры будут в новой сборке главы. Уже скачанный проект не изменится — скачайте архив заново."
+        text += "\n\nMarkers will appear in the next chapter assembly. Download the archive again to update an existing project."
     link = _chapter_link(str(chapter.book_id), str(chapter.id))
     if link:
         text += f"\n\n{link}"
@@ -1002,7 +1051,7 @@ def _notify_narrator(db, *, chapter, book, take, confirmed: list[dict]) -> dict 
     )
 
 
-def latest_audits(db, chapter_ids: list[str]) -> "dict[str, dict]":
+def latest_audits(db, chapter_ids: list[str], *, identities_by_book=None) -> "dict[str, dict]":
     """Последний прогон аудита на каждую главу — для бейджа на экране `/asr`."""
     from app.models import AsrAudit, BackgroundRun
 
@@ -1029,7 +1078,7 @@ def latest_audits(db, chapter_ids: list[str]) -> "dict[str, dict]":
         except (TypeError, ValueError):
             pass
     try:
-        fingerprints = _narrator_fingerprints(db, check_ids)
+        fingerprints = _narrator_fingerprints(db, check_ids, identities_by_book=identities_by_book)
     except Exception:
         logger.debug("Не удалось загрузить входы аудитов", exc_info=True)
         fingerprints = {}
@@ -1073,7 +1122,7 @@ def latest_audits(db, chapter_ids: list[str]) -> "dict[str, dict]":
         status = "unknown" if error.startswith("queue_outcome_unknown") else str(run.status)
         if status == "done":
             status = "unknown"
-            error = "Результат проверки не сохранён; требуется проверка владельцем"
+            error = "The check result was not saved; owner review is required"
         out[cid] = {"status": status, "flags": 0, "confirmed": 0, "model": "",
                     "stt_cost_rub": None, "updated_at": iso_utc(run.updated_at) or "",
                     "error_message": error}

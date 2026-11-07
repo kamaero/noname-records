@@ -1,12 +1,14 @@
-# Документация
+# Documentation
 
-- [README](../README.md) — установка, первые шаги, обслуживание.
-- [ARCHITECTURE](../ARCHITECTURE.md) — как устроен код: службы, путь книги, хранилища, модели, доступ.
-- [PRODUCT](../PRODUCT.md) — для кого система и по каким принципам сделана.
-- [DESIGN](../DESIGN.md) — дизайн-система интерфейса.
+- [README](../README.md): overview and first steps.
+- [Installation](../INSTALLATION.md): macOS, Windows, Linux servers, AI keys and Telegram setup.
+- [Operations](../OPERATIONS.md): updates, backups, recovery and troubleshooting.
+- [Architecture](../ARCHITECTURE.md): services, book processing, storage, models and access (Russian).
+- [Product](../PRODUCT.md): intended users and product principles (Russian).
+- [Design](../DESIGN.md): interface design system (Russian).
 
-Справочники генерируются из кода (`python scripts/gen_reference_docs.py`):
+Reference files are generated from the code with `python scripts/gen_reference_docs.py`:
 
-- [API_ROUTES](reference/API_ROUTES.md) — все маршруты API;
-- [DB_SCHEMA](reference/DB_SCHEMA.md) — таблицы и колонки;
-- [ENV_VARS](reference/ENV_VARS.md) — переменные `.env`.
+- [API routes](reference/API_ROUTES.md)
+- [Database schema](reference/DB_SCHEMA.md)
+- [Environment variables](reference/ENV_VARS.md)

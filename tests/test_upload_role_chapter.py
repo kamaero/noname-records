@@ -72,12 +72,12 @@ def test_nothing_to_check_against_means_no_refusal(db):
 
 def test_the_refusal_text_names_the_role_and_the_chapters():
     assert urc.refusal_text("Фыеги Люпкетфа", 1, [32]) == (
-        "у роли «Фыеги Люпкетфа» нет реплик в главе 1 — роль говорит в главе 32"
+        "role «Фыеги Люпкетфа» has no lines in chapter 1; this role speaks in chapter 32"
     )
     assert urc.refusal_text("Тик-Так", 1, []) == (
-        "у роли «Тик-Так» нет реплик в главе 1 — по разметке роль не говорит ни в одной главе"
+        "role «Тик-Так» has no lines in chapter 1; this role has no attributed lines in any chapter"
     )
-    assert "в главах 3, 7, 12" in urc.refusal_text("Икс", 1, [3, 7, 12])
+    assert "in chapters 3, 7, 12" in urc.refusal_text("Икс", 1, [3, 7, 12])
 
 
 # ---------- ручки: загрузка и предпросмотр ----------
@@ -118,7 +118,7 @@ def test_the_upload_refuses_a_role_with_no_lines_and_keeps_nothing(monkeypatch):
 
     assert status_code == 400 and rows == []
     assert body["items"][0]["error"] == "role_not_in_chapter"
-    assert "нет реплик в главе 1" in body["message"] and "в главе 34" in body["message"]
+    assert "no lines in chapter 1" in body["message"] and "in chapter 34" in body["message"]
 
 
 def test_confirming_the_chapter_does_not_lift_this_refusal(monkeypatch):
@@ -153,4 +153,4 @@ def test_the_preview_shows_the_same_refusal_in_words(monkeypatch):
 
     item = body["items"][0]
     assert item["ok"] is False and "role_not_in_chapter" in item["errors"]
-    assert item["error_text"] == "у роли «Нрарсх» нет реплик в главе 1 — роль говорит в главе 34"
+    assert item["error_text"] == "role «Нрарсх» has no lines in chapter 1; this role speaks in chapter 34"

@@ -79,7 +79,7 @@ def test_one_alert_for_a_batch_into_two_released_chapters(db):
     assert released_alerts.notify_takes_in_released(db, items, send=sink) is True
     assert len(sink.texts) == 1
     text = sink.texts[0]
-    assert "В сданную главу пришёл дубль" in text
+    assert "A take was uploaded to a completed chapter" in text
     assert "a.wav" in text and "b.wav" in text and "c.wav" not in text
     assert text.count("https://noname.example/api/v2/takes/") == 2
     assert f"/api/v2/takes/{items[0].id}/audio" in text

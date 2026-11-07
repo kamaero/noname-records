@@ -12,6 +12,8 @@
 from __future__ import annotations
 
 import re
+import unicodedata
+from datetime import date
 
 import Levenshtein
 
@@ -260,18 +262,203 @@ def _spell_numbers(text: str) -> str:
 _STRETCHED_VOWEL = re.compile(r"([аеиоуыэюя])(?:-\1){2,}")
 
 
-def normalize_words(value: str) -> list[str]:
+_EN_ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
+_EN_TEENS = ["ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+             "seventeen", "eighteen", "nineteen"]
+_EN_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+_EN_ORDINALS = {
+    "zero": "zeroth", "one": "first", "two": "second", "three": "third", "four": "fourth",
+    "five": "fifth", "six": "sixth", "seven": "seventh", "eight": "eighth", "nine": "ninth",
+    "ten": "tenth", "eleven": "eleventh", "twelve": "twelfth", "thirteen": "thirteenth",
+    "fourteen": "fourteenth", "fifteen": "fifteenth", "sixteen": "sixteenth",
+    "seventeen": "seventeenth", "eighteen": "eighteenth", "nineteen": "nineteenth",
+    "twenty": "twentieth", "thirty": "thirtieth", "forty": "fortieth", "fifty": "fiftieth",
+    "sixty": "sixtieth", "seventy": "seventieth", "eighty": "eightieth", "ninety": "ninetieth",
+    "hundred": "hundredth", "thousand": "thousandth", "million": "millionth",
+}
+_EN_NUMERIC_WORDS = set(_EN_ONES + _EN_TEENS + _EN_TENS + list(_EN_ORDINALS.values())) | {
+    "hundred", "thousand", "million", "point", "minus", "plus",
+}
+_EN_NUMBER = re.compile(r"(?<![\w:/-])[+-]?\d[\d,.]*(?:st|nd|rd|th)?(?![\w.,:/-])")
+_EN_WORD = re.compile(r"[+-]?\d+(?:[.,:/-]\d+)*(?!\w)|[^\W_]+(?:'[^\W_]+)*|[$€£]", re.UNICODE)
+_EN_CONTRACTIONS = {
+    "can't": "can not", "cannot": "can not", "won't": "will not", "shan't": "shall not",
+    "i'm": "i am", "let's": "let us",
+}
+_EN_TITLES = {"mr": "mister", "mrs": "missus", "dr": "doctor"}
+_EN_MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august",
+              "september", "october", "november", "december")
+_EN_NUMERIC_WORDS.update(_EN_MONTHS)
+_EN_NUMERIC_WORDS.update({"dollar", "dollars", "cent", "cents", "euro", "euros", "pound", "pounds",
+                          "penny", "pence", "am", "pm", "oh", "$", "€", "£",
+                          "usd", "eur", "gbp", "cad", "aud", "jpy", "rub", "cny"})
+_EN_MONEY = re.compile(r"(?<!\w)([+-]?)([$€£])\s*(\d+(?:,\d{3})*(?:\.\d+)?)(?!(?:\w|,\d|\.\d))")
+_EN_CLOCK = re.compile(r"(?<![\w:])(\d{1,2}):(\d{2})\s*([ap])\.?m\.?(?!\w)")
+_EN_ISO_DATE = re.compile(r"(?<![\w-])(\d{4})-(\d{2})-(\d{2})(?![\w-])")
+_EN_NAMED_DATE = re.compile(r"\b(" + "|".join(_EN_MONTHS) + r") (\d{1,2}),? (\d{4})(?!\w)")
+_EN_YEAR_TAIL = "|".join(["hundred", r"oh (?:" + "|".join(_EN_ONES[1:]) + ")",
+                            "(?:" + "|".join(_EN_TENS[2:]) + r")(?: (?:" + "|".join(_EN_ONES[1:]) + "))?",
+                            *_EN_TEENS])
+_EN_SPOKEN_YEAR = re.compile(r"\byear (nineteen|twenty) (" + _EN_YEAR_TAIL + r")(?![\w-])")
+_EN_DATE_YEAR = re.compile(r"(\b(?:" + "|".join(_EN_MONTHS) + r") (?:(?:twenty|thirty) )?(?:"
+                           + "|".join(_EN_ORDINALS.values()) + r")) (nineteen|twenty) ("
+                           + _EN_YEAR_TAIL + r")(?![\w-])")
+
+
+def _english_money(match: re.Match) -> str:
+    sign, symbol, amount = match.groups()
+    main, _, fraction = amount.replace(",", "").partition(".")
+    unit, plural, minor, minors = {"$": ("dollar", "dollars", "cent", "cents"),
+                                   "€": ("euro", "euros", "cent", "cents"),
+                                   "£": ("pound", "pounds", "penny", "pence")}[symbol]
+    if len(main) > _MAX_SPELLABLE_DIGITS or len(fraction) > 2 or (len(main) > 1 and main.startswith("0")):
+        return f"{symbol} {sign}{amount}"
+    text = f"{sign}{main} {unit if int(main) == 1 else plural}"
+    if fraction and int(fraction):
+        cents = int(fraction.ljust(2, "0"))
+        text += f" and {cents} {minor if cents == 1 else minors}"
+    return text
+
+
+def _english_clock(match: re.Match) -> str:
+    hour, minute, meridian = match.groups()
+    if not 1 <= int(hour) <= 12 or int(minute) > 59:
+        return match.group(0)
+    minutes = "" if int(minute) == 0 else (f" oh {int(minute)}" if int(minute) < 10 else f" {int(minute)}")
+    return f"{int(hour)}{minutes} {meridian}m"
+
+
+def _english_date(match: re.Match) -> str:
+    year, month, day = (int(value) for value in match.groups())
+    try:
+        date(year, month, day)
+    except ValueError:
+        return match.group(0)
+    ordinal = _english_number_words(day)
+    ordinal[-1] = _EN_ORDINALS[ordinal[-1]]
+    return f"{_EN_MONTHS[month - 1]} {' '.join(ordinal)} {year}"
+
+
+def _english_named_date(match: re.Match) -> str:
+    month, day, year = match.groups()
+    try:
+        date(int(year), _EN_MONTHS.index(month) + 1, int(day))
+    except ValueError:
+        return match.group(0)
+    ordinal = _english_number_words(int(day))
+    ordinal[-1] = _EN_ORDINALS[ordinal[-1]]
+    return f"{month} {' '.join(ordinal)} {year}"
+
+
+def _canonical_english_years(text: str) -> str:
+    # Только явное «year …»: голое «nineteen ninety-nine» может быть двумя
+    # числами, а автоматическое склеивание прятало бы неверно прочитанные суммы.
+    def replace(match):
+        prefix, tail = match.groups()
+        if tail == "hundred":
+            rest = 0
+        elif tail.startswith("oh "):
+            rest = _EN_ONES.index(tail[3:])
+        elif tail in _EN_TEENS:
+            rest = _EN_TEENS.index(tail) + 10
+        else:
+            parts = tail.split()
+            rest = _EN_TENS.index(parts[0]) * 10 + (_EN_ONES.index(parts[1]) if len(parts) > 1 else 0)
+        return "year " + " ".join(_english_number_words((19 if prefix == "nineteen" else 20) * 100 + rest))
+    text = _EN_SPOKEN_YEAR.sub(replace, text)
+    return _EN_DATE_YEAR.sub(lambda match: match.group(1) + " " +
+                            _EN_SPOKEN_YEAR.sub(replace, "year " + match.group(2) + " " + match.group(3))[5:], text)
+
+
+def _english_number_words(n: int) -> list[str]:
+    """Ограничение разрядности проверяет вызывающий: идентификаторы не читаем как числа."""
+    for scale, name in ((1_000_000, "million"), (1000, "thousand"), (100, "hundred")):
+        if n >= scale:
+            count, rest = divmod(n, scale)
+            return _english_number_words(count) + [name] + (_english_number_words(rest) if rest else [])
+    if n < 10:
+        return [_EN_ONES[n]]
+    if n < 20:
+        return [_EN_TEENS[n - 10]]
+    ten, one = divmod(n, 10)
+    return [_EN_TENS[ten]] + ([_EN_ONES[one]] if one else [])
+
+
+def _spell_english_number(match: re.Match) -> str:
+    # Точку/запятую в конце предложения сохраняем. Неверная группировка, ведущие
+    # нули и огромные ID остаются цифрами: угадывание скрыло бы реальную разницу.
+    raw = match.group(0)
+    number = raw.rstrip(".,")
+    punctuation = raw[len(number):]
+    sign = []
+    if number.startswith(("+", "-")):
+        sign = ["minus" if number[0] == "-" else "plus"]
+        number = number[1:]
+    ordinal = re.search(r"(st|nd|rd|th)$", number)
+    ending = ordinal.group(0) if ordinal else ""
+    if ordinal:
+        number = number[:-2]
+    if not re.fullmatch(r"(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?", number):
+        return raw
+    integer, separator, fractional = number.replace(",", "").partition(".")
+    if (len(integer) > _MAX_SPELLABLE_DIGITS or len(fractional) > _MAX_SPELLABLE_DIGITS
+            or (len(integer) > 1 and integer.startswith("0")) or (ending and separator)):
+        return raw
+    n = int(integer)
+    if ending:
+        expected_ending = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+        if ending != expected_ending:
+            return raw
+    words = _english_number_words(n)
+    if ending:
+        words[-1] = _EN_ORDINALS[words[-1]]
+    if separator:
+        words += ["point"] + [_EN_ONES[int(digit)] for digit in fractional]
+    return " ".join(sign + words) + punctuation
+
+
+def _normalize_english_words(value: str) -> list[str]:
+    # NFC сохраняет имена с диакритикой; удалять акценты и апострофы нельзя:
+    # O'Neil и Oneil, we're и were — разные слова, даже если ASR их путает.
+    text = unicodedata.normalize("NFC", str(value or "")).lower()
+    text = text.translate(str.maketrans({"’": "'", "‘": "'", "ʼ": "'", "＇": "'"}))
+    text = _EN_ISO_DATE.sub(_english_date, text)
+    text = _EN_NAMED_DATE.sub(_english_named_date, text)
+    text = _EN_CLOCK.sub(_english_clock, text)
+    text = _EN_MONEY.sub(_english_money, text)
+    text = re.sub(r"\b([ap])\.m\.(?!\w)", r"\1m", text)
+    text = _EN_NUMBER.sub(_spell_english_number, text)
+    result = []
+    for word in _EN_WORD.findall(text):
+        if word in _EN_CONTRACTIONS:
+            result.extend(_EN_CONTRACTIONS[word].split())
+        elif word.endswith("n't"):
+            result.extend([word[:-3], "not"])
+        elif re.search(r"'(re|ve|ll)$", word):
+            stem, suffix = word.rsplit("'", 1)
+            result.extend([stem, {"re": "are", "ve": "have", "ll": "will"}[suffix]])
+        else:
+            # 's (is/has/владение) и 'd (had/would) неоднозначны, их не раскрываем.
+            result.append(_EN_TITLES.get(word, word))
+    return _canonical_english_years(" ".join(result)).split()
+
+
+def normalize_words(value: str, *, language: str = "ru") -> list[str]:
     """Слова без знаков, регистра, «ё» и цифр — то, что сравнимо между сценарием и
     слухом. Распознавание пишет числа цифрами («67», «22-й»), сценарий — словами
     («шестьдесят семь», «двадцать второй»): без перевода в слова они не совпадут
     никогда, и реплика с числом уходит в «пропущена» (см. докстринг модуля)."""
+    if language == "en":
+        return _normalize_english_words(value)
+    if language != "ru":
+        raise ValueError(f"Unsupported ASR alignment language: {language}")
     text = str(value or "").lower().replace("ё", "е")
     text = _spell_numbers(text)
     text = _STRETCHED_VOWEL.sub(r"\1", text)
     return _WORD.findall(text)
 
 
-def word_stream(spoken: list[dict]) -> list[tuple[str, float, float]]:
+def word_stream(spoken: list[dict], *, language: str = "ru") -> list[tuple[str, float, float]]:
     """Распознанное — одним потоком слов со временем каждого.
 
     Пословные отметки берутся, если их дали. Если нет — время сегмента растягивается
@@ -281,7 +468,24 @@ def word_stream(spoken: list[dict]) -> list[tuple[str, float, float]]:
     for chunk in spoken or []:
         words = chunk.get("words") or []
         if words:
-            for item in words:
+            date_days = {}
+            if language == "en":
+                for index in range(1, len(words) - 1):
+                    day = str(words[index].get("word") or "").strip().rstrip(",")
+                    year = str(words[index + 1].get("word") or "").strip().rstrip(".,")
+                    if not 1 <= len(day) <= 2 or not day.isdigit() or len(year) != 4 or not year.isdigit():
+                        continue
+                    month = normalize_words(str(words[index - 1].get("word") or ""), language="en")
+                    if len(month) != 1 or month[0] not in _EN_MONTHS:
+                        continue
+                    try:
+                        date(int(year), _EN_MONTHS.index(month[0]) + 1, int(day))
+                    except ValueError:
+                        continue
+                    ordinal = _english_number_words(int(day))
+                    ordinal[-1] = _EN_ORDINALS[ordinal[-1]]
+                    date_days[index] = ordinal
+            for item_index, item in enumerate(words):
                 item_start = float(item.get("start") or 0.0)
                 # `max` — на случай отсутствующего или нулевого `end`: без него
                 # деление на число слов при развороте числа даёт отрицательный шаг,
@@ -291,7 +495,7 @@ def word_stream(spoken: list[dict]) -> list[tuple[str, float, float]]:
                 # пословная отметка у распознавания на них одна, поэтому делим её
                 # время поровну — как для целого сегмента без пословных отметок, а не
                 # отдаём обоим одинаковые start/end, будто они звучали одновременно.
-                parts = normalize_words(str(item.get("word") or ""))
+                parts = date_days.get(item_index) or normalize_words(str(item.get("word") or ""), language=language)
                 step = (item_end - item_start) / len(parts) if parts else 0.0
                 for index, word in enumerate(parts):
                     stream.append((
@@ -300,7 +504,7 @@ def word_stream(spoken: list[dict]) -> list[tuple[str, float, float]]:
                         round(item_start + step * (index + 1), 3),
                     ))
             continue
-        parts = normalize_words(str(chunk.get("text") or ""))
+        parts = normalize_words(str(chunk.get("text") or ""), language=language)
         if not parts:
             continue
         start = float(chunk.get("start") or 0.0)
@@ -308,12 +512,52 @@ def word_stream(spoken: list[dict]) -> list[tuple[str, float, float]]:
         step = (end - start) / len(parts) if len(parts) else 0.0
         for index, word in enumerate(parts):
             stream.append((word, round(start + step * index, 3), round(start + step * (index + 1), 3)))
+    if language == "en":
+        expanded = []
+        index = 0
+        while index < len(stream):
+            word, start, end = stream[index]
+            if (":" in word and re.fullmatch(r"\d{1,2}:\d{2}", word) and index + 1 < len(stream)
+                    and stream[index + 1][0] in {"am", "pm"}):
+                marker = stream[index + 1]
+                parts = normalize_words(f"{word} {marker[0]}", language="en")
+                if parts != [word, marker[0]] and parts[-1] == marker[0]:
+                    # Провайдер разделяет «2:05» и «p.m.» на две метки. Цифры
+                    # разворачиваем внутри первой, AM/PM остаётся на своей метке.
+                    clock = parts[:-1]
+                    step = (end - start) / len(clock)
+                    expanded.extend((part, round(start + step * n, 3), round(start + step * (n + 1), 3))
+                                    for n, part in enumerate(clock))
+                    expanded.append(marker)
+                    index += 2
+                    continue
+            expanded.append((word, start, end))
+            index += 1
+        return expanded
     return stream
 
 
-def _similarity(left: str, right: str) -> float:
+def _similarity(left: str, right: str, *, language: str = "ru") -> float:
     if not left or not right:
         return 0.0
+    if language == "en":
+        def comparable(text):
+            words = _canonical_english_years(text).split()
+            return [word for index, word in enumerate(words)
+                    if not (word == "and" and 0 < index < len(words) - 1
+                            and words[index - 1] in {"hundred", "thousand", "million", "dollar", "dollars", "euro", "euros", "pound", "pounds"}
+                            and words[index + 1] in _EN_NUMERIC_WORDS)]
+        expected, heard = comparable(left), comparable(right)
+        # На коротких английских словах посимвольная близость обманчива: «no»
+        # находилось бы в «now». Число и отрицание нельзя прощать и в длинной фразе.
+        if len(expected) <= SHORT_LINE_WORDS and expected != heard:
+            return 0.0
+        def protected(words):
+            return [word for word in words if word in _EN_NUMERIC_WORDS
+                    or word in {"not", "never", "no"} or any(char.isdigit() for char in word)]
+        if protected(expected) != protected(heard):
+            return 0.0
+        return Levenshtein.ratio(" ".join(expected), " ".join(heard))
     return Levenshtein.ratio(left, right)
 
 
@@ -323,6 +567,7 @@ def _best_span(
     cursor: int,
     *,
     lookahead: int = LOOKAHEAD_WORDS,
+    language: str = "ru",
 ) -> tuple[float, int, int]:
     """Лучший отрезок потока для этой реплики: (сходство, начало, конец) в индексах слов.
 
@@ -336,6 +581,8 @@ def _best_span(
     size = len(target)
     # Длина сказанного гуляет: слово проглочено, слово услышано лишнее.
     widths = sorted({max(1, size - 2), max(1, size - 1), size, size + 1, size + 2})
+    if language == "en" and ("year" in target or set(target) & set(_EN_MONTHS)):
+        widths = sorted(set(widths) | {max(1, size - 3), size + 3})
     limit = min(len(stream), cursor + size + lookahead)
 
     best = (0.0, cursor, cursor)
@@ -344,7 +591,16 @@ def _best_span(
             end = start + width
             if end > len(stream):
                 continue
-            score = _similarity(wanted, " ".join(word for word, _s, _e in stream[start:end]))
+            candidate = " ".join(word for word, _s, _e in stream[start:end])
+            score = _similarity(wanted, candidate, language=language)
+            if language == "en" and score < 1.0:
+                # Нельзя обойти отрицание, обрезав начало/конец кандидата:
+                # «will not open the old door» иначе находилось как «open the old door».
+                # Дословную реплику не снимаем из-за «Not...» в начале следующей.
+                adjacent = ([stream[start - 1][0]] if start > cursor else []) + (
+                    [stream[end][0]] if end < len(stream) else [])
+                if "not" in adjacent:
+                    continue
             if score > best[0]:
                 best = (score, start, end)
         if best[0] > 0.97:
@@ -358,6 +614,8 @@ def _rival_pull(
     stream: list[tuple[str, float, float]],
     start: int,
     end: int,
+    *,
+    language: str = "ru",
 ) -> float:
     """Насколько сильно ближайшие следующие реплики претендуют на этот отрезок.
 
@@ -371,7 +629,8 @@ def _rival_pull(
         rival = index + offset
         if rival >= len(expected):
             break
-        pull = max(pull, _similarity(" ".join(normalize_words(expected[rival])), said))
+        pull = max(pull, _similarity(" ".join(normalize_words(expected[rival], language=language)), said,
+                                     language=language))
     return pull
 
 
@@ -382,6 +641,8 @@ def _claimed_by_a_later_line(
     start: int,
     end: int,
     score: float,
+    *,
+    language: str = "ru",
 ) -> bool:
     """Не подходит ли найденный отрезок какой-нибудь из ближайших следующих реплик лучше.
 
@@ -389,7 +650,7 @@ def _claimed_by_a_later_line(
     реплика героя»), и жадный поиск отдаёт отрезок первой из них — то есть той, которую
     диктор как раз пропустил. Спрашиваем соперников, прежде чем отдать.
     """
-    return _rival_pull(expected, index, stream, start, end) > score + RIVAL_MARGIN
+    return _rival_pull(expected, index, stream, start, end, language=language) > score + RIVAL_MARGIN
 
 
 def _needed_by_a_later_line(
@@ -399,6 +660,8 @@ def _needed_by_a_later_line(
     start: int,
     end: int,
     score: float,
+    *,
+    language: str = "ru",
 ) -> bool:
     """Не ждёт ли этот отрезок какая-нибудь из ближайших следующих реплик.
 
@@ -416,7 +679,7 @@ def _needed_by_a_later_line(
     записано, зато у следующей реплики её место не отнимут. Недобор портит черновик
     монтажа, отъём — ломает сверку и шлёт диктору ложное письмо.
     """
-    return _rival_pull(expected, index, stream, start, end) >= score - RIVAL_MARGIN
+    return _rival_pull(expected, index, stream, start, end, language=language) >= score - RIVAL_MARGIN
 
 
 def _later_lines_in(
@@ -426,6 +689,7 @@ def _later_lines_in(
     threshold: float,
     *,
     min_words: int,
+    language: str = "ru",
 ) -> list[int]:
     """Какие из ближайших следующих реплик звучат в этом куске потока.
 
@@ -440,18 +704,19 @@ def _later_lines_in(
         rival = index + offset
         if rival >= len(expected):
             break
-        target = normalize_words(expected[rival])
+        target = normalize_words(expected[rival], language=language)
         if len(target) < min_words:
             continue
-        rival_score, _s, _e = _best_span(target, stretch, 0, lookahead=len(stretch))
+        rival_score, _s, _e = _best_span(target, stretch, 0, lookahead=len(stretch), language=language)
         if rival_score >= threshold:
             found.append(rival)
     return found
 
 
-def _reread_right_after(target: list[str], stream: list[tuple[str, float, float]], cursor: int) -> bool:
+def _reread_right_after(target: list[str], stream: list[tuple[str, float, float]], cursor: int,
+                       *, language: str = "ru") -> bool:
     """Звучит ли реплика снова вплотную за этим местом — то есть читается ли пара заново."""
-    score, start, _end = _best_span(target, stream, cursor, lookahead=TAKE_GAP_WORDS)
+    score, start, _end = _best_span(target, stream, cursor, lookahead=TAKE_GAP_WORDS, language=language)
     return score >= CONFIDENT_SCORE and start - cursor <= TAKE_GAP_WORDS
 
 
@@ -462,6 +727,8 @@ def _jumps_over_a_later_line(
     cursor: int,
     start: int,
     score: float,
+    *,
+    language: str = "ru",
 ) -> bool:
     """Не лежит ли между курсором и найденным местом одна из следующих реплик.
 
@@ -488,12 +755,14 @@ def _jumps_over_a_later_line(
     """
     if start <= cursor:
         return False
-    words = len(normalize_words(expected[index]))
+    words = len(normalize_words(expected[index], language=language))
     skipped = stream[cursor:start]
     if words < MIN_TAKE_WORDS:
-        return bool(_later_lines_in(expected, index, skipped, max(MATCH_THRESHOLD, score), min_words=MIN_TAKE_WORDS))
+        return bool(_later_lines_in(expected, index, skipped, max(MATCH_THRESHOLD, score),
+                                   min_words=MIN_TAKE_WORDS, language=language))
     if words <= SHORT_LINE_WORDS and score < WEAK_SCORE:
-        return bool(_later_lines_in(expected, index, skipped, CONFIDENT_SCORE, min_words=MIN_TAKE_WORDS))
+        return bool(_later_lines_in(expected, index, skipped, CONFIDENT_SCORE,
+                                   min_words=MIN_TAKE_WORDS, language=language))
     return False
 
 
@@ -514,6 +783,8 @@ def _collect_takes(
     score: float,
     expected: list[str],
     index: int,
+    *,
+    language: str = "ru",
 ) -> tuple[list[dict], int]:
     """Все подходы диктора к этой реплике и место, где кончился последний.
 
@@ -528,13 +799,16 @@ def _collect_takes(
     takes = [_take_at(stream, start, end, score)]
     cursor = end
     while cursor < len(stream):
-        next_score, next_start, next_end = _best_span(target, stream, cursor, lookahead=TAKE_GAP_WORDS)
+        next_score, next_start, next_end = _best_span(target, stream, cursor, lookahead=TAKE_GAP_WORDS,
+                                                   language=language)
         if next_end <= next_start or next_score < TAKE_THRESHOLD:
             break
         if next_start - cursor > TAKE_GAP_WORDS:
             break
-        jumped = _later_lines_in(expected, index, stream[cursor:next_start], CONFIDENT_SCORE, min_words=1)
-        if any(not _reread_right_after(normalize_words(expected[r]), stream, next_end) for r in jumped):
+        jumped = _later_lines_in(expected, index, stream[cursor:next_start], CONFIDENT_SCORE,
+                                min_words=1, language=language)
+        if any(not _reread_right_after(normalize_words(expected[r], language=language), stream, next_end,
+                                      language=language) for r in jumped):
             # Между подходами дословно звучит следующая реплика, а за «подходом» её
             # повтора нет — значит это не повтор пары, а похожие слова дальше в
             # сценарии. 28.10 («Юмкуба», глава 14): «Ты хочешь мне изменять!» взяла
@@ -547,42 +821,44 @@ def _collect_takes(
             # и за подходом. Соседку спрашиваем любой длины: окно — не больше
             # `TAKE_GAP_WORDS` слов, а лишний отказ стоит только подхода.
             break
-        if _needed_by_a_later_line(expected, index, stream, next_start, next_end, next_score):
+        if _needed_by_a_later_line(expected, index, stream, next_start, next_end, next_score, language=language):
             break
         takes.append(_take_at(stream, next_start, next_end, next_score))
         cursor = next_end
     return takes, cursor
 
 
-def align_transcript(expected: list[str], spoken: list[dict]) -> dict:
+def align_transcript(expected: list[str], spoken: list[dict], *, language: str = "ru") -> dict:
     """Сопоставить реплики роли с тем, что услышано в файле.
 
     `expected` — реплики в порядке сценария, `spoken` — сегменты распознавания.
+    Язык задаётся книгой: автоопределение по тексту меняло бы правила при каждом дубле.
     """
-    stream = word_stream(spoken)
+    normalize_words("", language=language)
+    stream = word_stream(spoken, language=language)
     lines: list[dict] = []
     missing: list[int] = []
     cursor = 0
 
     for index, text in enumerate(expected or []):
-        target = normalize_words(text)
-        score, start, end = _best_span(target, stream, cursor)
+        target = normalize_words(text, language=language)
+        score, start, end = _best_span(target, stream, cursor, language=language)
         matched = bool(target) and score >= MATCH_THRESHOLD
         if not matched and target:
             # Чтение ушло дальше окна — курсор отстал и сам не догонит: пропуск его
             # нарочно не двигает, иначе пропущенная реплика съела бы поток. Смотрим
             # весь остаток, но спрашиваем строже: на такой длине «похоже» найдётся
             # почти всегда, и по ближнему порогу сюда пролезла бы чужая реплика.
-            far_score, far_start, far_end = _best_span(target, stream, cursor, lookahead=len(stream))
+            far_score, far_start, far_end = _best_span(target, stream, cursor, lookahead=len(stream), language=language)
             if far_score >= RESYNC_THRESHOLD:
                 score, start, end = far_score, far_start, far_end
                 matched = True
-        if matched and _claimed_by_a_later_line(expected, index, stream, start, end, score):
+        if matched and _claimed_by_a_later_line(expected, index, stream, start, end, score, language=language):
             # Отрезок похож на эту реплику, но на следующую похож заметно больше —
             # значит эту диктор пропустил, а мы едва не отдали ей чужое место и не
             # увели за собой все реплики до конца главы.
             matched = False
-        if matched and _jumps_over_a_later_line(expected, index, stream, cursor, start, score):
+        if matched and _jumps_over_a_later_line(expected, index, stream, cursor, start, score, language=language):
             # Найденное место — за следующей репликой: эту диктор пропустил, а мы
             # чуть не увели курсор через прочитанную.
             matched = False
@@ -596,7 +872,7 @@ def align_transcript(expected: list[str], spoken: list[dict]) -> dict:
             # Курсор двигает только найденная реплика: пропущенная не должна съесть
             # кусок потока и увести за собой следующие. Двигаем за последний подход —
             # иначе подходы 2 и 3 остаются впереди курсора и сбивают следующие реплики.
-            takes, cursor = _collect_takes(target, stream, start, end, score, expected or [], index)
+            takes, cursor = _collect_takes(target, stream, start, end, score, expected or [], index, language=language)
             matched = bool(takes)
         lines.append({
             "index": index,

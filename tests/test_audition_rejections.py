@@ -100,15 +100,14 @@ LATER = NOW + timedelta(minutes=15)
 
 def test_the_letter_word_for_word():
     assert ar.rejection_notice(role="Пяднтикух", book_title='Автор - \"Учебная книга\"') == (
-        "🎙 Noname Records — про вашу пробу\n"
-        "Роль: «Пяднтикух»\n"
-        'Книга: Автор - "Учебная книга"\n'
+        "🎙 Noname Records — about your audition\n"
+        "Role: «Пяднтикух»\n"
+        'Book: Автор - "Учебная книга"\n'
         "\n"
-        "Спасибо, что попробовались! В этот раз на персонажа «Пяднтикух» выбран другой голос. "
-        "Запись тут ни при чём — просто этот герой должен звучать немного иначе.\n"
+        "Thank you for auditioning. This time, a different voice was selected for «Пяднтикух». "
+        "This does not reflect the recording quality; the character needs a different sound.\n"
         "\n"
-        "Не прощаемся: героев много, и среди них наверняка есть тот, с кем ваш голос "
-        "сойдётся с первого слова 🙂"
+        "We hope to find another character whose voice is a good match for yours 🙂"
     )
 
 
@@ -159,7 +158,7 @@ def test_no_account_goes_to_the_owner(db, mail, monkeypatch):
 
     assert status == "no_account" and mail["direct"] == []
     [relay] = mail["relay"]
-    assert "Царели Цертан" in relay and "не доставлен" in relay
+    assert "Царели Цертан" in relay and "not delivered" in relay
 
 
 def test_an_ambiguous_name_goes_to_the_owner_with_candidates(db, mail, monkeypatch):
@@ -610,13 +609,13 @@ def test_a_new_low_press_revives_a_cancelled_rejection_as_a_score_one(db, mail):
 # ---------- причина автора в письме (04.10) ----------
 
 @pytest.mark.parametrize("reason,line", [
-    ("voice", "Для этого героя нужен другой тембр."),
-    ("manner", "Для этого героя нужна другая манера подачи."),
-    ("all", "Для этого героя нужны и другой тембр, и другая манера подачи."),
+    ("voice", "This character needs a different voice."),
+    ("manner", "This character needs a different delivery."),
+    ("all", "This character needs a different voice and delivery."),
 ])
 def test_the_letter_carries_the_reason(reason, line):
     text = ar.rejection_notice(role="Пяднтикух", book_title="Карта", reason=reason)
-    assert f"звучать немного иначе.\n{line}\n" in text
+    assert f"needs a different sound.\n{line}\n" in text
 
 
 @pytest.mark.parametrize("reason", ["", "voice", "manner", "all"])
@@ -641,7 +640,7 @@ def test_the_sent_letter_includes_the_reason_the_author_gave(db, mail):
 
     ar.send_due_rejections(db, now=LATER)
     [(_, text)] = mail["direct"]
-    assert "другая манера подачи" in text
+    assert "different delivery" in text
 
 
 def test_the_authors_own_words_never_reach_the_dictor(db, mail):
@@ -656,7 +655,7 @@ def test_the_authors_own_words_never_reach_the_dictor(db, mail):
 
     ar.send_due_rejections(db, now=LATER)
     [(_, text)] = mail["direct"]
-    assert "другой тембр" in text and "скрипучий" not in text and "баритон" not in text
+    assert "different voice" in text and "скрипучий" not in text and "баритон" not in text
 
 
 # ---------- «Отказать» рукой (13.10) ----------

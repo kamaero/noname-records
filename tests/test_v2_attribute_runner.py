@@ -367,7 +367,7 @@ def test_silence_about_a_unit_is_unsure_not_absent():
     llm = FakeLlm(responses=[_response([{"id": "#00000", "speaker": NARRATOR, "confidence": 1.0}])])
     records, problems, _ = attribute_units(units, cast=CAST, cast_lines=CAST_LINES, llm=llm, system_prompt=SYSTEM)
     assert [r["speaker"] for r in records] == [NARRATOR, UNSURE]
-    assert any("промолчала" in p for p in problems)
+    assert any("no model response" in p for p in problems)
 
 
 # --- review_low_confidence ----------------------------------------------------
@@ -491,7 +491,7 @@ def test_make_llm_refuses_without_an_api_key(monkeypatch):
     from app.v2 import llm as v2_llm
 
     monkeypatch.setattr(v2_llm, "_resolve_provider", lambda name: ("", "https://x", "openai"))
-    with pytest.raises(RuntimeError, match="ключ"):
+    with pytest.raises(RuntimeError, match="API key"):
         v2_llm.make_llm("openai", "gpt-x")
 
 

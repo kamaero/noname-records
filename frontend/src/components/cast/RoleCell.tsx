@@ -1,3 +1,4 @@
+import { roleLabel } from "../../v2/types";
 import { pluralRu, splitCastAliases, type CastRow } from "../../viewModels/booksCast";
 import { InlineCell } from "./InlineCell";
 
@@ -18,11 +19,11 @@ export function RoleCell({ row, open, onToggle, saving, onRename }: RoleCellProp
     <div className="cast-role">
       <div className="cast-role-line">
         <InlineCell
-          value={row.name}
+          value={roleLabel(row.name)}
           saving={saving}
           disabled={row.is_narrator}
-          title={row.is_narrator ? "У рассказчика тысячи реплик по всей книге — имя не правится отсюда" : undefined}
-          label={`Имя роли ${row.name}`}
+          title={row.is_narrator ? "The narrator spans the entire book; its name cannot be edited here" : undefined}
+          label={`Role name ${row.name}`}
           onCommit={(next) => onRename(row, next)}
         />
         {aliases.length ? (
@@ -30,7 +31,7 @@ export function RoleCell({ row, open, onToggle, saving, onRename }: RoleCellProp
             type="button"
             className="cast-alias-toggle num"
             aria-expanded={show}
-            aria-label={`${show ? "Скрыть" : "Показать"} ${aliases.length} ${pluralRu(aliases.length, "алиас", "алиаса", "алиасов")} роли ${row.name}`}
+            aria-label={`${show ? "Hide" : "Show"} ${aliases.length} ${pluralRu(aliases.length, "alias", "aliases", "aliases")} for ${row.name}`}
             onClick={() => onToggle(row.character_id)}
           >
             +{aliases.length}

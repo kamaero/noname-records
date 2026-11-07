@@ -40,45 +40,44 @@ export function PaletteFixSheet({ rows, conflicts, applying, onApply, onClose }:
 
   return (
     <Sheet
-      title="Развести цвета"
-      subtitle={`${conflicts.length} ${plural(conflicts.length, "пара", "пары", "пар")} · перекрасим ${plural(resolution.length, "роль", "роли", "ролей")}: ${resolution.length}`}
+      title="Adjust colors"
+      subtitle={`${conflicts.length} ${plural(conflicts.length, "pair", "pairs", "pairs")} · roles to recolor: ${plural(resolution.length, "role", "roles", "roles")}: ${resolution.length}`}
       onClose={onClose}
       footer={
         <>
           <Button variant="primary" loading={applying} disabled={resolution.length === 0} onClick={() => onApply(resolution)}>
-            Перекрасить {resolution.length}
+            Recolor {resolution.length}
           </Button>
           <Button variant="ghost" disabled={applying} onClick={onClose}>
-            Отмена
+            Cancel
           </Button>
         </>
       }
     >
       <p className="pal-note">
-        Конфликт — это две роли, у которых почти одинаковый цвет <em>и</em> которые встречаются в одной главе:
-        диктор с распечаткой их перепутает. Роли, что нигде не пересекаются, могут быть одного цвета — это не конфликт.
+        A conflict is a pair of roles with nearly identical colors <em>and</em> appearing in the same chapter, making them hard to distinguish in print. Roles that never overlap can share a color.
       </p>
 
       <section className="v2r-sheet-section">
-        <h3 className="v2r-sheet-h">Похожие пары</h3>
+        <h3 className="v2r-sheet-h">Similar pairs</h3>
         <ul className="pal-pairs">
           {conflicts.slice(0, 24).map((item) => (
             <li key={`${item.leftId}:${item.rightId}`}>
               <span className="pal-pair-names">{item.leftName} ↔ {item.rightName}</span>
               <span className="pal-pair-meta num">
-                {item.sharedChapters} {plural(item.sharedChapters, "общая глава", "общие главы", "общих глав")}
+                {item.sharedChapters} {plural(item.sharedChapters, "shared chapter", "shared chapters", "shared chapters")}
               </span>
             </li>
           ))}
-          {conflicts.length > 24 ? <li className="pal-pair-more num">…ещё {conflicts.length - 24}</li> : null}
+          {conflicts.length > 24 ? <li className="pal-pair-more num">…more {conflicts.length - 24}</li> : null}
         </ul>
       </section>
 
       <section className="v2r-sheet-section">
-        <h3 className="v2r-sheet-h">Что изменится</h3>
+        <h3 className="v2r-sheet-h">What will change</h3>
         {resolution.length === 0 ? (
           <p className="v2r-sheet-empty">
-            Свободных различимых сочетаний не осталось — задайте цвет вручную через свотч роли.
+            No distinct color combinations remain. Set a color manually using the role swatch.
           </p>
         ) : (
           <ul className="pal-changes">

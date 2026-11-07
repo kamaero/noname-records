@@ -1,3 +1,4 @@
+import { roleLabel } from "./types";
 import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon";
@@ -28,8 +29,8 @@ function roleVars(entry: ReaderCastEntry): CSSProperties {
   } as CSSProperties;
 }
 
-const NARRATOR_HINT = "Рассказчик остаётся в нейтральной подаче";
-const FOREIGN_HINT = "нет в касте — переназначьте";
+const NARRATOR_HINT = "Narrator keeps neutral styling";
+const FOREIGN_HINT = "not in cast; reassign";
 
 /**
  * The chapter's cast, as the roles it can be filtered by.
@@ -55,18 +56,18 @@ export function CastLegend({
   // role, or the narrator's own dictor could not turn his filter off again.
   const shown = cast.filter((entry) => entry.name !== NARRATOR || selected.has(entry.name));
   return (
-    <section className={roleMode ? "v2r-legend v2r-legend--role-mode" : "v2r-legend"} aria-label="Каст главы">
+    <section className={roleMode ? "v2r-legend v2r-legend--role-mode" : "v2r-legend"} aria-label="Chapter cast">
       <div className="v2r-legend-head">
         <span className="v2r-legend-hint">
           {roleMode
-            ? `Показаны реплики: ${[...selected].join(", ")}`
+            ? `Lines shown: ${[...selected].join(", ")}`
             : bookId
-              ? "Нажмите на роль — в главе останутся только её реплики. Кнопка «все» — её реплики по всей книге, с контекстом."
-              : "Нажмите на роль — останутся только её реплики"}
+              ? "Select a role to filter this chapter to its lines. Use All to see that role throughout the book, with context."
+              : "Select a role to show only its lines"}
         </span>
         {roleMode ? (
           <button type="button" className="btn btn-sm btn-ghost v2r-legend-clear" onClick={onClear}>
-            Показать всё
+            Show all
           </button>
         ) : null}
       </div>
@@ -89,9 +90,9 @@ export function CastLegend({
                 aria-pressed={on}
                 title={foreign ? FOREIGN_HINT : undefined}
               >
-                <span className="v2r-role-chip">{unsure ? "?" : entry.name}</span>
+                <span className="v2r-role-chip">{unsure ? "?" : roleLabel(entry.name)}</span>
                 <span className="v2r-role-meta">
-                  <span className="v2r-role-actor">{unsure ? "не определено" : entry.actor || "— актёр не назначен"}</span>
+                  <span className="v2r-role-actor">{unsure ? "unassigned" : entry.actor || "— voice actor unassigned"}</span>
                   <span className="v2r-role-n num">{entry.lines}</span>
                 </span>
                 {/* who the character is, and how the author wants him voiced */}
@@ -107,10 +108,10 @@ export function CastLegend({
                 key={`all-${entry.name}`}
                 className="v2r-role-all"
                 to={roleScriptHref(bookId, entry.name, roleScriptBase, roleScriptSearch)}
-                title={`Все реплики роли «${entry.name}» по всей книге, с контекстом`}
-                aria-label={`Все реплики роли ${entry.name} по всей книге`}
+                title={`All lines for role «${roleLabel(entry.name)}» throughout the book, with context`}
+                aria-label={`All lines for role ${roleLabel(entry.name)} throughout the book`}
               >
-                все
+                all
               </Link>
             ) : null;
             const narrator = entry.name === NARRATOR || !entry.character_id;
@@ -122,7 +123,7 @@ export function CastLegend({
                 </div>
               ) : chip;
             }
-            const editHint = foreign ? FOREIGN_HINT : narrator ? NARRATOR_HINT : `Палитра: ${entry.name}`;
+            const editHint = foreign ? FOREIGN_HINT : narrator ? NARRATOR_HINT : `Palette: ${entry.name}`;
             return (
               <div key={entry.name} className={on ? "v2r-role-wrap is-on" : "v2r-role-wrap"} style={roleVars(entry)}>
                 {chip}
@@ -133,7 +134,7 @@ export function CastLegend({
                   onClick={() => onEdit(entry)}
                   disabled={narrator}
                   title={editHint}
-                  aria-label={narrator ? editHint : `Изменить палитру роли ${entry.name}`}
+                  aria-label={narrator ? editHint : `Edit role palette: ${entry.name}`}
                 >
                   <Icon name="dots" />
                 </button>
@@ -147,7 +148,7 @@ export function CastLegend({
           className="btn btn-sm v2r-btn v2r-legend-all"
           to={roleScriptHref(bookId, [...selected][0], roleScriptBase, roleScriptSearch)}
         >
-          Все реплики роли в книге →
+          All lines for this role →
         </Link>
       ) : null}
       {children}
@@ -168,9 +169,9 @@ export function CastLegendPrint({ cast }: { cast: ReaderCastEntry[] }) {
       <div className="v2r-roles">
         {roles.map((entry) => (
           <span key={entry.name} className="v2r-role" style={roleVars(entry)}>
-            <span className="v2r-role-chip">{entry.name === UNSURE ? "?" : entry.name}</span>
+            <span className="v2r-role-chip">{entry.name === UNSURE ? "?" : roleLabel(entry.name)}</span>
             <span className="v2r-role-meta">
-              <span className="v2r-role-actor">{entry.name === UNSURE ? "не определено" : entry.actor || "— актёр не назначен"}</span>
+              <span className="v2r-role-actor">{entry.name === UNSURE ? "unassigned" : entry.actor || "— voice actor unassigned"}</span>
               <span className="v2r-role-n num">{entry.lines}</span>
             </span>
           </span>

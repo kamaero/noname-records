@@ -49,10 +49,10 @@ export function CastPaletteHost({ bookId, row, allRows, onClose }: CastPaletteHo
     },
     onSuccess: async (result) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Палитра не сохранена", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Palette not saved", detail: result.error || "The server returned no details." });
         return;
       }
-      pushToast({ tone: "success", title: `${row.name}: палитра сохранена` });
+      pushToast({ tone: "success", title: `${row.name}: palette saved` });
       onClose();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["book-budget", bookId] }),
@@ -60,7 +60,7 @@ export function CastPaletteHost({ bookId, row, allRows, onClose }: CastPaletteHo
       ]);
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Палитра не сохранена", detail: describeApiError(error, "Не удалось сохранить палитру.") });
+      pushToast({ tone: "error", title: "Palette not saved", detail: describeApiError(error, "Could not save the palette.") });
     },
   });
 
@@ -75,7 +75,7 @@ export function CastPaletteHost({ bookId, row, allRows, onClose }: CastPaletteHo
       onClose={onClose}
       onSave={() => save.mutate()}
       warning={<PaletteWarning conflicts={peers} />}
-      saveLabel={peers.length ? "Всё равно сохранить" : undefined}
+      saveLabel={peers.length ? "Save anyway" : undefined}
     />
   );
 }

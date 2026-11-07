@@ -95,27 +95,27 @@ export function buildNav(me: MeResponse): { primary: NavItem[]; secondary: NavIt
   const primary: NavItem[] = [
     {
       to: "/",
-      label: "Библиотека",
+      label: "Library",
       icon: "books",
       show: me.full_access,
       match: (p) =>
         p === "/" ||
         (startsWithAny(p, ["/command", "/books", "/upload"]) && !isCastPath(p)),
     },
-    { to: "/reader", label: "Подготовка", icon: "doc", show: canPrepare, match: (p) => startsWithAny(p, ["/reader", "/script"]) },
-    { to: "/recording", label: "Сценарий", icon: "mic", show: canRecord, match: (p) => startsWithAny(p, ["/recording", "/dictor-pro", "/dictor-neo"]) },
-    { to: "/takes", label: "Загрузка", icon: "upload", show: canRecord, match: (p) => startsWithAny(p, ["/takes"]) },
+    { to: "/reader", label: "Preparation", icon: "doc", show: canPrepare, match: (p) => startsWithAny(p, ["/reader", "/script"]) },
+    { to: "/recording", label: "Script", icon: "mic", show: canRecord, match: (p) => startsWithAny(p, ["/recording", "/dictor-pro", "/dictor-neo"]) },
+    { to: "/takes", label: "Uploads", icon: "upload", show: canRecord, match: (p) => startsWithAny(p, ["/takes"]) },
     { to: "/asr", label: "ASR", icon: "wave", show: canRecord, match: (p) => startsWithAny(p, ["/asr"]) },
   ];
   const secondary: NavItem[] = [
-    { to: "/cast", label: "Каст", icon: "cast", show: editor || isAgent, muted: true, match: isCastPath },
-    { to: "/auditions", label: "Пробы", icon: "play", show: (editor || isAgent) && !oneSeat, muted: true, match: (p) => startsWithAny(p, ["/auditions"]) },
-    { to: "/payouts", label: "Смета", icon: "ruble", show: Boolean(me.can_see_payouts), muted: true, match: (p) => startsWithAny(p, ["/payouts"]) },
-    { to: "/dictors", label: "Дикторы", icon: "mic", show: editor, muted: true, match: (p) => startsWithAny(p, ["/dictors"]) },
-    { to: "/users", label: "Пользователи", icon: "users", show: isAdmin && !oneSeat, muted: true, match: (p) => startsWithAny(p, ["/users"]) },
-    { to: "/settings", label: "Настройки", icon: "settings", show: isAdmin, muted: true, match: (p) => startsWithAny(p, ["/settings"]) },
-    { to: "/log", label: "Лог", icon: "log", show: isAdmin, muted: true, match: (p) => startsWithAny(p, ["/log"]) },
-    { to: "/help", label: "Помощь", icon: "help", show: true, muted: true, match: (p) => startsWithAny(p, ["/help"]) },
+    { to: "/cast", label: "Cast", icon: "cast", show: editor || isAgent, muted: true, match: isCastPath },
+    { to: "/auditions", label: "Auditions", icon: "play", show: (editor || isAgent) && !oneSeat, muted: true, match: (p) => startsWithAny(p, ["/auditions"]) },
+    { to: "/payouts", label: "Budget", icon: "ruble", show: Boolean(me.can_see_payouts), muted: true, match: (p) => startsWithAny(p, ["/payouts"]) },
+    { to: "/dictors", label: "Voice actors", icon: "mic", show: editor, muted: true, match: (p) => startsWithAny(p, ["/dictors"]) },
+    { to: "/users", label: "Users", icon: "users", show: isAdmin && !oneSeat, muted: true, match: (p) => startsWithAny(p, ["/users"]) },
+    { to: "/settings", label: "Settings", icon: "settings", show: isAdmin, muted: true, match: (p) => startsWithAny(p, ["/settings"]) },
+    { to: "/log", label: "Logs", icon: "log", show: isAdmin, muted: true, match: (p) => startsWithAny(p, ["/log"]) },
+    { to: "/help", label: "Help", icon: "help", show: true, muted: true, match: (p) => startsWithAny(p, ["/help"]) },
   ];
   return { primary: primary.filter((n) => n.show), secondary: secondary.filter((n) => n.show) };
 }
@@ -152,7 +152,7 @@ export function AppShell({ me, children }: AppShellProps) {
     staleTime: 60_000,
   });
   const newAuditions = auditionsNew.data?.new_count || 0;
-  const secondary = secondaryBase.map((n) => (n.to === "/auditions" && newAuditions ? { ...n, label: `Пробы · ${newAuditions}` } : n));
+  const secondary = secondaryBase.map((n) => (n.to === "/auditions" && newAuditions ? { ...n, label: `Auditions · ${newAuditions}` } : n));
   const canSearch = me.full_access;
 
   // ?onboarding=1 — ссылка «Первые шаги» из письма бота: окно открывается всегда, даже
@@ -239,12 +239,12 @@ export function AppShell({ me, children }: AppShellProps) {
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Найти книгу…"
-        aria-label="Поиск книги"
+        placeholder="Find a book…"
+        aria-label="Search books"
         autoFocus={isMobile}
       />
       {isMobile ? (
-        <button type="button" className="shell-iconbtn shell-iconbtn--inline" aria-label="Закрыть поиск" onClick={() => setSearchOpen(false)}>
+        <button type="button" className="shell-iconbtn shell-iconbtn--inline" aria-label="Close search" onClick={() => setSearchOpen(false)}>
           <Icon name="close" />
         </button>
       ) : (
@@ -256,13 +256,13 @@ export function AppShell({ me, children }: AppShellProps) {
   return (
     <div className="app">
       <header className={`topbar shell-topbar${isMobile && searchOpen ? " is-searching" : ""}`}>
-        <NavLink to={primary[0]?.to || "/"} className="brand shell-brand" aria-label="На главную">
+        <NavLink to={primary[0]?.to || "/"} className="brand shell-brand" aria-label="Home">
           <div className="brand-mark">
             <Icon name="wave" />
           </div>
           <div className="brand-text">
             <span className="brand-name">NONAME RECORDS</span>
-            <span className="brand-sub">студия озвучки книг</span>
+            <span className="brand-sub">audiobook production studio</span>
           </div>
         </NavLink>
 
@@ -272,7 +272,7 @@ export function AppShell({ me, children }: AppShellProps) {
           {isMobile ? (
             <>
               {canSearch && !searchOpen ? (
-                <button type="button" className="shell-iconbtn" aria-label="Поиск" onClick={() => setSearchOpen(true)}>
+                <button type="button" className="shell-iconbtn" aria-label="Search" onClick={() => setSearchOpen(true)}>
                   <Icon name="search" />
                 </button>
               ) : null}
@@ -280,7 +280,7 @@ export function AppShell({ me, children }: AppShellProps) {
                 ref={menuButtonRef}
                 type="button"
                 className="shell-iconbtn"
-                aria-label="Меню"
+                aria-label="Menu"
                 aria-expanded={menuOpen}
                 aria-haspopup="dialog"
                 onClick={() => setMenuOpen(true)}
@@ -295,8 +295,8 @@ export function AppShell({ me, children }: AppShellProps) {
                 ref={helpButtonRef}
                 type="button"
                 className="shell-iconbtn shell-helpbtn"
-                aria-label="Как тут всё устроено"
-                title="Как тут всё устроено"
+                aria-label="How it works"
+                title="How it works"
                 aria-haspopup="dialog"
                 onClick={() => setOnboardingOpen(true)}
               >
@@ -305,7 +305,7 @@ export function AppShell({ me, children }: AppShellProps) {
               <div className="userbox">
                 <div className="userbox-info">
                   <strong>{me.display_name || me.uid}</strong>
-                  <span>{me.roles.join(", ") || "без ролей"}</span>
+                  <span>{me.roles.join(", ") || "no roles"}</span>
                 </div>
                 <div className="avatar">{initialsOf(me.display_name || me.uid)}</div>
               </div>
@@ -315,7 +315,7 @@ export function AppShell({ me, children }: AppShellProps) {
       </header>
 
       {!isMobile ? (
-        <nav className="tabnav shell-tabs" aria-label="Основные разделы">
+        <nav className="tabnav shell-tabs" aria-label="Main sections">
           {primary.map(renderTab)}
           <span className="tab-spacer" />
           {secondary.map(renderTab)}
@@ -326,21 +326,21 @@ export function AppShell({ me, children }: AppShellProps) {
 
       {isMobile && menuOpen ? (
         <Sheet
-          title="Разделы"
+          title="Sections"
           side="left"
           onClose={closeMenu}
           footer={
             <div className="shell-menu-footwrap">
               <button type="button" className="shell-menu-row shell-menu-helprow" aria-haspopup="dialog" onClick={openOnboardingFromMenu}>
                 <span className="shell-helpmark" aria-hidden="true">?</span>
-                <span>Как тут всё устроено</span>
+                <span>How it works</span>
               </button>
               <div className="shell-menu-foot">
                 <div className="shell-menu-user">
                   <div className="avatar">{initialsOf(me.display_name || me.uid)}</div>
                   <div className="userbox-info shell-menu-userinfo">
                     <strong>{me.display_name || me.uid}</strong>
-                    <span>{me.roles.join(", ") || "без ролей"}</span>
+                    <span>{me.roles.join(", ") || "no roles"}</span>
                   </div>
                 </div>
                 <ThemeToggle />
@@ -348,7 +348,7 @@ export function AppShell({ me, children }: AppShellProps) {
             </div>
           }
         >
-          <nav className="shell-menu" aria-label="Основные разделы">
+          <nav className="shell-menu" aria-label="Main sections">
             {primary.map(renderMenuRow)}
             {secondary.length ? <hr className="divider shell-menu-divider" /> : null}
             {secondary.map(renderMenuRow)}

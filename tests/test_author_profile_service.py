@@ -17,8 +17,8 @@ def test_normalize_name():
 def test_get_or_create_author_is_idempotent():
     _reset()
     with SessionLocal() as db:
-        a1 = ap.get_or_create_author(db, "primerodin", "Александр Примеродин")
-        a2 = ap.get_or_create_author(db, "primerodin", "Александр Примеродин")
+        a1 = ap.get_or_create_author(db, "primerov", "Алексей Примеров")
+        a2 = ap.get_or_create_author(db, "primerov", "Алексей Примеров")
         db.commit()
         assert a1.id == a2.id
 
@@ -26,7 +26,7 @@ def test_get_or_create_author_is_idempotent():
 def test_upsert_and_find_by_name_and_alias():
     _reset()
     with SessionLocal() as db:
-        a = ap.get_or_create_author(db, "primerodin_upsert", "Примеродин")
+        a = ap.get_or_create_author(db, "primerov_upsert", "Примеров")
         ch, created = ap.upsert_character(
             db, a.id, canonical_name="Хубол", aliases=["Полумракский Купец"],
             description="Купец", source_topic="Бароны", status="confirmed",
@@ -47,7 +47,7 @@ def test_upsert_and_find_by_name_and_alias():
 def test_set_actor_and_color_non_overwrite():
     _reset()
     with SessionLocal() as db:
-        a = ap.get_or_create_author(db, "primerodin_actor", "Примеродин")
+        a = ap.get_or_create_author(db, "primerov_actor", "Примеров")
         ch, _ = ap.upsert_character(db, a.id, canonical_name="Агг", aliases=[],
                                     description="", source_topic="", status="confirmed")
         assert ap.set_actor(ch, "Зарецкий Мирон") == "set"
@@ -61,7 +61,7 @@ def test_set_actor_and_color_non_overwrite():
 def test_upsert_pronunciation_idempotent():
     _reset()
     with SessionLocal() as db:
-        a = ap.get_or_create_author(db, "primerodin_pron", "Примеродин")
+        a = ap.get_or_create_author(db, "primerov_pron", "Примеров")
         ap.upsert_pronunciation(db, a.id, "Полумрак", "Парго́рон", [])
         ap.upsert_pronunciation(db, a.id, "полумрак ", "Парго́рон", [])
         db.commit()
@@ -73,7 +73,7 @@ def test_upsert_pronunciation_updates_a_changed_stress():
     # Until 2026-09 the first spelling won forever, so a correction never landed.
     _reset()
     with SessionLocal() as db:
-        a = ap.get_or_create_author(db, "primerodin_pron_update", "Примеродин")
+        a = ap.get_or_create_author(db, "primerov_pron_update", "Примеров")
         first, created = ap.upsert_pronunciation(db, a.id, "Дгарнин", "Дга́рнин", [])
         second, created_again = ap.upsert_pronunciation(db, a.id, "дгарнин", "Дгарни́н", ["дгарнина"], source="book")
         db.commit()
@@ -88,7 +88,7 @@ def test_upsert_pronunciation_updates_a_changed_stress():
 def test_upsert_pronunciation_can_be_told_not_to_overwrite():
     _reset()
     with SessionLocal() as db:
-        a = ap.get_or_create_author(db, "primerodin_pron_keep", "Примеродин")
+        a = ap.get_or_create_author(db, "primerov_pron_keep", "Примеров")
         ap.upsert_pronunciation(db, a.id, "Дгарнин", "Дга́рнин", [])
         row, created = ap.upsert_pronunciation(db, a.id, "Дгарнин", "Дгарни́н", [], overwrite=False)
         db.commit()

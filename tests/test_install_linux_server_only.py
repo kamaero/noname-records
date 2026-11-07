@@ -23,7 +23,7 @@ def _run(tmp_path, system: str, *args: str, env_extra: dict | None = None) -> su
 def test_linux_without_a_domain_is_refused_with_a_pointer(tmp_path):
     result = _run(tmp_path, "Linux", "--dry-run")
     assert result.returncode == 2
-    assert "только на сервер" in result.stderr and "Mac" in result.stderr and "Windows" in result.stderr
+    assert "only on a server" in result.stderr and "Mac" in result.stderr and "Windows" in result.stderr
 
 
 def test_linux_with_a_domain_goes_on(tmp_path):

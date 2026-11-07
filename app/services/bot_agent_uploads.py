@@ -24,7 +24,7 @@ from app.services.telegram import max_download_bytes, size_text
 BA_PREFIX = "ba:"
 #: кнопок на странице: длинный список Telegram показывает простынёй, которую не пролистать
 PAGE = 20
-WHOSE = "Чья это проба?"
+WHOSE = 'Whose audition is this?'
 
 
 def _fold(value: str) -> str:
@@ -65,15 +65,15 @@ def wards(db) -> list[str]:
 
 
 def _cancel(upload_id: str) -> list[dict]:
-    return [{"text": "Отмена", "callback_data": f"{BA_PREFIX}x:{upload_id}"}]
+    return [{"text": 'Cancel', "callback_data": f"{BA_PREFIX}x:{upload_id}"}]
 
 
 def _pager(upload_id: str, page: int, total: int, step: str) -> list[dict]:
     nav = []
     if page > 0:
-        nav.append({"text": "‹ Назад", "callback_data": f"{BA_PREFIX}{step}:{upload_id}:{page - 1}"})
+        nav.append({"text": '‹ Back', "callback_data": f"{BA_PREFIX}{step}:{upload_id}:{page - 1}"})
     if (page + 1) * PAGE < total:
-        nav.append({"text": "Дальше ›", "callback_data": f"{BA_PREFIX}{step}:{upload_id}:{page + 1}"})
+        nav.append({"text": 'Next ›', "callback_data": f"{BA_PREFIX}{step}:{upload_id}:{page + 1}"})
     return nav
 
 
@@ -90,14 +90,12 @@ def _ward_page(db, chat_id, row: BotUpload, page: int) -> list[Outgoing]:
 
 def receive(db, *, tid: str, chat_id, info: dict, now: datetime) -> list[Outgoing]:
     if info.get("bad"):
-        return [send(chat_id, "Пришлите пробу аудиофайлом или голосовым.")]
+        return [send(chat_id, 'Send the audition as an audio file or voice message.')]
     limit = max_download_bytes()
     if info["file_size"] > limit:
-        return [send(chat_id, f"Файл больше {size_text(limit)} — загрузите пробу на сайте, "
-                              f"раздел «Загрузка»: {_site_link()}")]
+        return [send(chat_id, f'The file is larger than {size_text(limit)} — upload the audition on the website: {_site_link()}')]
     if not wards(db):
-        return [send(chat_id, "Пока некого выбрать: подопечные — те, кого предлагали на роли в «Касте». "
-                              f"Загрузите пробу на сайте, раздел «Загрузка»: {_site_link()}")]
+        return [send(chat_id, f'No actors are available. Actors proposed for roles in Cast appear here. Upload the audition on the website: {_site_link()}')]
     row = BotUpload(telegram_user_id=str(tid), created_at=now, updated_at=now, purpose="agent",
                     **{k: info[k] for k in ("file_id", "file_unique_id", "kind", "mime_type", "file_name",
                                             "file_size", "duration")})
@@ -119,9 +117,9 @@ def _proposed_roles(db, row: BotUpload) -> list[Outgoing]:
             roles.append(ch)
     roles.sort(key=lambda ch: (books[ch.book_id].title if ch.book_id in books else "", _fold(ch.name)))
     keyboard = [[{"text": _role_label(ch, books), "callback_data": f"{BA_PREFIX}r:{row.id}:{ch.id}"}] for ch in roles]
-    keyboard.append([{"text": "Другая роль…", "callback_data": f"{BA_PREFIX}o:{row.id}"}])
+    keyboard.append([{"text": 'Another role…', "callback_data": f"{BA_PREFIX}o:{row.id}"}])
     keyboard.append(_cancel(row.id))
-    return [send(row.telegram_user_id, f"Проба {row.actor_name} — на какую роль?", {"inline_keyboard": keyboard})]
+    return [send(row.telegram_user_id, f'Audition {row.actor_name} — which role?', {"inline_keyboard": keyboard})]
 
 
 def _cast(db, book_id: str) -> list[Character]:
@@ -141,19 +139,19 @@ def _books_step(db, row: BotUpload) -> list[Outgoing]:
         return _cast_page(db, row, books[0].id, 0)
     keyboard = [[{"text": str(book.title or "")[:60], "callback_data": f"{BA_PREFIX}b:{row.id}:{book.id}"}]
                 for book in books]
-    return [send(row.telegram_user_id, "Из какой книги роль?", {"inline_keyboard": [*keyboard, _cancel(row.id)]})]
+    return [send(row.telegram_user_id, 'Which book is the role from?', {"inline_keyboard": [*keyboard, _cancel(row.id)]})]
 
 
 def _cast_page(db, row: BotUpload, book_id: str, page: int) -> list[Outgoing]:
     cast = _cast(db, book_id)
     if not cast:
-        return [send(row.telegram_user_id, "В этой книге пока нет ролей.")]
+        return [send(row.telegram_user_id, 'This book has no roles yet.')]
     page = max(0, min(page, (len(cast) - 1) // PAGE))
     start = page * PAGE
     keyboard = [[{"text": str(ch.name or "")[:60], "callback_data": f"{BA_PREFIX}r:{row.id}:{ch.id}"}]
                 for ch in cast[start:start + PAGE]]
     nav = _pager(f"{row.id}:{book_id}", page, len(cast), "rp")
-    return [send(row.telegram_user_id, f"Проба {row.actor_name} — какая роль?",
+    return [send(row.telegram_user_id, f'Audition {row.actor_name} — which role?',
                  {"inline_keyboard": [*keyboard, *([nav] if nav else []), _cancel(row.id)]})]
 
 
@@ -168,12 +166,12 @@ def press(db, *, tid: str, chat_id, data: str, now: datetime) -> list[Outgoing]:
             row.state, row.updated_at = "cancelled", now
             db.flush()
         if row.state == "cancelled":
-            return [send(chat_id, "Отменено.")]
-        return [send(chat_id, f"Проба уже принята — отменить её в боте нельзя. Если нужно, {studio.write_to()}.")]
+            return [send(chat_id, 'Cancelled.')]
+        return [send(chat_id, f'The audition has already been accepted and cannot be cancelled in the bot. If needed, {studio.write_to()}.')]
     if row.state != "choose":
-        return [send(chat_id, "Эта проба уже принята или отменена.")]
+        return [send(chat_id, 'This audition has already been accepted or cancelled.')]
     if row.created_at < now - CHOICE_TTL:
-        return [send(chat_id, "Выбор устарел — пришлите файл ещё раз.")]
+        return [send(chat_id, 'This selection has expired. Send the file again.')]
 
     if action == "wp":
         return _ward_page(db, chat_id, row, int(rest[0]) if rest and rest[0].isdigit() else 0)
@@ -181,12 +179,12 @@ def press(db, *, tid: str, chat_id, data: str, now: datetime) -> list[Outgoing]:
         names = wards(db)
         index = int(rest[0]) if rest and rest[0].isdigit() else -1
         if not 0 <= index < len(names):
-            return [send(chat_id, "Список изменился — пришлите файл ещё раз.")]
+            return [send(chat_id, 'The list has changed. Send the file again.')]
         row.actor_name, row.updated_at = names[index], now
         db.flush()
         return _proposed_roles(db, row)
     if not row.actor_name:
-        return [send(chat_id, "Сначала выберите, чья это проба.")]
+        return [send(chat_id, 'First select whose audition this is.')]
     if action == "o":
         return _books_step(db, row)
     if action == "b":
@@ -198,7 +196,7 @@ def press(db, *, tid: str, chat_id, data: str, now: datetime) -> list[Outgoing]:
         return []
     ch = db.get(Character, rest[0] if rest else "")
     if ch is None or ch.book_id not in _open_books(db):
-        return [send(chat_id, "Этой роли больше нет — пришлите файл ещё раз.")]
+        return [send(chat_id, 'This role no longer exists. Send the file again.')]
     # Захват одной записью, как у проб диктора: два нажатия подряд — одна задача.
     claimed = (db.query(BotUpload)
                .filter(BotUpload.id == row.id, BotUpload.state == "choose")
@@ -206,6 +204,5 @@ def press(db, *, tid: str, chat_id, data: str, now: datetime) -> list[Outgoing]:
     if claimed != 1:
         return []
     db.expire(row)
-    return [send(chat_id, f"Сохраняю пробу «{ch.name}», {row.actor_name} — пришлю подтверждение, когда она "
-                          "ляжет (обычно в течение нескольких минут)."),
+    return [send(chat_id, f'Saving audition «{ch.name}», {row.actor_name} — confirmation will arrive when it is stored, usually within a few minutes.'),
             Outgoing("enqueue_bot_upload", {"id": row.id})]

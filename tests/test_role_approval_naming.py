@@ -48,25 +48,25 @@ def _letter(db, monkeypatch, actor, role="Мираэль"):
 def test_approval_letter_teaches_file_names(db, monkeypatch):
     text = _letter(db, monkeypatch, "Моркен Мелвис")
     assert EXAMPLE in text
-    assert "TO — книга («Тайны Острова»)" in text
-    assert "один файл — одна глава" in text
-    assert "Ch13 — глава 13 (Chapter)" in text
-    assert "Mirael — роль латиницей" in text
-    assert "MorkenMelvis — фамилия и имя диктора латиницей, без пробела" in text
-    assert "Записывайте всю роль по главам." not in text
+    assert 'TO — book («Тайны Острова»)' in text
+    assert 'one file per chapter' in text
+    assert 'Ch13 — chapter 13 (Chapter)' in text
+    assert 'Mirael — role in Latin letters' in text
+    assert 'MorkenMelvis — actor surname and given name in Latin letters, without spaces' in text
+    assert 'Record the entire role chapter by chapter.' not in text
 
 
 def test_audition_letter_teaches_file_names(db, monkeypatch):
     text = _letter(db, monkeypatch, "Моркен Мелвис?")
     assert EXAMPLE in text
-    assert "TO — книга («Тайны Острова»)" in text
-    assert "Пробу назовите так же, а роль, когда вас утвердят, записывайте по главам: один файл — одна глава." in text
+    assert 'TO — book («Тайны Острова»)' in text
+    assert 'Use the same naming format for auditions. After approval, record the role chapter by chapter: one file per chapter.' in text
 
 
 def test_role_without_chapters_uses_ch01(db, monkeypatch):
     text = _letter(db, monkeypatch, "Моркен Мелвис", role="Безглавый")
     assert "TO_Ch01_" in text
-    assert "Ch01 — глава 1 (Chapter)" in text
+    assert 'Ch01 — chapter 1 (Chapter)' in text
 
 
 def test_prologue_as_first_chapter_does_not_break_the_letter(db, monkeypatch):
@@ -75,7 +75,7 @@ def test_prologue_as_first_chapter_does_not_break_the_letter(db, monkeypatch):
     db.get(Character, "c1").appears_in = "0,20,13"
     db.commit()
     text = _letter(db, monkeypatch, "Моркен Мелвис")
-    assert EXAMPLE in text and "Ch13 — глава 13 (Chapter)" in text
+    assert EXAMPLE in text and 'Ch13 — chapter 13 (Chapter)' in text
 
 
 def test_a_failing_naming_block_never_breaks_the_letter(db, monkeypatch):
@@ -84,5 +84,5 @@ def test_a_failing_naming_block_never_breaks_the_letter(db, monkeypatch):
 
     monkeypatch.setattr(role_approval, "naming_block", boom)
     text = _letter(db, monkeypatch, "Моркен Мелвис")
-    assert "Мираэль" in text and "Как называть файлы" not in text
-    assert "Записывайте всю роль по главам." in text
+    assert "Мираэль" in text and 'How to name files' not in text
+    assert 'Record the entire role chapter by chapter.' in text

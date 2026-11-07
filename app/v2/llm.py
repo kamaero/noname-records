@@ -6,9 +6,9 @@ of the system does — same keys, same base URLs, same Anthropic-or-OpenAI routi
 and always asks for strict JSON against the schema it was handed, so a model that
 drifts into prose fails loudly at the call rather than quietly in the parser.
 
-The system prompt is read from `app/prompts/v2_attribution.txt` and nowhere else. An
-inline fallback would be a second copy that drifts; a missing file is a broken
-install and should say so.
+The system prompt is read from `app/prompts/v2_attribution.txt` for Russian and
+`v2_attribution_en.txt` for English. There is no inline copy that could drift;
+a missing language-specific file is a broken install and should say so.
 """
 from __future__ import annotations
 
@@ -22,12 +22,13 @@ PROMPT_PATH = pathlib.Path(__file__).resolve().parent.parent / "prompts" / "v2_a
 Llm = Callable[[str, str, dict], dict]
 
 
-def load_system_prompt() -> str:
-    if not PROMPT_PATH.exists():
-        raise FileNotFoundError(f"системный промпт атрибуции не найден: {PROMPT_PATH}")
-    text = PROMPT_PATH.read_text(encoding="utf-8").strip()
+def load_system_prompt(language: str = "ru") -> str:
+    path = PROMPT_PATH.with_name("v2_attribution_en.txt") if language == "en" else PROMPT_PATH
+    if not path.exists():
+        raise FileNotFoundError(f'Attribution system prompt not found: {path}')
+    text = path.read_text(encoding="utf-8").strip()
     if not text:
-        raise FileNotFoundError(f"системный промпт атрибуции пуст: {PROMPT_PATH}")
+        raise FileNotFoundError(f'Attribution system prompt is empty: {path}')
     return text
 
 
@@ -39,7 +40,7 @@ def make_llm(provider: str, model: str, *, extra_body: dict | None = None) -> Ll
     """
     api_key, base_url, mode = _resolve_provider(provider)
     if not api_key:
-        raise RuntimeError(f"нет API-ключа для провайдера {provider!r} — проверь .env")
+        raise RuntimeError(f'No API key for provider {provider!r}; check .env')
 
     def llm(system_prompt: str, user_prompt: str, schema: dict) -> dict:
         return call_chat(

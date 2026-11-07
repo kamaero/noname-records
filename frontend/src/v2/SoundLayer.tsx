@@ -19,11 +19,11 @@ function Queries({ items }: { items: string[] }) {
           key={query}
           type="button"
           className="snd-query"
-          title="Скопировать запрос"
+          title="Copy query"
           onClick={async (event) => {
             event.stopPropagation();
             const ok = await copyQuery(query);
-            pushToast({ tone: ok ? "success" : "error", title: ok ? "Запрос скопирован" : "Не скопировалось", detail: query });
+            pushToast({ tone: ok ? "success" : "error", title: ok ? "Query copied" : "Could not copy", detail: query });
           }}
         >
           🔎 {query}
@@ -37,7 +37,7 @@ export function SceneBand({ marker, place, number, active = false, onOpen }: {
   marker: SoundMarker; place?: SoundPlace; number: number; active?: boolean; onOpen: (marker: SoundMarker) => void;
 }) {
   const others = (place?.chapters.length ?? 0) - 1;
-  const line = [marker.payload.ambience && `фон: ${marker.payload.ambience}`, marker.payload.mood && `настроение: ${marker.payload.mood}`]
+  const line = [marker.payload.ambience && `ambience: ${marker.payload.ambience}`, marker.payload.mood && `mood: ${marker.payload.mood}`]
     .filter(Boolean)
     .join(" · ");
   return (
@@ -45,15 +45,15 @@ export function SceneBand({ marker, place, number, active = false, onOpen }: {
       <div className="snd-scene-head">
         <span className="snd-scene-title">▸ {sceneTitle(marker, place, number)}</span>
         {others > 0 ? (
-          <span className="snd-badge" title={`Это место есть и в главах: ${place!.chapters.join(", ")}`}>
-            ещё {others} гл.
+          <span className="snd-badge" title={`This location also appears in chapters: ${place!.chapters.join(", ")}`}>
+            more {others} ch.
           </span>
         ) : null}
         <button
           type="button"
           className="snd-edit"
-          aria-label="Править сцену"
-          title="Править сцену"
+          aria-label="Edit scene"
+          title="Edit scene"
           onClick={(event) => {
             event.stopPropagation();
             onOpen(marker);
@@ -77,13 +77,13 @@ export function TransitionLine({ marker, active = false, onOpen }: {
       type="button"
       className={active ? "snd-transition is-active" : "snd-transition"}
       data-sound={marker.id}
-      title="Переход — править"
+      title="Edit transition"
       onClick={(event) => {
         event.stopPropagation();
         onOpen(marker);
       }}
     >
-      <span>◆ {marker.payload.what || "переход"}</span>
+      <span>◆ {marker.payload.what || "transition"}</span>
     </button>
   );
 }
@@ -146,7 +146,7 @@ export function SoundMarks({ markers, onOpen }: { markers: SoundMarker[]; onOpen
           className="snd-mark"
           data-sound={marker.id}
           title={`${marker.payload.description ?? ""} — «${marker.quote}»`}
-          aria-label={`Звук: ${marker.payload.description ?? ""}`}
+          aria-label={`Sound: ${marker.payload.description ?? ""}`}
           onMouseEnter={(event) => highlight(event.currentTarget.closest("p, h2"), marker.quote)}
           onMouseLeave={() => highlight(null, "")}
           onFocus={(event) => highlight(event.currentTarget.closest("p, h2"), marker.quote)}

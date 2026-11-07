@@ -1,3 +1,4 @@
+import { roleLabel } from "../v2/types";
 /**
  * Сценарий `/app/recording?book_id=&chapter_id=&role=`
  *
@@ -54,14 +55,14 @@ export function RecordingPage() {
   }, [searchParams, sel.bookId, sel.chapterId, sel.role]);
 
   if (sel.workspaceQuery.isLoading || (sel.preview && sel.previewChaptersQuery.isLoading)) {
-    return <SkeletonPanel label="Открываю сценарий…" lines={6} />;
+    return <SkeletonPanel label="Opening script…" lines={6} />;
   }
   if (sel.workspaceQuery.isError) {
     return (
       <EmptyState
         icon="doc"
-        text={describeApiError(sel.workspaceQuery.error, "Не удалось открыть сценарий.")}
-        action={<LinkButton to="/">Открыть библиотеку</LinkButton>}
+        text={describeApiError(sel.workspaceQuery.error, "Could not open the script.")}
+        action={<LinkButton to="/">Open library</LinkButton>}
       />
     );
   }
@@ -71,8 +72,8 @@ export function RecordingPage() {
     return (
       <EmptyState
         icon="doc"
-        text="Ни у одной книги ещё нет опубликованных глав. Сценарий откроется, когда режиссёр его опубликует."
-        action={<LinkButton to="/">Открыть библиотеку</LinkButton>}
+        text="No published chapters yet. The script will be available when the director publishes it."
+        action={<LinkButton to="/">Open library</LinkButton>}
       />
     );
   }
@@ -83,10 +84,10 @@ export function RecordingPage() {
         icon="doc"
         text={
           sel.bookTitle
-            ? `У книги «${sel.bookTitle}» ещё нет опубликованных глав. Сценарий появится здесь после публикации.`
-            : "У книги ещё нет опубликованных глав. Сценарий появится здесь после публикации."
+            ? `Book «${sel.bookTitle}» has no published chapters yet. Its script will appear here once published.`
+            : "This book has no published chapters yet. Its script will appear here once published."
         }
-        action={<LinkButton to={sel.bookLink}>{sel.bookLink === "/" ? "Открыть библиотеку" : "Открыть книгу"}</LinkButton>}
+        action={<LinkButton to={sel.bookLink}>{sel.bookLink === "/" ? "Open library" : "Open book"}</LinkButton>}
       />
     );
   }
@@ -97,10 +98,10 @@ export function RecordingPage() {
 
   return (
     <div className="script-page">
-      <div className="script-bar" role="toolbar" aria-label="Что читать">
+      <div className="script-bar" role="toolbar" aria-label="Reading selection">
         {sel.panelBooks.length > 1 ? (
           <label className="script-bar-field">
-            <span className="rec-label">Книга</span>
+            <span className="rec-label">Book</span>
             <select className="ui-input rec-select" value={sel.bookId} onChange={(event) => sel.goToBook(event.target.value)}>
               {sel.panelBooks.map((book) => (
                 <option key={book.id} value={book.id}>
@@ -111,23 +112,23 @@ export function RecordingPage() {
           </label>
         ) : null}
         <label className="script-bar-field">
-          <span className="rec-label">Роль</span>
+          <span className="rec-label">Role</span>
           <select className="ui-input rec-select" value={sel.role} onChange={(event) => sel.chooseRole(event.target.value)}>
-            <option value="">{sel.myRoles.length ? "— все мои роли —" : "— выберите роль —"}</option>
+            <option value="">{sel.myRoles.length ? "— all my roles —" : "— choose a role —"}</option>
             {sel.myRoles.length ? (
-              <optgroup label="Мои роли">
+              <optgroup label="My roles">
                 {sel.myRoles.map((item) => (
                   <option key={item.name} value={item.name}>
-                    {item.name} · {item.lines}
+                    {roleLabel(item.name)} · {item.lines}
                   </option>
                 ))}
               </optgroup>
             ) : null}
             {others.length ? (
-              <optgroup label={sel.myRoles.length ? "Другие роли" : "Роли книги"}>
+              <optgroup label={sel.myRoles.length ? "Other roles" : "Book roles"}>
                 {others.map((item) => (
                   <option key={item.name} value={item.name}>
-                    {item.name} · {item.lines}
+                    {roleLabel(item.name)} · {item.lines}
                   </option>
                 ))}
               </optgroup>
@@ -138,13 +139,13 @@ export function RecordingPage() {
           <Link
             className="script-bar-link"
             to={roleScriptHref(sel.bookId, sel.role, "/recording/role", searchParams.toString())}
-            title="Все реплики этой роли по всей книге, с контекстом"
+            title="All lines for this role throughout the book, with context"
           >
-            Все реплики роли в книге →
+            All lines for this role →
           </Link>
         ) : null}
         <LinkButton className="script-bar-upload" variant="primary" size="sm" to={takesHref} icon={<Icon name="upload" />}>
-          Загрузить дубль
+          Upload take
         </LinkButton>
       </div>
       <ScriptReader

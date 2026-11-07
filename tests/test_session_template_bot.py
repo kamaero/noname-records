@@ -64,7 +64,7 @@ def test_a_dictors_sesx_is_not_a_template(db):
 
 def test_an_oversized_file_is_refused_at_once(db):
     out = handle_update(db, _doc(size=session_template.MAX_TEMPLATE_BYTES + 1), now=NOW)
-    assert [o.method for o in out] == ["sendMessage"] and "большой" in out[0].payload["text"]
+    assert [o.method for o in out] == ["sendMessage"] and "too large" in out[0].payload["text"]
 
 
 def _fetch(data):
@@ -90,7 +90,7 @@ def test_the_reply_names_tracks_no_book_has(tmp_path, monkeypatch):
     data = _template(_track("Рассказчик", [VO(0)]), _track("Хдыдяр", [VO(0)])).encode()
     session_template.store_from_telegram("FT", 5, fetch=_fetch(data), send_text=lambda c, t: sent.append(t) or True,
                                          known_roles=["Рассказчик", "Хдыбдяр"])
-    assert any("Хдыдяр" in line and "нет" in line for line in sent[0].split("\n"))
+    assert any("Хдыдяр" in line and "do not occur" in line for line in sent[0].split("\n"))
 
 
 def test_a_bad_template_is_explained_and_the_old_one_stays(tmp_path, monkeypatch):
@@ -98,4 +98,4 @@ def test_a_bad_template_is_explained_and_the_old_one_stays(tmp_path, monkeypatch
     session_template.save_template(_template(_track("Рассказчик", [VO(0)])).encode())
     sent = []
     session_template.store_from_telegram("FT", 5, fetch=_fetch(b"<html/>"), send_text=lambda c, t: sent.append(t) or True)
-    assert "не сессия" in sent[0] and session_template.load_template().roles == ["Рассказчик"]
+    assert "not an Audition session" in sent[0] and session_template.load_template().roles == ["Рассказчик"]

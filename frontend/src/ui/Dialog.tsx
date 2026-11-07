@@ -135,7 +135,7 @@ export function Dialog({ title, onClose, children, footer, subtitle, className, 
             <h2 id={titleId} className="ui-dialog-title">{title}</h2>
             {subtitle ? <div className="ui-dialog-subtitle">{subtitle}</div> : null}
           </div>
-          <button type="button" className="ui-btn ui-btn--ghost ui-btn--icon" onClick={() => onCloseRef.current()} aria-label="Закрыть">
+          <button type="button" className="ui-btn ui-btn--ghost ui-btn--icon" onClick={() => onCloseRef.current()} aria-label="Close">
             <Icon name="close" />
           </button>
         </header>

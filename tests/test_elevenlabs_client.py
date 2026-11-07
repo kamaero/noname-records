@@ -92,7 +92,7 @@ def test_an_empty_200_is_an_error_not_a_track():
     transport = _fake_transport(200, {"song-id": "s"}, b"")
     with pytest.raises(ElevenLabsError) as excinfo:
         compose_music("p", 200, api_key=SECRET_KEY, transport=transport)
-    assert "пустой ответ" in str(excinfo.value)
+    assert 'Empty audio response' in str(excinfo.value)
     assert not isinstance(excinfo.value, (ElevenLabsUnavailable, ElevenLabsInterrupted))
 
 

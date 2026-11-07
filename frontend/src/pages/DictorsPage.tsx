@@ -1,3 +1,4 @@
+import { roleLabel } from "../v2/types";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -22,24 +23,24 @@ import "./DictorsPage.css";
 type Filter = "all" | "unreachable" | "nodemo" | "noroles";
 
 const FILTERS: { key: Filter; label: string }[] = [
-  { key: "all", label: "Все" },
-  { key: "unreachable", label: "Не на связи" },
-  { key: "nodemo", label: "Без демо" },
-  { key: "noroles", label: "Без ролей" },
+  { key: "all", label: "All" },
+  { key: "unreachable", label: "Unreachable" },
+  { key: "nodemo", label: "No demo" },
+  { key: "noroles", label: "No roles" },
 ];
 
 const REFUSALS: Record<string, string> = {
-  name_taken: "Такое имя уже носит другая учётка.",
-  bad_name: "Имя пустое.",
-  bad_telegram_id: "Telegram id — только цифры.",
-  telegram_taken: "Этот Telegram уже привязан к другой учётке.",
-  has_roles: "За диктором есть роли — сначала переназначьте их.",
-  duplicate: "Такое демо у диктора уже есть.",
-  not_media: "Не получилось разобрать файл — нужен аудио или видео.",
-  last_admin: "Это последний администратор.",
-  self_delete: "Себя удалить нельзя.",
-  login_taken: "Учётка с этим Telegram id уже есть.",
-  env_whitelist: "Этот Telegram прописан в белом списке в .env — сначала уберите его оттуда, иначе после перезапуска человек вернётся.",
+  name_taken: "Another account already uses this name.",
+  bad_name: "Name is empty.",
+  bad_telegram_id: "Telegram ID must contain digits only.",
+  telegram_taken: "This Telegram account is already linked to another account.",
+  has_roles: "This voice actor has assigned roles. Reassign them first.",
+  duplicate: "This voice actor already has this demo.",
+  not_media: "Could not read the file. Choose an audio or video file.",
+  last_admin: "This is the last administrator.",
+  self_delete: "You cannot delete yourself.",
+  login_taken: "An account with this Telegram ID already exists.",
+  env_whitelist: "This Telegram ID is allowlisted in .env. Remove it there first, or the account will return after a restart.",
 };
 
 function refusal(error: unknown, fallback: string): string {
@@ -91,7 +92,7 @@ function PlayButton({ demoId, playing, onToggle, label }: { demoId: string; play
     <button
       type="button"
       className={on ? "dic-play is-on" : "dic-play"}
-      aria-label={on ? `Остановить: ${label}` : `Слушать: ${label}`}
+      aria-label={on ? `Stop: ${label}` : `Listen: ${label}`}
       aria-pressed={on}
       onClick={(event) => {
         event.stopPropagation();
@@ -104,9 +105,9 @@ function PlayButton({ demoId, playing, onToggle, label }: { demoId: string; play
 }
 
 function Reach({ value }: { value: boolean | null }) {
-  if (value === true) return <span className="dic-reach dic-reach--ok" title="Бот может писать">на связи</span>;
-  if (value === false) return <span className="dic-reach dic-reach--bad" title="Не нажал Start у бота">не на связи</span>;
-  return <span className="dic-reach" title="Ещё не спрашивали Telegram">—</span>;
+  if (value === true) return <span className="dic-reach dic-reach--ok" title="The bot can send messages">reachable</span>;
+  if (value === false) return <span className="dic-reach dic-reach--bad" title="Has not pressed Start in the bot">unreachable</span>;
+  return <span className="dic-reach" title="Telegram has not been checked yet">—</span>;
 }
 
 export function DictorsPage({ me }: { me: MeResponse }) {
@@ -149,21 +150,21 @@ export function DictorsPage({ me }: { me: MeResponse }) {
   const copyInvite = async () => {
     try {
       await navigator.clipboard.writeText(inviteText(bot, configQuery.data?.studio_name || ""));
-      pushToast({ tone: "success", title: "Приглашение скопировано", detail: "Вставьте его в личный чат с диктором." });
+      pushToast({ tone: "success", title: "Invitation copied", detail: "Paste it into a private chat with the voice actor." });
     } catch {
-      pushToast({ tone: "error", title: "Не удалось скопировать", detail: "Браузер не дал доступ к буферу обмена." });
+      pushToast({ tone: "error", title: "Could not copy", detail: "The browser denied clipboard access." });
     }
   };
 
-  if (!allowed) return <div className="panel panel-pad">Раздел доступен администратору и автору.</div>;
+  if (!allowed) return <div className="panel panel-pad">This section is available to administrators and authors.</div>;
   if (listQuery.isError) {
-    return <div className="panel panel-pad">{describeApiError(listQuery.error, "Не удалось загрузить дикторов.")}</div>;
+    return <div className="panel panel-pad">{describeApiError(listQuery.error, "Could not load voice actors.")}</div>;
   }
 
   const columns: Column<DictorListItem>[] = [
     {
       key: "play",
-      header: <span className="dic-sr">Демо</span>,
+      header: <span className="dic-sr">Demo</span>,
       width: 44,
       render: (item) =>
         item.main_demo ? (
@@ -172,17 +173,17 @@ export function DictorsPage({ me }: { me: MeResponse }) {
     },
     {
       key: "name",
-      header: "Диктор",
+      header: "Voice actor",
       render: (item) => (
         <span className="dic-name">
           <strong>{item.name}</strong>
           {item.main_demo ? (
             <span className="dic-sub">
               {item.main_demo.title} · {seconds(item.main_demo.duration_seconds)}
-              {item.demos > 1 ? ` · ещё ${item.demos - 1}` : ""}
+              {item.demos > 1 ? ` · more ${item.demos - 1}` : ""}
             </span>
           ) : (
-            <span className="dic-sub">без демо</span>
+            <span className="dic-sub">no demo</span>
           )}
         </span>
       ),
@@ -196,46 +197,46 @@ export function DictorsPage({ me }: { me: MeResponse }) {
         const link = telegramLink(item);
         return link ? (
           <a className="dic-tg" href={link} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-            {item.username ? `@${item.username}` : "чат"}
+            {item.username ? `@${item.username}` : "chat"}
           </a>
         ) : (
           <span className="dic-sub">—</span>
         );
       },
     },
-    { key: "reach", header: "Бот", nowrap: true, className: "dic-wide", render: (item) => (item.telegram_user_id ? <Reach value={item.reachable} /> : null) },
+    { key: "reach", header: "Bot", nowrap: true, className: "dic-wide", render: (item) => (item.telegram_user_id ? <Reach value={item.reachable} /> : null) },
     {
       key: "roles",
-      header: "Роли",
+      header: "Roles",
       nowrap: true,
       render: (item) =>
         item.roles ? (
           <span>
-            {item.roles} {plural(item.roles, "роль", "роли", "ролей")} в {item.books}{" "}
-            {plural(item.books, "книге", "книгах", "книгах")}
+            {item.roles} {plural(item.roles, "role", "roles", "roles")} in {item.books}{" "}
+            {plural(item.books, "book", "books", "books")}
           </span>
         ) : (
           <span className="dic-sub">—</span>
         ),
     },
-    { key: "note", header: "Заметка", className: "dic-wide dic-note-cell", render: (item) => <span className="dic-note">{item.note}</span> },
+    { key: "note", header: "Note", className: "dic-wide dic-note-cell", render: (item) => <span className="dic-note">{item.note}</span> },
   ];
 
   return (
     <section className="dic">
       <PageHeader
-        title="Дикторы"
-        subtitle={`${items.length} ${plural(items.length, "диктор", "диктора", "дикторов")} · голоса, роли и связь с ботом`}
+        title="Voice actors"
+        subtitle={`${items.length} ${plural(items.length, "voice actor", "voice actors", "voice actors")} · voices, roles and bot reachability`}
         actions={
           <>
             {bot ? (
-              <Button variant="secondary" onClick={copyInvite} title="Текст приглашения в бота — вставить в личный чат">
-                Скопировать приглашение
+              <Button variant="secondary" onClick={copyInvite} title="Bot invitation text to paste into a private chat">
+                Copy invitation
               </Button>
             ) : null}
             {isAdmin ? (
               <Button onClick={() => setCreating(true)}>
-                <Icon name="plus" /> Новый диктор
+                <Icon name="plus" /> New voice actor
               </Button>
             ) : null}
           </>
@@ -248,12 +249,12 @@ export function DictorsPage({ me }: { me: MeResponse }) {
           <input
             type="search"
             value={query}
-            placeholder="Имя или @username"
-            aria-label="Найти диктора"
+            placeholder="Name or @username"
+            aria-label="Find voice actor"
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        <div className="dic-filters" role="group" aria-label="Фильтр">
+        <div className="dic-filters" role="group" aria-label="Filter">
           {FILTERS.map((option) => (
             <button
               key={option.key}
@@ -267,7 +268,7 @@ export function DictorsPage({ me }: { me: MeResponse }) {
           ))}
         </div>
         <span className="dic-count">
-          {found.length === items.length ? "" : `найдено ${found.length}`}
+          {found.length === items.length ? "" : `found ${found.length}`}
         </span>
       </div>
 
@@ -276,11 +277,11 @@ export function DictorsPage({ me }: { me: MeResponse }) {
         rows={found}
         rowKey={(item) => item.user_id}
         onRowClick={(item) => setOpenId(item.user_id)}
-        rowLabel={(item) => `Открыть карточку: ${item.name}`}
+        rowLabel={(item) => `Open profile: ${item.name}`}
         selectedKey={openId || null}
         loading={listQuery.isLoading}
-        empty="Никого не нашлось."
-        aria-label="Дикторы"
+        empty="No people found."
+        aria-label="Voice actors"
       />
 
       {openId ? (
@@ -355,7 +356,7 @@ function DictorSheet({
     },
     onError: (error) => {
       setNoteState("");
-      failed("Заметка не сохранилась")(error);
+      failed("Note not saved")(error);
     },
   });
 
@@ -389,22 +390,22 @@ function DictorSheet({
     onSuccess: (report) => {
       pushToast({
         tone: "success",
-        title: "Имя сменилось",
-        detail: `в касте: ${report.characters}, в профилях автора: ${report.profiles}, рассказчик: ${report.narrators}`,
+        title: "Name changed",
+        detail: `in cast: ${report.characters}, in author profiles: ${report.profiles}, narrator: ${report.narrators}`,
       });
       refresh();
     },
-    onError: failed("Не удалось переименовать"),
+    onError: failed("Could not rename"),
   });
   const star = useMutation({
     mutationFn: (demoId: string) => apiPostJson(`/api/dictors/${encodeURIComponent(userId)}/main-demo`, { demo_id: demoId }),
     onSuccess: refresh,
-    onError: failed("Не удалось сделать главным"),
+    onError: failed("Could not set primary demo"),
   });
   const removeDemo = useMutation({
     mutationFn: (demoId: string) => apiDelete(`/api/dictors/demos/${encodeURIComponent(demoId)}`),
     onSuccess: refresh,
-    onError: failed("Не удалось удалить демо"),
+    onError: failed("Could not delete demo"),
   });
   const upload = useMutation({
     mutationFn: (file: File) => {
@@ -413,15 +414,15 @@ function DictorSheet({
       return apiPostForm(`/api/dictors/${encodeURIComponent(userId)}/demos`, form);
     },
     onSuccess: () => {
-      pushToast({ tone: "success", title: "Демо добавлено" });
+      pushToast({ tone: "success", title: "Demo added" });
       refresh();
     },
-    onError: failed("Демо не загрузилось"),
+    onError: failed("Demo upload failed"),
   });
   const remove = useMutation({
     mutationFn: () => apiDelete(`/api/dictors/${encodeURIComponent(userId)}`),
     onSuccess: () => {
-      pushToast({ tone: "success", title: "Диктор удалён" });
+      pushToast({ tone: "success", title: "Voice actor deleted" });
       onChanged();
       onClose();
     },
@@ -430,27 +431,27 @@ function DictorSheet({
         const roles = (error.payload.detail as { book: string; role: string }[] | undefined) || [];
         pushToast({
           tone: "error",
-          title: "Сначала переназначьте роли",
-          detail: roles.map((r) => `${r.role} («${r.book}»)`).join(", "),
+          title: "Reassign roles first",
+          detail: roles.map((r) => `${roleLabel(r.role)} («${r.book}»)`).join(", "),
           durationMs: 9000,
         });
         return;
       }
-      failed("Не удалось удалить")(error);
+      failed("Could not delete")(error);
     },
   });
 
   if (cardQuery.isError) {
     return (
-      <Sheet title="Диктор" onClose={onClose}>
-        <p>{describeApiError(cardQuery.error, "Не удалось открыть карточку.")}</p>
+      <Sheet title="Voice actor" onClose={onClose}>
+        <p>{describeApiError(cardQuery.error, "Could not open profile.")}</p>
       </Sheet>
     );
   }
   if (!card) {
     return (
-      <Sheet title="Диктор" onClose={onClose}>
-        <p className="dic-sub">Загружаю…</p>
+      <Sheet title="Voice actor" onClose={onClose}>
+        <p className="dic-sub">Loading…</p>
       </Sheet>
     );
   }
@@ -462,9 +463,9 @@ function DictorSheet({
       subtitle={
         <span className="dic-card-sub">
           {link ? (
-            <a href={link} target="_blank" rel="noreferrer">{card.username ? `@${card.username}` : "чат в Telegram"}</a>
+            <a href={link} target="_blank" rel="noreferrer">{card.username ? `@${card.username}` : "Telegram chat"}</a>
           ) : (
-            "без Telegram"
+            "no Telegram"
           )}
           {card.telegram_user_id ? <Reach value={card.reachable} /> : null}
         </span>
@@ -473,28 +474,28 @@ function DictorSheet({
     >
       <div className="dic-card">
         <div className="dic-card-cta">
-          <Button variant="primary" onClick={() => setAssigning(true)}>Назначить на роль</Button>
+          <Button variant="primary" onClick={() => setAssigning(true)}>Assign to role</Button>
         </div>
         {assigning ? (
           <DictorAssignDialog name={card.name} onClose={() => setAssigning(false)} onAssigned={refresh} />
         ) : null}
         {isAdmin ? (
           <section className="dic-block">
-            <h3>Имя</h3>
+            <h3>Name</h3>
             <form
               className="dic-rename"
               onSubmit={(event) => {
                 event.preventDefault();
                 const value = name.trim();
                 if (!value || value === card.name) return;
-                if (window.confirm(`Переименовать «${card.name}» в «${value}»?\n\nИмя сменится в касте всех книг, в профиле автора, у рассказчика и в записях.`)) {
+                if (window.confirm(`Rename «${card.name}» to «${value}»? This updates the name in all book casts, author profiles, narrator assignments and recordings.`)) {
                   rename.mutate(value);
                 }
               }}
             >
-              <input value={name} aria-label="Фамилия Имя" onChange={(event) => setName(event.target.value)} />
+              <input value={name} aria-label="Full name" onChange={(event) => setName(event.target.value)} />
               <Button type="submit" variant="secondary" size="sm" loading={rename.isPending} disabled={name.trim() === card.name}>
-                Переименовать
+                Rename
               </Button>
             </form>
           </section>
@@ -502,7 +503,7 @@ function DictorSheet({
 
         <section className="dic-block">
           <h3>
-            Демо <span className="dic-sub">{card.demos.length || ""}</span>
+            Demo <span className="dic-sub">{card.demos.length || ""}</span>
           </h3>
           {card.demos.length ? (
             <ul className="dic-demos">
@@ -513,7 +514,7 @@ function DictorSheet({
                     {demo.title}
                     <span className="dic-sub">
                       {seconds(demo.duration_seconds)}
-                      {demo.trimmed ? " · обрезано до 2 мин" : ""}
+                      {demo.trimmed ? " · trimmed to 2 min" : ""}
                     </span>
                   </span>
                   {isAdmin ? (
@@ -522,7 +523,7 @@ function DictorSheet({
                         type="button"
                         className={demo.id === card.main_demo_id ? "dic-star is-on" : "dic-star"}
                         aria-pressed={demo.id === card.main_demo_id}
-                        title="Главное демо — его играет ▶ в списке"
+                        title="Primary demo; played by ▶ in the list"
                         onClick={() => star.mutate(demo.id)}
                       >
                         ★
@@ -530,23 +531,23 @@ function DictorSheet({
                       <button
                         type="button"
                         className="dic-x"
-                        title="Удалить демо"
-                        aria-label={`Удалить демо «${demo.title}»`}
+                        title="Delete demo"
+                        aria-label={`Delete demo «${demo.title}»`}
                         onClick={() => {
-                          if (window.confirm(`Удалить демо «${demo.title}»?`)) removeDemo.mutate(demo.id);
+                          if (window.confirm(`Delete demo «${demo.title}»?`)) removeDemo.mutate(demo.id);
                         }}
                       >
                         <Icon name="close" />
                       </button>
                     </span>
                   ) : demo.id === card.main_demo_id ? (
-                    <span className="dic-star is-on" aria-label="главное">★</span>
+                    <span className="dic-star is-on" aria-label="primary">★</span>
                   ) : null}
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="dic-sub">Демо пока нет.</p>
+            <p className="dic-sub">No demo yet.</p>
           )}
           {isAdmin ? (
             <>
@@ -562,38 +563,38 @@ function DictorSheet({
                 }}
               />
               <Button variant="secondary" size="sm" loading={upload.isPending} onClick={() => fileInput.current?.click()}>
-                <Icon name="upload" /> Загрузить демо
+                <Icon name="upload" /> Upload demo
               </Button>
-              <p className="dic-hint">Аудио или видео: в демо уходят первые две минуты, MP3.</p>
+              <p className="dic-hint">Audio or video: the first two minutes are saved as an MP3 demo.</p>
             </>
           ) : null}
         </section>
 
         <section className="dic-block">
-          <h3>Роли</h3>
+          <h3>Roles</h3>
           {card.roles.length ? (
             <ul className="dic-roles">
               {card.roles.map((role) => (
                 <li key={`${role.book_id}:${role.role}`}>
                   <span className="dic-book">{role.book}</span>
-                  <strong>{role.role}</strong>
+                  <strong>{roleLabel(role.role)}</strong>
                   <span className={role.state === "approved" ? "dic-state" : "dic-state dic-state--proposed"}>
-                    {role.state === "approved" ? "утверждён" : "предложен"}
+                    {role.state === "approved" ? "approved" : "suggested"}
                   </span>
-                  {role.recorded ? <span className="dic-state dic-state--rec">записано</span> : null}
+                  {role.recorded ? <span className="dic-state dic-state--rec">recorded</span> : null}
                   <DeadlineChip deadline={role.deadline} />
                   {isAdmin && role.deadline ? <DeadlineActions deadlineId={role.deadline.id} onChanged={refresh} /> : null}
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="dic-sub">Ролей пока нет.</p>
+            <p className="dic-sub">No roles yet.</p>
           )}
         </section>
 
         {card.links.length ? (
           <section className="dic-block">
-            <h3>Портфолио</h3>
+            <h3>Portfolio</h3>
             <ul className="dic-links">
               {card.links.map((item) => (
                 <li key={item.id}>
@@ -606,11 +607,11 @@ function DictorSheet({
 
         {card.recasts.length ? (
           <section className="dic-block">
-            <h3>Рекасты</h3>
+            <h3>Reassignments</h3>
             <ul className="dic-recasts">
               {card.recasts.map((r, index) => (
                 <li key={index}>
-                  <strong>{r.role_name}</strong>: {r.from_actor} → {r.to_actor}
+                  <strong>{roleLabel(r.role_name)}</strong>: {r.from_actor} → {r.to_actor}
                   {r.comment ? <span className="dic-sub"> · {r.comment}</span> : null}
                 </li>
               ))}
@@ -620,17 +621,17 @@ function DictorSheet({
 
         <section className="dic-block">
           <h3>
-            Заметка{" "}
+            Note{" "}
             <span className="dic-sub" aria-live="polite">
-              {noteState === "saving" ? "сохраняю…" : noteState === "saved" ? "сохранено" : ""}
+              {noteState === "saving" ? "saving…" : noteState === "saved" ? "saved" : ""}
             </span>
           </h3>
           <textarea
             className="dic-note-edit"
             rows={4}
             value={note ?? ""}
-            placeholder="Тембр, типаж, с кем удобно работать…"
-            aria-label="Заметка о дикторе"
+            placeholder="Voice quality, casting type, collaborators…"
+            aria-label="Voice actor note"
             onChange={(event) => {
               setNoteState("");
               setNote(event.target.value);
@@ -645,12 +646,12 @@ function DictorSheet({
               size="sm"
               loading={remove.isPending}
               onClick={() => {
-                if (window.confirm(`Удалить диктора «${card.name}»?\n\nУйдут учётка, вход через Telegram, карточка и демо. Отменить нельзя.`)) {
+                if (window.confirm(`Delete voice actor «${card.name}»? This removes their account, Telegram sign-in, profile and demos. This cannot be undone.`)) {
                   remove.mutate();
                 }
               }}
             >
-              Удалить диктора
+              Delete voice actor
             </Button>
           </section>
         ) : null}
@@ -675,34 +676,34 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
     onSuccess: (made) => {
       pushToast({
         tone: "success",
-        title: "Диктор заведён",
-        detail: made.password ? `Логин и пароль — на экране «Пользователи». Пароль: ${made.password}` : "Вход — через Telegram.",
+        title: "Voice actor created",
+        detail: made.password ? `Username and password are on the Users page. Password: ${made.password}` : "Sign in with Telegram.",
         durationMs: made.password ? 20000 : 4200,
       });
       onCreated(made.user_id);
     },
-    onError: (err) => setError(refusal(err, "Не удалось завести диктора.")),
+    onError: (err) => setError(refusal(err, "Could not create voice actor.")),
   });
   return (
     <Dialog
-      title="Новый диктор"
-      subtitle="Учётка с ролью диктора. С Telegram id вход — через Telegram, без пароля."
+      title="New voice actor"
+      subtitle="Creates a voice actor account. With a Telegram ID, they can sign in through Telegram without a password."
       onClose={onClose}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Отмена</Button>
-          <Button loading={create.isPending} disabled={!name.trim()} onClick={() => create.mutate()}>Завести</Button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button loading={create.isPending} disabled={!name.trim()} onClick={() => create.mutate()}>Create</Button>
         </>
       }
     >
       <div className="form-grid">
-        <Field label="Фамилия Имя" required error={error}>
+        <Field label="Full name" required error={error}>
           {(props) => <input {...props} data-autofocus value={name} onChange={(e) => { setError(""); setName(e.target.value); }} />}
         </Field>
-        <Field label="Telegram id" hint="Цифры; можно оставить пустым">
+        <Field label="Telegram id" hint="Digits only; optional">
           {(props) => <input {...props} inputMode="numeric" value={telegramId} onChange={(e) => setTelegramId(e.target.value)} />}
         </Field>
-        <Field label="Username в Telegram" hint="Без @; необязательно">
+        <Field label="Telegram username" hint="Without @; optional">
           {(props) => <input {...props} value={username} onChange={(e) => setUsername(e.target.value)} />}
         </Field>
       </div>
@@ -718,38 +719,38 @@ function DeadlineActions({ deadlineId, onChanged }: { deadlineId: string; onChan
     mutationFn: (body: { days?: number; date?: string }) =>
       apiPostJson<{ notified: boolean }>(`/api/deadlines/${encodeURIComponent(deadlineId)}/extend`, body),
     onSuccess: (result) => {
-      pushToast({ tone: "success", title: "Срок продлён", detail: result.notified ? "Диктору ушло письмо с новой датой." : "Бот не достучался — сообщите диктору сами." });
+      pushToast({ tone: "success", title: "Deadline extended", detail: result.notified ? "The voice actor was notified of the new date." : "The bot could not reach them; contact the voice actor directly." });
       setDate("");
       onChanged();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не удалось продлить", detail: describeApiError(error, "Сервер не принял срок.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Could not extend deadline", detail: describeApiError(error, "The server rejected the deadline.") }),
   });
   const close = useMutation({
     mutationFn: () => apiPostJson(`/api/deadlines/${encodeURIComponent(deadlineId)}/close`, {}),
     onSuccess: () => {
-      pushToast({ tone: "success", title: "Срок закрыт" });
+      pushToast({ tone: "success", title: "Deadline closed" });
       onChanged();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не удалось закрыть", detail: describeApiError(error, "") }),
+    onError: (error) => pushToast({ tone: "error", title: "Could not close", detail: describeApiError(error, "") }),
   });
   const busy = extend.isPending || close.isPending;
   return (
     <span className="dic-deadline-actions">
       {[1, 3, 7].map((days) => (
         <button key={days} type="button" className="dic-mini" disabled={busy} onClick={() => extend.mutate({ days })}>
-          +{days} дн.
+          +{days} days
         </button>
       ))}
       <input
         type="date"
         className="dic-mini-date"
-        aria-label="Продлить до даты"
+        aria-label="Extend to date"
         value={date}
         onChange={(event) => setDate(event.target.value)}
       />
       {date ? (
         <button type="button" className="dic-mini" disabled={busy} onClick={() => extend.mutate({ date })}>
-          до даты
+          to date
         </button>
       ) : null}
       <button
@@ -757,10 +758,10 @@ function DeadlineActions({ deadlineId, onChanged }: { deadlineId: string; onChan
         className="dic-mini"
         disabled={busy}
         onClick={() => {
-          if (window.confirm("Закрыть срок? Напоминаний по нему больше не будет.")) close.mutate();
+          if (window.confirm("Close this deadline? Reminders will stop.")) close.mutate();
         }}
       >
-        закрыть
+        close
       </button>
     </span>
   );

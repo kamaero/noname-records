@@ -98,27 +98,27 @@ class TestWhatTheAgentMayNot:
     def test_the_refusal_says_what_he_may_do_instead(self):
         response = _client("agent").post(f"/api/budget/character/{CHAR}", json={"race": "демон"})
 
-        assert "актёр" in response.json()["message"].lower()
+        assert 'actor' in response.json()["message"].lower()
 
 
 class TestTheWeightOfHisVote:
     def test_the_author_outweighs_him(self):
         _client("agent", uid="agata").post(f"/api/budget/character/{CHAR}", json={"actor_name": "Натали Ким"})
-        _client("author", uid="primerodin", name="Примеродин").post(
+        _client("author", uid="primerov", name="Примеров").post(
             f"/api/budget/character/{CHAR}", json={"actor_name": "Роман Сомов"}
         )
 
         assert _actor_name() == "Роман Сомов"
 
     def test_he_is_told_whose_decision_stands(self):
-        _client("author", uid="primerodin", name="Примеродин").post(
+        _client("author", uid="primerov", name="Примеров").post(
             f"/api/budget/character/{CHAR}", json={"actor_name": "Роман Сомов"}
         )
         response = _client("agent", uid="agata").post(
             f"/api/budget/character/{CHAR}", json={"actor_name": "Натали Ким"}
         )
 
-        assert response.json()["vote"]["overridden_by"] == "Примеродин"
+        assert response.json()["vote"]["overridden_by"] == "Примеров"
 
     def test_his_vote_weighs_nothing(self):
         _client("agent", uid="agata").post(f"/api/budget/character/{CHAR}", json={"actor_name": "Натали Ким"})
@@ -238,7 +238,7 @@ class TestTheNarratorIsNotHisToCast:
             f"/api/budget/character/{self.NARRATOR}", json={"actor_name": "Натали Ким"}
         )
 
-        assert "рассказчик" in response.json()["message"].lower()
+        assert 'narrator' in response.json()["message"].lower()
 
     def test_the_owner_casts_the_narrator_as_before(self):
         self._narrator()

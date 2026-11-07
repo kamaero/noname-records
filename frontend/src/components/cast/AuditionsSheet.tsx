@@ -51,14 +51,14 @@ type AuditionsSheetProps = {
 function formatSize(bytes: number): string {
   if (!bytes) return "";
   const mb = bytes / (1024 * 1024);
-  return mb >= 1 ? `${mb.toFixed(1)} МБ` : `${Math.max(1, Math.round(bytes / 1024))} КБ`;
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 function formatWhen(iso: string): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString("en-US", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 /** «2:35», «0:07», «1:02:03» — то, что слышно на плеере, не байты. Тот же счёт,
@@ -108,37 +108,37 @@ function canDeleteAudition(
     неотличимы друг от друга — можно удалить не ту, безвозвратно. */
 function confirmDeleteAudition(item: AuditionItem, role: string): boolean {
   return window.confirm(
-    `Удалить пробу «${item.actor_name || "без имени"}» на роль «${role}»`
-      + (item.chapter ? `, глава «${item.chapter}»` : "")
-      + `, загружена ${formatWhen(item.uploaded_at) || "неизвестно когда"}`
-      + `, длительность ${formatDuration(item.duration_seconds)}?\n\n`
-      + "Файл будет стёрт с сервера и с зеркала на NAS. Отката не будет.",
+    `Delete audition «${item.actor_name || "unnamed"}» for role «${role}»`
+      + (item.chapter ? `, chapter «${item.chapter}»` : "")
+      + `, uploaded ${formatWhen(item.uploaded_at) || "at an unknown time"}`
+      + `, duration ${formatDuration(item.duration_seconds)}?\n\n`
+      + "The file will be deleted from the server and NAS mirror. This cannot be undone.",
   );
 }
 
 function formatClock(iso: string): string {
   const date = new Date(iso);
   if (!iso || Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
 /** Что будет с отказом — словами, а не статусом. */
 function rejectionLine(rejection: AuditionRejection): string {
   switch (rejection.status) {
     case "pending":
-      return `Отказ уйдёт диктору в ${formatClock(rejection.due_at)}`;
+      return `The rejection will be sent via ${formatClock(rejection.due_at)}`;
     case "sent":
-      return `Отказ отправлен ${formatWhen(rejection.sent_at)}`;
+      return `Rejection sent ${formatWhen(rejection.sent_at)}`;
     case "no_account":
     case "ambiguous":
-      return "Отказ не доставлен: у диктора нет учётки — сообщите сами";
+      return "Rejection not delivered: no voice actor account. Contact them directly";
     case "failed":
-      return "Отказ не ушёл — Telegram не ответил";
+      return "Rejection not delivered: Telegram did not respond";
   }
 }
 
 const LANES: AuditionLane[] = ["author", "studio"];
-const LANE_TITLE: Record<AuditionLane, string> = { author: "Оценка автора", studio: "Оценка студии" };
+const LANE_TITLE: Record<AuditionLane, string> = { author: "Author rating", studio: "Studio rating" };
 
 export function AuditionsSheet({ role, pairs, onAssign, onClose, canDeleteAny, canDeleteOwn = true, myDisplayName, deletingId, onDelete, canScore = [], showRejection, scoringKey, onScore }: AuditionsSheetProps) {
   const [showBusy, setShowBusy] = useState(false);
@@ -152,10 +152,10 @@ export function AuditionsSheet({ role, pairs, onAssign, onClose, canDeleteAny, c
   const shown = showBusy ? sorted : sorted.filter((pair) => !isBusy(pair));
   return (
     <Sheet
-      title={`Пробы · ${role}`}
+      title={`Auditions · ${role}`}
       subtitle={
-        (pairs.length === 1 ? "Один претендент" : `Претендентов: ${pairs.length}`) +
-        (onAssign ? "" : " · утверждают владелец студии и автор")
+        (pairs.length === 1 ? "One candidate" : `Candidates: ${pairs.length}`) +
+        (onAssign ? "" : " · approved by the studio owner and author")
       }
       onClose={onClose}
     >
@@ -167,17 +167,17 @@ export function AuditionsSheet({ role, pairs, onAssign, onClose, canDeleteAny, c
           return (
             <li key={pair.key} className="aud-item">
               <div className="aud-head">
-                <strong className="aud-actor">{pair.actor_name || "без имени"}</strong>
-                {!pair.approved && roleOpen(pair) && isRecommended(pair) ? <span className="aud-recommended">к утверждению</span> : null}
-                {pair.busy_on.length ? <span className="aud-busy">утверждён: {pair.busy_on.map((r) => `«${r}»`).join(", ")}</span> : null}
+                <strong className="aud-actor">{pair.actor_name || "unnamed"}</strong>
+                {!pair.approved && roleOpen(pair) && isRecommended(pair) ? <span className="aud-recommended">pending approval</span> : null}
+                {pair.busy_on.length ? <span className="aud-busy">approved: {pair.busy_on.map((r) => `«${r}»`).join(", ")}</span> : null}
                 {mine ? (
-                  <span className="aud-assigned">утверждён на роль</span>
+                  <span className="aud-assigned">approved for the role</span>
                 ) : onAssign && pair.actor_name ? (
                   <Button size="sm" variant={roleOpen(pair) && isRecommended(pair) ? "primary" : "secondary"} onClick={() => {
                     if (isBusy(pair) && !window.confirm(busyConfirmText(pair))) return;
                     onAssign(pair.actor_name);
                   }}>
-                    Утвердить на роль
+                    Approve for role
                   </Button>
                 ) : null}
               </div>
@@ -205,7 +205,7 @@ export function AuditionsSheet({ role, pairs, onAssign, onClose, canDeleteAny, c
               {pair.auditions.map((item) => (
                 <div key={item.id} className="aud-file-row">
                   <audio className="aud-player" controls preload="none" src={`/api/v2/auditions/${encodeURIComponent(item.id)}/audio`}>
-                    Ваш браузер не умеет проигрывать аудио.
+                    Your browser does not support audio playback.
                   </audio>
                   <div className="aud-foot">
                     <span className="aud-file mono" title={item.original_filename}>
@@ -217,7 +217,7 @@ export function AuditionsSheet({ role, pairs, onAssign, onClose, canDeleteAny, c
                         onClick={() => {
                           if (confirmDeleteAudition(item, role)) onDelete(item);
                         }}>
-                        Удалить
+                        Delete
                       </Button>
                     ) : null}
                   </div>
@@ -232,7 +232,7 @@ export function AuditionsSheet({ role, pairs, onAssign, onClose, canDeleteAny, c
       </ul>
       {hiddenBusy ? (
         <Button size="sm" variant="ghost" onClick={() => setShowBusy(!showBusy)}>
-          {showBusy ? "Скрыть занятых" : `Показать занятых (${hiddenBusy})`}
+          {showBusy ? "Hide assigned" : `Show assigned (${hiddenBusy})`}
         </Button>
       ) : null}
       {reasonPrompt.dialog}

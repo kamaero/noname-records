@@ -49,45 +49,42 @@ def test_borrow(db):
     _studio(db, {"Тупуг": "Гончаров Иван", "Гамук": "Гончаров Иван", "Хор": ""})
     got = _impact(db, "Гамук")
     assert got["state"] == "borrow" and got["level"] == "info"
-    assert got["text"] == "Глава записана. Звук возьмём из файла роли «Тупуг» — читает тот же актёр (Гончаров Иван)."
+    assert got["text"] == 'The chapter is recorded. Audio will be taken from the role «Тупуг» — the same actor (Гончаров Иван).'
 
 
 def test_borrow_no_file(db):
     _studio(db, {"Тупуг": "Гончаров Иван", "Гамук": "Гончаров Иван", "Хор": "Гончаров Иван"})
     got = _impact(db, "Хор")
     assert got["state"] == "borrow_no_file" and got["level"] == "warn"
-    assert got["text"] == ("Глава записана, звук лежит у роли «Тупуг» (тот же актёр), но у роли «Хор» в этой главе "
-                           "нет своей записи — сборка его не возьмёт, реплику придётся дописать.")
+    assert got["text"] == ('The chapter is recorded; audio belongs to «Тупуг» (the same actor), but «Хор» has no recording in this chapter. Assembly cannot use it; the line must be recorded.')
 
 
 def test_rerecord(db):
     _studio(db, {"Тупуг": "Гончаров Иван", "Гамук": "Иванов Пётр", "Хор": ""})
     got = _impact(db, "Гамук")
     assert got["state"] == "rerecord" and got["level"] == "warn"
-    assert got["text"] == ("Глава записана — реплика лежит у роли «Тупуг» (Гончаров Иван). После правки её "
-                           "дозапишет «Гамук» (Иванов Пётр), ему придёт уведомление.")
+    assert got["text"] == ('The chapter is recorded; the line belongs to «Тупуг» (Гончаров Иван). After the edit, the line will be recorded by «Гамук» (Иванов Пётр), the actor will be notified.')
 
 
 def test_not_in_audio(db):
     _studio(db, {"Тупуг": "Гончаров Иван", "Гамук": "Иванов Пётр", "Хор": ""}, tupug_said=False)
     got = _impact(db, "Гамук")
     assert got["state"] == "not_in_audio" and got["level"] == "warn"
-    assert got["text"] == ("Глава записана, но этой реплики в записи нет. Актёру роли «Гамук» (Иванов Пётр) "
-                           "придёт уведомление её дописать.")
+    assert got["text"] == ('The chapter is recorded, but this line is missing. The actor for «Гамук» (Иванов Пётр) will be notified to record the line.')
 
 
 def test_new_role_unrecorded(db):
     _studio(db, {"Тупуг": "Гончаров Иван", "Гамук": "Иванов Пётр", "Хор": "Сидорова Анна"})
     got = _impact(db, "Хор")
     assert got["state"] == "new_role_unrecorded" and got["level"] == "info"
-    assert got["text"] == "У роли «Хор» в этой главе ещё нет записи — реплика войдёт в её обычную запись."
+    assert got["text"] == 'The role «Хор» has no recording in this chapter yet; the line will be included in the normal recording.'
 
 
 def test_unassigned_actor_is_said_plainly(db):
     _studio(db, {"Тупуг": "Гончаров Иван", "Гамук": "", "Хор": ""})
     got = _impact(db, "Гамук")
     assert got["state"] == "rerecord"
-    assert "(актёр не назначен)" in got["text"] and "уведомлять некого" in got["text"]
+    assert '(no actor assigned)' in got["text"] and "assign an actor" in got["text"]
 
 
 def test_reassign_impacts_only_for_changed_spans(db):

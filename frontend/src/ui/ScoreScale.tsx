@@ -23,7 +23,7 @@ const CELLS = Array.from({ length: 10 }, (_, index) => index + 1);
 export function ScoreScale({ value, label, onChange, size = "md", disabled }: ScoreScaleProps) {
   // Кнопки не заменяем на span, пока идёт сохранение: иначе фокус клавиатуры теряется после каждого нажатия.
   const interactive = Boolean(onChange);
-  const title = value ? `${label}: ${value} из 10` : `${label}: нет оценки`;
+  const title = value ? `${label}: ${value} out of 10` : `${label}: unrated`;
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!interactive || !onChange || disabled) return;
@@ -53,7 +53,7 @@ export function ScoreScale({ value, label, onChange, size = "md", disabled }: Sc
             type="button"
             className={on ? "score-cell is-on" : "score-cell"}
             style={style}
-            aria-label={`${cell} из 10`}
+            aria-label={`${cell} out of 10`}
             aria-pressed={value === cell}
             aria-disabled={disabled || undefined}
             onClick={() => !disabled && onChange?.(value === cell ? null : cell)}

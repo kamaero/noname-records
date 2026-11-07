@@ -14,7 +14,7 @@ YANDEX_META = "https://cloud-api.yandex.net/v1/disk/public/resources"
 YANDEX_API = YANDEX_META + "/download"
 MAX_FOLDER_FILES = 20
 MAILRU_DISPATCHER = "https://cloud.mail.ru/api/v2/dispatcher"
-FALLBACK_NAME = "демо.bin"
+FALLBACK_NAME = "demo.bin"
 
 
 class FetchError(RuntimeError):

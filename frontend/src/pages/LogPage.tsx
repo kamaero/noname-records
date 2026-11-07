@@ -23,17 +23,17 @@ export function LogPage({ me }: { me: MeResponse }) {
   }, [actionFilter, actorFilter, query.data?.recent_activity]);
 
   if (!canOpenLog) {
-    return <div className="panel">Страница доступна только owner/admin.</div>;
+    return <div className="panel">This page is available to the owner and administrators only.</div>;
   }
   if (query.isLoading) {
-    return <div className="panel">Загружаю лог…</div>;
+    return <div className="panel">Loading log…</div>;
   }
   if (query.isError) {
-    return <div className="panel error">Не удалось загрузить лог.</div>;
+    return <div className="panel error">Could not load log.</div>;
   }
   const data = query.data;
   if (!data) {
-    return <div className="panel error">Пустой ответ API.</div>;
+    return <div className="panel error">Empty API response.</div>;
   }
 
   return (
@@ -44,7 +44,7 @@ export function LogPage({ me }: { me: MeResponse }) {
           {data.usage_by_actor.map((item) => (
             <li key={item.created_by_name}>
               <strong>{item.created_by_name}</strong>
-              <span>{item.total_tokens.toLocaleString("ru-RU")} токенов · ${item.cost_usd.toFixed(4)}</span>
+              <span>{item.total_tokens.toLocaleString("en-US")} tokens · ${item.cost_usd.toFixed(4)}</span>
             </li>
           ))}
         </ul>
@@ -56,11 +56,11 @@ export function LogPage({ me }: { me: MeResponse }) {
             <li key={item.stage}>
               <strong>{item.stage}</strong>
               <span>
-                {item.total_tokens.toLocaleString("ru-RU")} токенов · ${item.cost_usd.toFixed(4)} ·{" "}
-                {Math.round(item.runtime_ms / 1000).toLocaleString("ru-RU")} сек
+                {item.total_tokens.toLocaleString("en-US")} tokens · ${item.cost_usd.toFixed(4)} ·{" "}
+                {Math.round(item.runtime_ms / 1000).toLocaleString("en-US")} s
               </span>
               <small>
-                requests: {item.request_count.toLocaleString("ru-RU")} · books: {item.book_count.toLocaleString("ru-RU")}
+                requests: {item.request_count.toLocaleString("en-US")} · books: {item.book_count.toLocaleString("en-US")}
               </small>
             </li>
           ))}
@@ -70,12 +70,12 @@ export function LogPage({ me }: { me: MeResponse }) {
         <h2>Recent activity</h2>
         <div className="form-grid">
           <label>
-            Фильтр по действию
-            <input value={actionFilter} onChange={(event) => setActionFilter(event.target.value)} placeholder="авторазметка, whitelist, вход" />
+            Filter by action
+            <input value={actionFilter} onChange={(event) => setActionFilter(event.target.value)} placeholder="annotation, whitelist, sign-in" />
           </label>
           <label>
-            Фильтр по пользователю
-            <input value={actorFilter} onChange={(event) => setActorFilter(event.target.value)} placeholder="имя или логин" />
+            Filter by user
+            <input value={actorFilter} onChange={(event) => setActorFilter(event.target.value)} placeholder="name or username" />
           </label>
         </div>
         <ul className="list">

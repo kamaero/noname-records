@@ -7,9 +7,9 @@ $InstallDirectory = Split-Path -Parent $ScriptPath
 Set-Location $InstallDirectory
 
 $DryRun = $args.Count -eq 1 -and $args[0] -in @('--dry-run', '-DryRun')
-if ($args.Count -gt 0 -and -not $DryRun) { throw 'Использование: update.ps1 [--dry-run]' }
+if ($args.Count -gt 0 -and -not $DryRun) { throw 'Usage: update.ps1 [--dry-run]' }
 if ($DryRun) {
-    Write-Host 'Создать резервную копию, получить новую версию через Git или архив, пересобрать образ и перезапустить сервисы.'
+    Write-Host 'Create a backup, download the latest version with Git or an archive, rebuild the image and restart services.'
     exit 0
 }
 
@@ -77,22 +77,22 @@ if ($git -and -not $ForceArchive -and (Test-Path -LiteralPath (Join-Path $Instal
 }
 
 $BackupScript = Join-Path $InstallDirectory 'backup.ps1'
-if (-not (Test-Path -LiteralPath $BackupScript -PathType Leaf)) { throw 'Не найден backup.ps1; обновление остановлено.' }
+if (-not (Test-Path -LiteralPath $BackupScript -PathType Leaf)) { throw 'backup.ps1 was not found; update stopped.' }
 function Invoke-Backup {
     try {
         & $BackupScript
     } catch {
-        throw "Не удалось создать резервную копию: $($_.Exception.Message)"
+        throw "Could not create a backup: $($_.Exception.Message)"
     }
 }
 
 if ($UseGit) {
     Invoke-Backup
     & $git.Source pull --ff-only
-    if ($LASTEXITCODE -ne 0) { throw 'Не удалось получить новую версию.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Could not download the latest version.' }
     & docker compose up -d --build
-    if ($LASTEXITCODE -ne 0) { throw 'Не удалось перезапустить сервисы.' }
-    Write-Host 'Обновление выполнено.'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not restart services.' }
+    Write-Host 'Update complete.'
     exit 0
 }
 
@@ -106,7 +106,7 @@ $ShellUpdaterCandidate = Join-Path $InstallDirectory ('.update.sh.' + [Guid]::Ne
 
 try {
     New-Item -ItemType Directory -Path $StagePath | Out-Null
-    Write-Host 'Скачиваю свежий архив Noname Records...'
+    Write-Host 'Downloading the latest Noname Records archive...'
     Copy-OrDownloadFile -Source $ArchiveUrl -Destination $ArchivePath
     New-Item -ItemType Directory -Path $ExtractPath | Out-Null
     Expand-Archive -LiteralPath $ArchivePath -DestinationPath $ExtractPath
@@ -117,13 +117,13 @@ try {
         (Test-Path -LiteralPath (Join-Path $_.FullName 'update.sh') -PathType Leaf) -and
         (Test-Path -LiteralPath (Join-Path $_.FullName 'docker-compose.yml') -PathType Leaf)
     })
-    if ($payloadCandidates.Count -ne 1) { throw 'Архив имеет неожиданный формат или повреждён.' }
+    if ($payloadCandidates.Count -ne 1) { throw 'The archive has an unexpected structure or is damaged.' }
     $PayloadPath = $payloadCandidates[0].FullName
 
     Invoke-Backup
     Copy-ArchiveTree -Source $PayloadPath -Destination $InstallDirectory -Root
     & docker compose up -d --build
-    if ($LASTEXITCODE -ne 0) { throw 'Не удалось перезапустить сервисы.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Could not restart services.' }
     Copy-Item -LiteralPath (Join-Path $PayloadPath 'update.sh') -Destination $ShellUpdaterCandidate
     Copy-Item -LiteralPath (Join-Path $PayloadPath 'update.ps1') -Destination $UpdaterCandidate
 } catch {
@@ -144,4 +144,4 @@ if (Test-Path -LiteralPath $ScriptPath -PathType Leaf) {
 } else {
     Move-Item -LiteralPath $UpdaterCandidate -Destination $ScriptPath
 }
-Write-Host 'Обновление выполнено.'
+Write-Host 'Update complete.'

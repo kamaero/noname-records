@@ -14,7 +14,7 @@ from __future__ import annotations
 import collections
 from dataclasses import dataclass, field
 
-from app.models import Character, ScriptChapter
+from app.models import Character, ScriptBook, ScriptChapter
 from app.pipeline.attribution_evidence import NARRATOR, PROVEN_KINDS, classify_chapter
 from app.pipeline.attribution_resolve import build_cast_index
 from app.v2.models import V2Attribution
@@ -87,6 +87,7 @@ def _corrected_spans(rows: list[V2Attribution]) -> tuple[list, list, list]:
 
 def check_gate(db, *, book_id: str) -> dict:
     """Прогнать гейт по книге. `violations` пуст — слой 1 честен на известных ответах."""
+    language = getattr(db.get(ScriptBook, book_id), "language", "ru")
     names = _cast_index(db, book_id)
     chapters = (db.query(ScriptChapter)
                 .filter(ScriptChapter.book_id == book_id)
@@ -120,7 +121,7 @@ def check_gate(db, *, book_id: str) -> dict:
                 "paragraph": segment.ordinal, "text": segment.text,
                 "spans": [{"speaker": row.speaker, "start": row.span_start,
                            "end": row.span_end} for row in old]}
-            evidence = classify_chapter(paragraphs, names=names)
+            evidence = classify_chapter(paragraphs, names=names, language=language)
             for row, overlapping in corrected:
                 key = (int(segment.ordinal), int(row.span_start), int(row.span_end))
                 found = evidence.get(key)

@@ -493,6 +493,9 @@ def store_audio_file(
     safe_name,
     size_hint: int = 0,
 ) -> AudioFile:
+    from app.services.role_identity import audio_role_identity
+    # До записи на диск: неоднозначный код книги не должен оставлять сиротский файл.
+    role_book_id, role_ref = audio_role_identity(db, book_code, role)
     # Короткая пересъёмка называется по своему номеру, а не встаёт в очередь дублей
     # роли: диктор прислал `..._fixN` — значит это правка одной реплики, не вторая
     # полная запись.
@@ -563,6 +566,8 @@ def store_audio_file(
         md5=digest,
         chapter=chapter.strip(),
         role=role.strip(),
+        role_ref=role_ref,
+        role_book_id=role_book_id,
         actor_name=actor_name.strip(),
         line_index=line_index,
         kind=kind,

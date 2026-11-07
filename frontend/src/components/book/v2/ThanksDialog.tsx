@@ -16,7 +16,7 @@ type ThanksResult = { sent: string[]; failed: string[]; already: string[] };
 /** «А, Б и В» — как в письме, которое соберёт сервер. */
 function joinRoles(roles: string[]): string {
   if (roles.length <= 1) return roles.join("");
-  return `${roles.slice(0, -1).join(", ")} и ${roles[roles.length - 1]}`;
+  return `${roles.slice(0, -1).join(", ")} and ${roles[roles.length - 1]}`;
 }
 
 /** Актёры записаны «Фамилия Имя»: в письме обращаются по имени. */
@@ -54,63 +54,63 @@ export function ThanksDialog({ bookId, bookTitle, onClose }: Props) {
 
   const send = async () => {
     if (!willGet.length || !text.trim()) return;
-    if (!window.confirm(`Отправить письмо ${willGet.length} получателям? Отозвать его нельзя.`)) return;
+    if (!window.confirm(`Send message to ${willGet.length} recipients? This cannot be undone.`)) return;
     setSending(true);
     setError("");
     try {
       setResult(await apiPostJson<ThanksResult>(path, { text }));
     } catch (err) {
-      setError(describeApiError(err, "не удалось отправить"));
+      setError(describeApiError(err, "could not send"));
     } finally {
       setSending(false);
     }
   };
 
   const footer = result ? (
-    <Button variant="primary" onClick={onClose} data-autofocus>Закрыть</Button>
+    <Button variant="primary" onClick={onClose} data-autofocus>Close</Button>
   ) : (
     <>
-      <Button variant="ghost" onClick={onClose} disabled={sending}>Отмена</Button>
+      <Button variant="ghost" onClick={onClose} disabled={sending}>Cancel</Button>
       <Button variant="primary" loading={sending} disabled={!willGet.length || !text.trim()} onClick={send}>
-        {`Отправить ${willGet.length}`}
+        {`Send ${willGet.length}`}
       </Button>
     </>
   );
 
   return (
-    <Dialog title="Благодарственное письмо" subtitle={bookTitle} onClose={onClose} footer={footer} className="thanks-dialog">
-      {query.isLoading ? <p className="ui-note ui-note--info">Загрузка…</p> : null}
+    <Dialog title="Thank-you message" subtitle={bookTitle} onClose={onClose} footer={footer} className="thanks-dialog">
+      {query.isLoading ? <p className="ui-note ui-note--info">Loading…</p> : null}
       {query.isError ? (
         <p className="ui-note ui-note--error" role="alert">
-          {describeApiError(query.error, "не удалось загрузить письмо")}
+          {describeApiError(query.error, "could not load message")}
         </p>
       ) : null}
       {result ? (
         <div className="thanks-summary" role="status">
-          <p>Отправлено: {result.sent.length}{result.sent.length ? ` — ${result.sent.join(", ")}` : ""}</p>
-          <p>Не доставлено: {result.failed.length}{result.failed.length ? ` — ${result.failed.join(", ")}` : ""}</p>
-          <p>Уже было: {result.already.length}{result.already.length ? ` — ${result.already.join(", ")}` : ""}</p>
+          <p>Sent: {result.sent.length}{result.sent.length ? ` — ${result.sent.join(", ")}` : ""}</p>
+          <p>Undelivered: {result.failed.length}{result.failed.length ? ` — ${result.failed.join(", ")}` : ""}</p>
+          <p>Previously sent: {result.already.length}{result.already.length ? ` — ${result.already.join(", ")}` : ""}</p>
         </div>
       ) : data ? (
         <div className="thanks-body">
-          <label className="thanks-label" htmlFor="thanks-text">Текст письма</label>
+          <label className="thanks-label" htmlFor="thanks-text">Message text</label>
           <textarea id="thanks-text" className="thanks-text" rows={8} value={text} onChange={(e) => setEdited(e.target.value)} />
-          <p className="thanks-hint">В тексте работают {"{name}"}, {"{roles}"} и {"{book}"}.</p>
+          <p className="thanks-hint">Supported formatting: {"{name}"}, {"{roles}"} and {"{book}"}.</p>
           {willGet[0] ? (
             <>
-              <div className="thanks-label">Так письмо увидит {willGet[0].actor}</div>
+              <div className="thanks-label">Message preview for {willGet[0].actor}</div>
               <pre className="thanks-preview">{fill(text, willGet[0], bookTitle)}</pre>
             </>
           ) : null}
-          <div className="thanks-label">Получат ({willGet.length})</div>
+          <div className="thanks-label">Recipients ({willGet.length})</div>
           {willGet.length ? (
             <ul className="thanks-list">
               {willGet.map((p) => <li key={p.actor}>{p.actor} → {p.name} <span>{joinRoles(p.roles)}</span></li>)}
             </ul>
-          ) : <p className="thanks-hint">Некому отправлять.</p>}
+          ) : <p className="thanks-hint">No recipients.</p>}
           {already.length ? (
             <>
-              <div className="thanks-label">Уже отправлено ({already.length})</div>
+              <div className="thanks-label">Previously sent ({already.length})</div>
               <ul className="thanks-list">
                 {already.map((p) => <li key={p.actor}>{p.actor} → {p.name} <span>{joinRoles(p.roles)}</span></li>)}
               </ul>
@@ -118,7 +118,7 @@ export function ThanksDialog({ bookId, bookTitle, onClose }: Props) {
           ) : null}
           {undelivered.length ? (
             <>
-              <div className="thanks-label">Не доставлено — напишите сами ({undelivered.length})</div>
+              <div className="thanks-label">Undelivered; contact them directly ({undelivered.length})</div>
               <ul className="thanks-list">
                 {undelivered.map((p) => <li key={p.actor}>{p.actor} → {p.name} <span>{joinRoles(p.roles)}</span></li>)}
               </ul>
@@ -126,7 +126,7 @@ export function ThanksDialog({ bookId, bookTitle, onClose }: Props) {
           ) : null}
           {data.no_chat.length ? (
             <>
-              <div className="thanks-label">Нет связи с ботом — напишите сами</div>
+              <div className="thanks-label">Bot unreachable; contact them directly</div>
               <ul className="thanks-list">
                 {data.no_chat.map((p) => <li key={p.actor}>{p.actor} <span>{joinRoles(p.roles)}</span></li>)}
               </ul>

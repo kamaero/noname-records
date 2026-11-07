@@ -94,29 +94,29 @@ def _status(db, tid="41"):
 def test_help_shows_the_order_of_work(db):
     for command in ("/help", "/help@nonamerecords_bot"):
         text = handle_update(db, _msg(command), now=NOW)[0].payload["text"]
-        assert "Как мы работаем — по шагам" in text and "Проба — только по приглашению" in text
+        assert "How we work" in text and "Auditions are by invitation" in text
 
 
 def test_strangers_get_neither_help_nor_status(db):
     for command in ("/help", "/status"):
-        assert "Доступ к сайту пока не открыт" in handle_update(db, _msg(command, "999"), now=NOW)[0].payload["text"]
+        assert "Website access is not open yet" in handle_update(db, _msg(command, "999"), now=NOW)[0].payload["text"]
 
 
 def test_status_lists_approved_roles_with_progress_and_deadline(db):
     text = _status(db)
-    assert "«Убув» — «Карта Приозерья»: сдано 1 из 2 глав, срок до 31 декабря 2026" in text
-    assert "«Хоркон» — «Карта Приозерья»: сдано 1 из 1 главы ✓" in text
+    assert "«Убув» — «Карта Приозерья»: completed 1 of 2 chapters, due 31 December 2026" in text
+    assert "«Хоркон» — «Карта Приозерья»: completed 1 of 1 chapter ✓" in text
 
 
 def test_status_lists_auditions_invited_and_uploaded(db):
     text = _status(db)
-    assert "«Фэдывнютд» — «Карта Приозерья»: ждём вашу пробу до 6 октября, 18:00 МСК" in text
-    assert "«Хдыбдяр» — «Карта Приозерья»: проба загружена, ждёт решения" in text
+    assert "«Фэдывнютд» — «Карта Приозерья»: awaiting your audition by 6 October, 18:00 MSK" in text
+    assert "«Хдыбдяр» — «Карта Приозерья»: audition uploaded; awaiting a decision" in text
 
 
 def test_a_sent_rejection_is_shown_once_and_not_as_a_pending_audition(db):
     text = _status(db)
-    assert "Отказы" in text and "«Ге'Коон» — «Карта Приозерья»: выбран другой исполнитель" in text
+    assert "Other selections" in text and "«Ге'Коон» — «Карта Приозерья»: another actor was selected" in text
     assert "Ге'Коон» — «Карта Приозерья»: проба загружена" not in text
 
 
@@ -126,7 +126,7 @@ def test_a_pending_rejection_is_not_announced_nor_called_undecided(db):
     db.query(AuditionRejection).update({"status": "pending"})
     db.commit()
     text = _status(db)
-    assert "Отказы" not in text and "Ге'Коон" not in text
+    assert "Other selections" not in text and "Ге'Коон" not in text
 
 
 def test_foreign_and_ambiguous_roles_are_not_shown(db):
@@ -136,7 +136,7 @@ def test_foreign_and_ambiguous_roles_are_not_shown(db):
 
 def test_status_explains_the_account_and_how_to_sign_in(db):
     text = _status(db)
-    assert "логин <code>tg_41</code>" in text and "Пароля нет" in text and "localhost:8080/app/login" in text
+    assert "login <code>tg_41</code>" in text and "No password is set" in text and "localhost:8080/app/login" in text
 
 
 def test_status_with_nothing_yet_says_so(db):
@@ -146,7 +146,7 @@ def test_status_with_nothing_yet_says_so(db):
                                is_active="true", user_id="u42"))
     db.commit()
     text = _status(db, "43")
-    assert "Пока нет." in text and "Приглашений на пробу сейчас нет." in text and "Пароль выдан" in text
+    assert "None yet." in text and "No current audition invitations." in text and "A password has been issued" in text
 
 
 def test_a_long_status_fits_one_telegram_message(db):
@@ -154,11 +154,11 @@ def test_a_long_status_fits_one_telegram_message(db):
         db.add(Character(id=f"x{i}", book_id="b1", name=f"Роль номер {i}", actor_name="Ветрова Ольга", appears_in="1"))
     db.commit()
     text = _status(db)
-    assert len(text) <= 4096 and "полностью — на сайте" in text
+    assert len(text) <= 4096 and "full list is on the website" in text
 
 
 def test_a_taken_audition_says_so(db):
     """Пакет B: после «✅ Беру» — «проба взята, ждём до …», а не «ждём вашу пробу»."""
     db.query(RoleDeadline).filter_by(character_id="c3").update({"accepted_at": NOW})
     db.commit()
-    assert "«Фэдывнютд» — «Карта Приозерья»: проба взята, ждём до 6 октября, 18:00 МСК" in _status(db)
+    assert "«Фэдывнютд» — «Карта Приозерья»: audition accepted; due 6 October, 18:00 MSK" in _status(db)

@@ -38,7 +38,7 @@ def _lines_letter(*, header: str, role: str, chapter: str, book_title: str, text
         return ""
     out = [
         header.format(count=len(texts)),
-        f"Роль: {str(role or '').strip()}",
+        f"Role: {str(role or '').strip()}",
         f"{str(book_title or '').strip()} · {str(chapter or '').strip()}".strip(" ·"),
         "",
     ]
@@ -46,7 +46,7 @@ def _lines_letter(*, header: str, role: str, chapter: str, book_title: str, text
         quote = text if len(text) <= QUOTE_CHARS else text[:QUOTE_CHARS].rstrip() + "…"
         out.append(f"• {quote}")
     if len(texts) > LINES_SHOWN:
-        out.append(f"…и ещё {len(texts) - LINES_SHOWN}")
+        out.append(f"…and {len(texts) - LINES_SHOWN}")
     out += ["", call_to_action]
     if str(link or "").strip():
         out.append(link.strip())
@@ -61,9 +61,9 @@ def _ambiguous_relay_text(*, about: str, role: str, chapter: str, book_title: st
     чтобы владелец сам разобрался, кому передать, а не система угадывала."""
     return "\n".join([
         f"📣 {studio.name()} — {about}",
-        f"Роль: {str(role or '').strip()}",
+        f"Role: {str(role or '').strip()}",
         f"{str(book_title or '').strip()} · {str(chapter or '').strip()}".strip(" ·"),
-        f"Имя «{str(actor_name or '').strip()}» подходит нескольким людям: {', '.join(candidates)} — сообщите сами.",
+        f"The name «{str(actor_name or '').strip()}» matches multiple people: {', '.join(candidates)}; please contact them directly.",
     ])
 
 
@@ -98,8 +98,8 @@ def missing_lines_notice(*, role: str, chapter: str, book_title: str, lines: lis
     missing = [str(line.get("text") or "").strip() for line in lines or [] if not line.get("matched")]
     missing = [text for text in missing if text]
     return _lines_letter(
-        header="🎧 В записи не нашлось реплик: {count}", role=role, chapter=chapter, book_title=book_title,
-        texts=missing, call_to_action="Проверьте, всё ли записано, и дошлите недостающее.", link=link,
+        header="🎧 Lines not found in the recording: {count}", role=role, chapter=chapter, book_title=book_title,
+        texts=missing, call_to_action="Please check the recording and send any missing lines.", link=link,
     )
 
 
@@ -112,9 +112,9 @@ def audit_findings_notice(*, role: str, chapter: str, book_title: str, texts: li
     находка уже подтверждена второй моделью, но место всё равно сверяется со сценарием.
     """
     return _lines_letter(
-        header="🔍 Строгая проверка не нашла дословно: {count}",
+        header="🔍 Lines flagged by the strict word-for-word check: {count}",
         role=role, chapter=chapter, book_title=book_title, texts=texts,
-        call_to_action="Сверьте эти места со сценарием и пришлите исправление (_fix).", link=link,
+        call_to_action="Check these passages against the script and send a correction (_fix).", link=link,
     )
 
 
@@ -126,7 +126,7 @@ def notify_audit_findings(db, *, actor_name: str, role: str, chapter: str, book_
     count = len([t for t in texts or [] if str(t or "").strip()])
     return _deliver(
         db, actor_name=actor_name, text=text, count=count,
-        about="актёра с неоднозначным именем надо предупредить о находках строгой проверки самим",
+        about="please contact the actor about strict check findings; their name is ambiguous",
         role=role, chapter=chapter, book_title=book_title,
     )
 
@@ -153,7 +153,7 @@ def notify_missing_lines(
     missing = sum(1 for line in lines or [] if not line.get("matched"))
     return _deliver(
         db, actor_name=actor_name, text=text, count=missing,
-        about="актёра с неоднозначным именем надо предупредить о пропущенных репликах самим",
+        about="please contact the actor about missing lines; their name is ambiguous",
         role=role, chapter=chapter, book_title=book_title,
     )
 
@@ -165,9 +165,9 @@ def moved_lines_notice(*, role: str, chapter: str, book_title: str, texts: list[
     сценарии, и упрёк в пропуске сказал бы ему неправду. Поменялся сценарий, а не он.
     """
     return _lines_letter(
-        header="✏️ В разметке поправили роль — эти реплики теперь ваши, а в записи их нет: {count}",
+        header="✏️ The role attribution changed. These lines are now yours and were not found in the recording: {count}",
         role=role, chapter=chapter, book_title=book_title, texts=texts,
-        call_to_action="Допишите их отдельным файлом.", link=link,
+        call_to_action="Record these lines in a separate file.", link=link,
     )
 
 
@@ -179,6 +179,6 @@ def notify_moved_lines(db, *, actor_name: str, role: str, chapter: str, book_tit
     count = len([t for t in texts or [] if str(t or "").strip()])
     return _deliver(
         db, actor_name=actor_name, text=text, count=count,
-        about="актёра с неоднозначным именем надо предупредить о перенесённых репликах самим",
+        about="please contact the actor about reassigned lines; their name is ambiguous",
         role=role, chapter=chapter, book_title=book_title,
     )

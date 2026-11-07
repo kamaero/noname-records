@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 
 _DISALLOWED_SPEAKER_MARKERS = (
@@ -31,7 +32,7 @@ def _is_valid_dialogue_speaker_name(name: str) -> bool:
         return False
     if len(label) > 120:
         return False
-    if not re.search(r"[A-Za-zА-Яа-яЁё0-9]", label):
+    if not any(char.isalnum() for char in label):
         return False
 
     lower = label.lower()
@@ -48,14 +49,15 @@ def _is_valid_dialogue_speaker_name(name: str) -> bool:
 
     # If model emitted all-lowercase descriptive nouns (e.g. "банка с соком"),
     # keep them out of CHAR_MEMORY; speaker labels should look like entities.
-    if not any(re.search(r"[A-ZА-ЯЁ]", token) for token in tokens):
+    if not any(any(char.isupper() for char in token) for token in tokens):
         return False
 
     return True
 
 
 def _normalize_character_identity_key(value: str) -> str:
-    return re.sub(r"[^a-zа-яё0-9]+", "", str(value or "").strip().lower())
+    normalized = unicodedata.normalize("NFC", str(value or "").strip().casefold())
+    return "".join(char for char in normalized if char.isalnum())
 
 
 def _normalize_character_aliases(value: str) -> list[str]:
@@ -81,12 +83,14 @@ _POSSESSIVE_ALIAS_WORDS = {
 _EPITHET_ENDINGS = ("ая", "яя", "ый", "ий", "ой", "ое", "ее", "ие", "ого", "ему", "ыми", "ыми")
 
 
-# Generic role/title words. In Primerodin's world almost every demonlord carries a
+# Generic role/title words. In some fictional worlds characters carry a
 # grand title shared across many characters (барон, Владыка, Купец, Тёмный
 # Господин …). A title stays a legitimate alias (Вохпкогамкиуб = «Тёмный
 # Господин»), but it must NEVER act as a merge bridge between two distinct
 # canonicals — that is what transitively snowballed dozens of characters into one.
 _TITLE_ROLE_WORDS = frozenset({
+    "king", "queen", "prince", "princess", "lord", "lady", "duke", "duchess",
+    "baron", "baroness", "sir", "madam", "master", "professor", "doctor",
     "барон", "бароны", "владыка", "владычица", "господин", "госпожа", "князь",
     "княгиня", "барон", "баронесса", "банкир", "купец", "купчиха", "корчмарь", "палач",
     "рыцарь", "паладин", "шут", "шутник", "балаганщик", "дама", "принц", "принцесса",
@@ -105,12 +109,12 @@ _TITLE_ROLE_WORDS = frozenset({
 def _is_pure_title_name(value: str) -> bool:
     """True if every word is a generic role/title (no proper name) — e.g.
     «Тёмный Господин», «барон». Such a name must not bridge a merge."""
-    words = re.findall(r"[а-яёa-z]+", str(value or "").lower())
+    words = re.findall(r"[^\W\d_]+", str(value or "").casefold())
     return bool(words) and all(word in _TITLE_ROLE_WORDS for word in words)
 
 
 def _name_like_tokens(value: str) -> list[str]:
-    return [token for token in re.findall(r"[A-Za-zА-Яа-яЁё0-9-]+", str(value or "").strip()) if token]
+    return re.findall(r"[^\W_]+(?:-[^\W_]+)*", str(value or "").strip())
 
 
 def _looks_like_epithet_token(token: str) -> bool:

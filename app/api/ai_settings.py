@@ -69,7 +69,7 @@ async def api_ai_key_save(request: Request, provider: str):
     if (error := _gate(request)) is not None:
         return error
     if provider not in provider_keys.PROVIDERS:
-        return _bad("Этот провайдер задаётся только в .env.", 404)
+        return _bad("Configure this provider in .env.", 404)
     body = await request.json()
     _uid, name = _actor(request)
     try:
@@ -77,7 +77,7 @@ async def api_ai_key_save(request: Request, provider: str):
             provider_keys.set_key(db, provider, str((body or {}).get("key") or ""), actor=name)
             db.commit()
     except ValueError:
-        return _bad("Вставьте ключ — поле пустое.")
+        return _bad("Paste a key; the field is empty.")
     checked = await run_in_threadpool(_check_and_record, provider)
     with SessionLocal() as db:
         _log(db, request, "provider_key", provider, "key_saved", {"check": checked["status"]})
@@ -89,7 +89,7 @@ async def api_ai_key_delete(request: Request, provider: str):
     if (error := _gate(request)) is not None:
         return error
     if provider not in provider_keys.PROVIDERS:
-        return _bad("Этот провайдер задаётся только в .env.", 404)
+        return _bad("Configure this provider in .env.", 404)
     _uid, name = _actor(request)
     with SessionLocal() as db:
         provider_keys.delete_key(db, provider, actor=name)
@@ -102,9 +102,9 @@ async def api_ai_key_check(request: Request, provider: str):
     if (error := _gate(request)) is not None:
         return error
     if provider not in provider_keys.PROVIDERS:
-        return _bad("Этот провайдер задаётся только в .env.", 404)
+        return _bad("Configure this provider in .env.", 404)
     if not provider_keys.provider_key(provider):
-        return _bad("Ключа нет — проверять нечего.")
+        return _bad("No key is configured to check.")
     checked = await run_in_threadpool(_check_and_record, provider)
     with SessionLocal() as db:
         _log(db, request, "provider_key", provider, "key_checked", {"check": checked["status"]})
@@ -121,7 +121,7 @@ async def api_ai_balances(request: Request):
         for name in provider_keys.PROVIDERS:
             key = provider_keys.provider_key(name)
             out.append(balance(name, key) if key else {"provider": name, "available": False, "amount": None,
-                                                       "unit": "", "detail": "нет ключа"})
+                                                       "unit": "", "detail": "No key"})
         return out
 
     return {"balances": await run_in_threadpool(read_all)}
@@ -131,7 +131,7 @@ async def api_ai_step(request: Request, step: str):
     if (error := _gate(request)) is not None:
         return error
     if step not in step_models.STEPS:
-        return _bad("Нет такого шага.", 404)
+        return _bad("Unknown step.", 404)
     body = await request.json() or {}
     _uid, name = _actor(request)
     with SessionLocal() as db:
@@ -143,7 +143,7 @@ async def api_ai_step(request: Request, step: str):
                 step_models.set_step_model(db, step, str(body.get("provider") or ""), str(body.get("model") or ""),
                                            actor=name)
             except ValueError:
-                return _bad("Этот шаг не работает с таким провайдером или модель не указана.")
+                return _bad("This step does not support that provider, or no model was specified.")
             _log(db, request, "step_model", step, "step_set",
                  {"provider": body.get("provider"), "model": body.get("model")})
         db.commit()
@@ -164,7 +164,7 @@ async def api_spend(request: Request):
             return {**spend.month_summary(db, month), "months": listed}
 
     body = await run_in_threadpool(read)
-    return body if body is not None else _bad("Нет такого месяца.", 404)
+    return body if body is not None else _bad("Unknown month.", 404)
 
 
 async def api_spend_limit(request: Request):
@@ -174,7 +174,7 @@ async def api_spend_limit(request: Request):
 
     value = (await request.json() or {}).get("limit_rub")
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or value != int(value):
-        return _bad("Лимит — целое число рублей, 0 — без лимита.")
+        return _bad("The limit must be a whole number of rubles; 0 means no limit.")
     _uid, name = _actor(request)
     with SessionLocal() as db:
         row = studio_settings(db)
@@ -190,9 +190,9 @@ def _price_fields(body: dict):
     provider, model = str(body.get("provider") or "").strip(), str(body.get("model") or "").strip()
     unit, currency = str(body.get("unit") or ""), str(body.get("currency") or "")
     if not provider or not model:
-        return "Укажите провайдера и модель."
+        return "Specify a provider and model."
     if currency not in ("RUB", "USD"):
-        return "Валюта — RUB или USD."
+        return "Currency must be RUB or USD."
 
     def number(name):
         value = body.get(name)
@@ -207,8 +207,8 @@ def _price_fields(body: dict):
             return {"provider": provider, "model": model, "unit": unit, "currency": currency,
                     "price_in": None, "price_out": None, "price_unit": number("price_unit")}
     except ValueError:
-        return "Цена — неотрицательное число."
-    return "Единица — tokens или seconds."
+        return "The price must be a non-negative number."
+    return "Unit must be tokens or seconds."
 
 
 async def api_price_save(request: Request):

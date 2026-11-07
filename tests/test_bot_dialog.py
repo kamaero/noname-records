@@ -67,13 +67,13 @@ def _has_button(out):
 def test_start_for_a_dictor_greets_shows_the_button_and_marks_reachable(db):
     _account(db)
     out = handle_update(db, _msg("/start dictor"), now=NOW)
-    assert "Добро пожаловать в Noname Records" in _texts(out)[0] and _has_button(out)
+    assert "Welcome to Noname Records" in _texts(out)[0] and _has_button(out)
     assert onboarding.bot_reachable("42") is True
 
 
 def test_start_without_an_account_says_access_is_not_open(db):
     out = handle_update(db, _msg("/start"), now=NOW)
-    assert "Доступ к сайту пока не открыт" in _texts(out)[0] and not _has_button(out)
+    assert "Website access is not open yet" in _texts(out)[0] and not _has_button(out)
 
 
 def test_start_for_an_admin_has_no_password_button_but_the_broadcast_one(db):
@@ -81,7 +81,7 @@ def test_start_for_an_admin_has_no_password_button_but_the_broadcast_one(db):
     from app.services.bot_dialog import ADMIN_KEYBOARD
     _account(db, roles=("admin", "dictor"))
     out = handle_update(db, _msg("/start"), now=NOW)
-    assert "Вы на связи с Noname Records" in _texts(out)[0]
+    assert "You are connected to Noname Records" in _texts(out)[0]
     assert out[0].payload["reply_markup"] == ADMIN_KEYBOARD
 
 
@@ -98,7 +98,7 @@ def test_button_without_a_password_issues_one(db):
 def test_button_with_a_password_asks_first_and_changes_nothing(db):
     _account(db, password_hash=hash_password("old-password"))
     out = handle_update(db, _msg(BUTTON_TEXT), now=NOW)
-    assert "уже есть пароль" in _texts(out)[0]
+    assert "already have a password" in _texts(out)[0]
     button = out[0].payload["reply_markup"]["inline_keyboard"][0][0]
     assert button["callback_data"] == f"pwreset:{TS}"
     assert verify_password("old-password", db.get(User, "u1").password_hash)
@@ -116,21 +116,21 @@ def test_a_fresh_confirmation_issues_a_new_password(db):
 def test_a_stale_or_broken_confirmation_issues_nothing(db, data):
     _account(db, password_hash=hash_password("old-password"))
     out = handle_update(db, _press(data), now=NOW)
-    assert "устарела" in _texts(out)[0]
+    assert "expired" in _texts(out)[0]
     assert verify_password("old-password", db.get(User, "u1").password_hash)
 
 
 def test_a_confirmation_after_the_account_was_switched_off_issues_nothing(db):
     _account(db, password_hash=hash_password("old-password"), active="false")
     out = handle_update(db, _press(f"pwreset:{TS}"), now=NOW)
-    assert "пока не открыт" in _texts(out)[0]
+    assert "not open yet" in _texts(out)[0]
     assert verify_password("old-password", db.get(User, "u1").password_hash)
 
 
 def test_an_admin_gets_no_password(db):
     _account(db, roles=("admin",))
     out = handle_update(db, _msg(BUTTON_TEXT), now=NOW)
-    assert "только на сайте" in _texts(out)[0]
+    assert "on the website" in _texts(out)[0]
     assert db.get(User, "u1").password_hash == TELEGRAM_PASSWORD_HASH
 
 
@@ -141,7 +141,7 @@ def test_the_sixth_issue_in_an_hour_is_refused(db):
                         payload_json="{}", created_at=NOW - timedelta(minutes=minutes)))
     db.commit()
     out = handle_update(db, _press(f"pwreset:{TS}"), now=NOW)
-    assert "Слишком часто" in _texts(out)[0]
+    assert "Too many requests" in _texts(out)[0]
 
 
 def test_an_unlinked_whitelist_row_is_not_matched_to_a_namesake(db):
@@ -149,7 +149,7 @@ def test_an_unlinked_whitelist_row_is_not_matched_to_a_namesake(db):
     # хозяин остался бы снаружи. Бот находит учётку только по привязке или tg_<id>.
     _account(db, linked=False, password_hash=hash_password("old-password"))
     out = handle_update(db, _msg(BUTTON_TEXT), now=NOW)
-    assert "пока не открыт" in _texts(out)[0]
+    assert "not open yet" in _texts(out)[0]
     assert verify_password("old-password", db.get(User, "u1").password_hash)
     assert db.query(TelegramAuthAccount).one().user_id == ""
     assert db.query(User).count() == 1
@@ -160,7 +160,7 @@ def test_start_creates_no_account(db):
                                display_name="Новый Диктор", is_active="true"))
     db.commit()
     out = handle_update(db, _msg("/start"), now=NOW)
-    assert "пока не открыт" in _texts(out)[0]
+    assert "not open yet" in _texts(out)[0]
     assert db.query(User).count() == 0
 
 
@@ -177,7 +177,7 @@ def test_an_unlinked_row_finds_the_tg_login_the_import_made(db):
 def test_other_text_explains_what_the_bot_does(db):
     _account(db)
     out = handle_update(db, _msg("привет"), now=NOW)
-    assert "Я присылаю задания" in _texts(out)[0] and _has_button(out)
+    assert "I send assignments" in _texts(out)[0] and _has_button(out)
 
 
 @pytest.mark.parametrize("update", [
@@ -199,7 +199,7 @@ def test_the_welcome_explains_the_order_of_work(db):
     _account(db)
     out = handle_update(db, _msg("/start"), now=NOW)
     text = _texts(out)[0]
-    for step in ("Доступ", "Проба — только по приглашению", "Утверждение", "Запись и проверка", "напишите в студию"):
+    for step in ("Access", "Auditions are by invitation", "Approval", "Recording and alignment", "contact the studio"):
         assert step in text
     assert out[0].payload["parse_mode"] == "HTML"
     assert out[0].payload["reply_markup"]["keyboard"][0][1] == {"text": HOW_BUTTON}
@@ -208,21 +208,36 @@ def test_the_welcome_explains_the_order_of_work(db):
 def test_the_how_button_shows_it_again_and_not_to_strangers(db):
     from app.services.bot_dialog import HOW_BUTTON
     _account(db)
-    assert "Как мы работаем — по шагам" in _texts(handle_update(db, _msg(HOW_BUTTON), now=NOW))[0]
+    assert "How we work" in _texts(handle_update(db, _msg(HOW_BUTTON), now=NOW))[0]
     stranger = handle_update(db, _msg(HOW_BUTTON, tid="999"), now=NOW)
-    assert "Доступ к сайту пока не открыт" in _texts(stranger)[0]
+    assert "Website access is not open yet" in _texts(stranger)[0]
 
 
 def test_the_welcome_says_the_audition_can_be_sent_to_the_bot(db):
     """С 06.10 пробу принимает и бот (пакет C2) — порядок работы должен об этом сказать."""
     _account(db)
     text = _texts(handle_update(db, _msg("/help"), now=NOW))[0]
-    assert "Пробу можно прислать прямо сюда, в бот, — файлом или голосовым." in text
+    assert "You can send the audition here as an audio file or voice message." in text
 
 
 def test_welcome_says_takes_can_be_sent_to_bot():
     """Порядок работы не должен говорить «только на сайте»: бот принимает дубли файлом."""
     from app.services.bot_dialog import WELCOME
-    assert "присылайте файл сюда, в бот" in WELCOME
-    assert "для книги, которая сейчас в работе" in WELCOME
-    assert "с любым именем" in WELCOME
+    assert "send a file here" in WELCOME
+    assert "for the book currently being recorded" in WELCOME
+    assert "with any filename" in WELCOME
+
+
+def test_existing_russian_keyboard_still_routes_without_resetting_a_password(db):
+    _account(db, password_hash=hash_password("old-password"))
+    legacy = handle_update(db, _msg("🔑 Логин и пароль"), now=NOW)
+    english = handle_update(db, _msg(BUTTON_TEXT), now=NOW)
+    assert _texts(legacy) == _texts(english)
+    assert "already have a password" in _texts(legacy)[0]
+    assert verify_password("old-password", db.get(User, "u1").password_hash)
+
+
+def test_existing_keyboard_never_grants_website_access_to_a_stranger(db):
+    out = handle_update(db, _msg("🔑 Логин и пароль"), now=NOW)
+    assert "not open yet" in _texts(out)[0]
+    assert db.query(User).count() == 0

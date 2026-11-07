@@ -35,12 +35,12 @@ def _covered() -> frozenset[int]:
 
 
 def _strings(export: RoleExport):
-    yield from (export.role, export.book_title, export.actor, export.description, export.facts, export.note)
+    yield from (export.role_label, export.book_title, export.actor, export.description, export.facts, export.note)
     for chapter in export.chapters:
         yield chapter.title
         yield chapter.filename
         for line in chapter.lines:
-            yield line.cue_speaker
+            yield line.cue_label
             yield line.cue_text
             yield from (piece.text for piece in line.pieces)
 
@@ -69,10 +69,12 @@ def _cleaned(export: RoleExport, missing: set[str]) -> RoleExport:
     return RoleExport(
         book_title=c(export.book_title), role=c(export.role), actor=c(export.actor),
         description=c(export.description), facts=c(export.facts), note=c(export.note),
+        role_ref=export.role_ref, role_kind=export.role_kind,
         chapters=[
             Chapter(index=chapter.index, title=c(chapter.title), filename=c(chapter.filename), lines=[
                 Line(pieces=[Piece(c(piece.text), piece.own) for piece in line.pieces],
-                     cue_speaker=c(line.cue_speaker), cue_text=c(line.cue_text))
+                     cue_speaker=c(line.cue_speaker), cue_text=c(line.cue_text),
+                     cue_role_ref=line.cue_role_ref, cue_role_kind=line.cue_role_kind)
                 for line in chapter.lines
             ])
             for chapter in export.chapters
@@ -99,28 +101,28 @@ def render_pdf(export: RoleExport) -> bytes:
     missing = missing_chars(export)
     export = _cleaned(export, set(missing))
     pdf = _fpdf()
-    pdf.set_title(f"{export.role} — {export.book_title}")
+    pdf.set_title(f"{export.role_label} — {export.book_title}")
     pdf.set_creator("Noname Records")
     pdf.add_page()
     left = pdf.l_margin
 
     pdf.set_font_size(18)
     pdf.set_text_color(*INK)
-    pdf.multi_cell(0, 9, f"{export.role} — «{export.book_title}»", new_x="LMARGIN", new_y="NEXT")
+    pdf.multi_cell(0, 9, f"{export.role_label} — «{export.book_title}»", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font_size(10.5)
-    for label, value in (("Актёр", export.actor), ("Кто это", export.description), ("", export.facts),
-                         ("Заметка режиссёра", export.note)):
+    for label, value in (("Actor", export.actor), ("Character", export.description), ("", export.facts),
+                         ("Director note", export.note)):
         if value:
             pdf.multi_cell(0, 5.4, f"{label}: {value}" if label else value, new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(*MUTED)
-    pdf.multi_cell(0, 5.4, f"Реплик: {export.line_count}, глав: {len(export.chapters)}. "
-                           "Ударения стоят в редких словах.", new_x="LMARGIN", new_y="NEXT")
+    pdf.multi_cell(0, 5.4, f"Lines: {export.line_count}, chapters: {len(export.chapters)}. "
+                           "Rare words may carry pronunciation marks.", new_x="LMARGIN", new_y="NEXT")
     if missing:
         # имя знака, а не сам знак: напечатать его PDF как раз и не может
         codes = ", ".join(f"U+{ord(ch):04X}" for ch in missing)
         pdf.set_text_color(*ACCENT)
-        pdf.multi_cell(0, 5.4, f"Некоторые знаки PDF не умеет показать и заменил на {REPLACEMENT} ({codes}) — "
-                               "они есть в текстовой версии сценария.", new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(0, 5.4, f"Some characters cannot be displayed in this PDF and were replaced with {REPLACEMENT} ({codes}), "
+                               "they are present in the text version of the script.", new_x="LMARGIN", new_y="NEXT")
 
     for chapter in export.chapters:
         pdf.ln(5)
@@ -130,21 +132,21 @@ def render_pdf(export: RoleExport) -> bytes:
         if chapter.filename:
             pdf.set_font_size(9.5)
             pdf.set_text_color(*MUTED)
-            pdf.multi_cell(0, 5, f"Файл записи: {chapter.filename}", new_x="LMARGIN", new_y="NEXT")
+            pdf.multi_cell(0, 5, f"Recording file: {chapter.filename}", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(1.5)
         for line in chapter.lines:
             if line.cue_text:
                 pdf.set_font_size(9.5)
                 pdf.set_text_color(*MUTED)
                 pdf.set_x(left + 6)
-                label = f"{line.cue_speaker}: " if line.cue_speaker else ""
+                label = f"{line.cue_label}: " if line.cue_speaker else ""
                 pdf.multi_cell(0, 5, label + line.cue_text, new_x="LMARGIN", new_y="NEXT")
             pdf.set_font_size(11)
             page, top = pdf.page, pdf.get_y()
             pdf.set_left_margin(left + 4)
             pdf.set_x(left + 4)
             pdf.set_text_color(*ACCENT)
-            pdf.write(LINE_H, f"{export.role}: ")
+            pdf.write(LINE_H, f"{export.role_label}: ")
             for piece in line.pieces:
                 pdf.set_text_color(*(INK if piece.own else MUTED))
                 pdf.write(LINE_H, (piece.text if piece.own else f"[{piece.text}]") + " ")

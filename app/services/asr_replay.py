@@ -14,7 +14,7 @@ import json
 import logging
 
 from app.services.asr_align import align_transcript
-from app.services.asr_run import expected_lines, store_alignment
+from app.services.asr_run import ALIGNMENT_VERSION, asr_language, expected_lines, store_alignment
 
 logger = logging.getLogger(__name__)
 
@@ -40,17 +40,25 @@ def realign_job(db, job_id: str, *, write: bool = True) -> dict | None:
     затем, чтобы последствия правки сверки можно было увидеть до того, как она
     применена к архиву.
     """
-    from app.models import AsrJob
+    from app.models import AsrJob, AudioFile
 
     job = db.get(AsrJob, str(job_id or "").strip())
     if job is None or not str(job.heard_json or "").strip():
         return None
 
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, job.chapter_id)
+    audio = db.get(AudioFile, job.audio_file_id)
+    if audio is None or not identities.owns_audio(audio):
+        return None
     heard = json.loads(job.heard_json)
-    expected = expected_lines(db, str(job.chapter_id or ""), str(job.expected_role or ""))
-    alignment = align_transcript(expected, heard.get("segments") or [])
-
     before = json.loads(job.alignment_json) if str(job.alignment_json or "").strip() else {}
+    language = asr_language(before.get("language") or job.language)
+    from app.services.role_identity import job_role
+    expected = expected_lines(db, str(job.chapter_id or ""), job_role(db, job), language=language)
+    alignment = align_transcript(expected, heard.get("segments") or [], language=language)
+    alignment.update(language=language, normalizer_version=ALIGNMENT_VERSION)
+
     report = {
         "job_id": str(job.id),
         "role": str(job.expected_role or ""),
@@ -63,6 +71,9 @@ def realign_job(db, job_id: str, *, write: bool = True) -> dict | None:
     after_json = json.dumps(alignment, ensure_ascii=False)
     report["changed"] = after_json != str(job.alignment_json or "")
     if write:
+        job.language = language
+        job.status = "done"
+        job.error_message = ""
         store_alignment(job, alignment)
         db.flush()
     return report

@@ -28,9 +28,10 @@ def estimate_seconds_by_words(words: int) -> int:
     return int(round((words / 120) * 60))
 
 
-def promote_role_into_cast(content: str, role: str, description: str = "") -> tuple[str, bool]:
+def promote_role_into_cast(content: str, role: str, description: str = "", *, language: str = "ru") -> tuple[str, bool]:
     role_name = (role or "").strip()
-    role_description = (description or "").strip() or "персонаж главы"
+    supplied_description = (description or "").strip()
+    role_description = supplied_description or ("chapter character" if language == "en" else "персонаж главы")
     if not role_name:
         return content, False
 
@@ -43,6 +44,10 @@ def promote_role_into_cast(content: str, role: str, description: str = "") -> tu
         if match.group("name").strip() != role_name:
             continue
         current_desc = line.split("::", 1)[1].strip() if "::" in line else ""
+        # Пустой аргумент просит подсказку для новой роли, а не перевод/замену уже
+        # записанного человеком описания при смене профиля книги.
+        if current_desc and not supplied_description:
+            return content, False
         if role_description and current_desc != role_description:
             lines[idx] = f"[{role_name}] :: {role_description}"
             return "\n".join(lines), True

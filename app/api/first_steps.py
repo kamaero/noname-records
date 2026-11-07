@@ -62,7 +62,7 @@ async def api_first_steps_seen(request: Request):
         return error
     body = await _json_object(request)
     if body is None or not isinstance(body.get("book_id"), str):
-        return JSONResponse({"error": "Ожидается book_id — строка."}, status_code=400)
+        return JSONResponse({"error": "book_id must be a string."}, status_code=400)
     book_id = body["book_id"]
     with SessionLocal() as db:
         return {"ok": first_steps.mark_seen(db, book_id)}
@@ -74,7 +74,7 @@ async def api_first_steps_flags(request: Request):
     body = await _json_object(request) or {}
     flags = {k: body.get(k) for k in ("hidden", "no_limit") if k in body}
     if not flags or any(not isinstance(v, bool) for v in flags.values()):
-        return JSONResponse({"error": "Ожидаются hidden и/или no_limit: true или false."}, status_code=400)
+        return JSONResponse({"error": "hidden and/or no_limit must be true or false."}, status_code=400)
     with SessionLocal() as db:
         first_steps.set_flags(db, **flags)
     return await run_in_threadpool(_checklist)

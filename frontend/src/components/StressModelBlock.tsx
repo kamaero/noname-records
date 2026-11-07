@@ -26,24 +26,23 @@ export function StressModelBlock() {
   const start = useMutation({
     mutationFn: () => apiPostJson<StressModelState>("/api/settings/stress-model", {}),
     onSuccess: (data) => client.setQueryData(["stress-model"], data),
-    onError: (error) => pushToast({ tone: "error", title: "Не началось", detail: describeApiError(error, "Попробуйте ещё раз.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Could not start", detail: describeApiError(error, "Please try again.") }),
   });
   const data = query.data;
   if (!data || data.state === "auto") return null;
   return (
     <section className="panel st-section">
-      <h2>Модель ударений</h2>
+      <h2>Word stress model</h2>
       <p className="st-lead">
-        Расставляет ударения по смыслу фразы (замо́к — за́мок). Около 700 МБ, скачивается один раз.
-        Без неё ударения берутся из словарей.
+        Resolves Russian word stress from context. English books do not require this model. About 700 MB, downloaded once. Without it, stress marks come from dictionaries.
       </p>
-      {data.state === "ready" ? <p>Скачана, работает.</p> : null}
-      {data.state === "downloading" ? <p>Скачиваю… {data.downloaded_mb} из ~700 МБ.</p> : null}
-      {data.state === "failed" ? <p className="st-warning">Не скачалась: {data.error}</p> : null}
+      {data.state === "ready" ? <p>Downloaded and ready.</p> : null}
+      {data.state === "downloading" ? <p>Downloading… {data.downloaded_mb} of about 700 MB.</p> : null}
+      {data.state === "failed" ? <p className="st-warning">Download failed: {data.error}</p> : null}
       {data.state === "absent" || data.state === "failed" ? (
         <div>
           <Button variant="primary" size="sm" loading={start.isPending} onClick={() => start.mutate()}>
-            Скачать модель
+            Download model
           </Button>
         </div>
       ) : null}

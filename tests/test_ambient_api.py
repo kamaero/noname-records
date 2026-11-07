@@ -18,8 +18,7 @@ from app.time_utils import utcnow_naive
 from tests.consilium_book import BOOK
 from tests.test_ambient_engine import MP3, Compose, _go, _record, _scenes, factory  # noqa: F401 — фикстура
 
-UNPRICED = ("У модели этого шага нет цены: траты прогона не войдут в лимит. "
-            "Впишите цену в «Настройки → Нейросети».")
+UNPRICED = ('This step uses a model without a configured price; its costs will not count towards the limit. Set its price in Settings → AI providers.')
 
 
 def _client(roles):
@@ -176,7 +175,7 @@ class TestChapterRoute:
         response = editor.post("/api/v2/chapters/c1/ambient")
 
         assert response.status_code == 503 and response.json()["error"] == "queue_unavailable"
-        assert response.json()["detail"] == "Очередь недоступна, попробуйте позже"
+        assert response.json()["detail"] == 'The queue is unavailable. Try again later.'
 
     def test_a_deduplicated_enqueue_with_a_live_run_is_409(self, editor, api, factory, monkeypatch):  # noqa: F811
         _scenes(factory)

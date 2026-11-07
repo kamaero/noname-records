@@ -1,4 +1,4 @@
-"""K1: build the canon character registry from the Primerodin corpus.
+"""K1: build the canon character registry from the operator's local corpus.
 
 Runs the council (per-window recall gemini-3.5-flash + arbiter deepseek-v4-pro)
 over each narrative book in data/corpus/, reconciles cross-book into a

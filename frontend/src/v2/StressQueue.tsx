@@ -57,7 +57,7 @@ function ChipList({
             type="button"
             className="v2r-chip-btn"
             onClick={() => onPick(item)}
-            title={`Глава ${item.sample_chapter_index} — открыть пример`}
+            title={`Chapter ${item.sample_chapter_index} — open example`}
           >
             <span className="v2r-chip-word">{item.word}</span>
             <span className="v2r-chip-n num">×{item.count}</span>
@@ -67,8 +67,8 @@ function ChipList({
               type="button"
               className="v2r-chip-skip"
               onClick={() => onSkip(item.word)}
-              title="Ударение не нужно — убрать слово из очереди"
-              aria-label={`Убрать «${item.word}» из очереди`}
+              title="No stress mark needed; remove word from queue"
+              aria-label={`Remove «${item.word}» from queue`}
             >
               ✕
             </button>
@@ -92,10 +92,10 @@ export function StressQueue({ bookId, onClose, onPick }: StressQueueProps) {
   const skip = useMutation({
     mutationFn: (word: string) => skipStressWord(bookId, word),
     onSuccess: (_result, word) => {
-      pushToast({ tone: "success", title: `«${word}» — ударение не нужно`, detail: "Слово убрано из очереди этой книги." });
+      pushToast({ tone: "success", title: `«${word}» — no stress mark needed`, detail: "Word removed from this book's queue." });
       void queryClient.invalidateQueries({ queryKey: editorKeys.queue(bookId) });
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не убрано", detail: describeApiError(error, "") }),
+    onError: (error) => pushToast({ tone: "error", title: "Not removed", detail: describeApiError(error, "") }),
   });
 
   const shown = useMemo(() => {
@@ -106,10 +106,10 @@ export function StressQueue({ bookId, onClose, onPick }: StressQueueProps) {
 
   const counts = data?.counts;
   const subtitle = counts
-    ? `размечено ${counts.marked.toLocaleString("ru-RU")} · без ответа ${counts.unresolved_words.toLocaleString("ru-RU")} слов` +
-      (counts.skipped_words ? ` · отложено ${counts.skipped_words}` : "")
+    ? `marked ${counts.marked.toLocaleString("en-US")} · unresolved ${counts.unresolved_words.toLocaleString("en-US")} words` +
+      (counts.skipped_words ? ` · deferred ${counts.skipped_words}` : "")
     : queue.isLoading
-      ? "Загружаю…"
+      ? "Loading…"
       : null;
 
   const tab = (value: Tab, label: string, n?: number) => (
@@ -123,20 +123,20 @@ export function StressQueue({ bookId, onClose, onPick }: StressQueueProps) {
       aria-pressed={scope === value}
     >
       {label}
-      {typeof n === "number" ? <span className="v2r-legend-count num">{n.toLocaleString("ru-RU")}</span> : null}
+      {typeof n === "number" ? <span className="v2r-legend-count num">{n.toLocaleString("en-US")}</span> : null}
     </button>
   );
 
   return (
-    <Sheet title="Очередь ударений" subtitle={subtitle} onClose={onClose}>
-      {queue.isError ? <p className="v2r-sheet-error">{describeApiError(queue.error, "Не удалось загрузить очередь.")}</p> : null}
+    <Sheet title="Word stress queue" subtitle={subtitle} onClose={onClose}>
+      {queue.isError ? <p className="v2r-sheet-error">{describeApiError(queue.error, "Could not load queue.")}</p> : null}
 
       {/* the tabs stand outside the data guard: they are how you leave a tab whose
           own query has not answered yet */}
-      <div className="v2r-seg v2r-queue-tabs" role="group" aria-label="Что показывать">
-        {tab("names", "Авторские", counts?.author_words ?? counts?.name_words)}
-        {tab("common", counts && counts.common_words === undefined ? "Все слова" : "Общерусские", counts?.common_words ?? counts?.unresolved_words)}
-        {tab("disputed", "Спорные", counts?.homograph_words)}
+      <div className="v2r-seg v2r-queue-tabs" role="group" aria-label="Show">
+        {tab("names", "Author terms", counts?.author_words ?? counts?.name_words)}
+        {tab("common", counts && counts.common_words === undefined ? "All words" : "Common Russian", counts?.common_words ?? counts?.unresolved_words)}
+        {tab("disputed", "Ambiguous", counts?.homograph_words)}
       </div>
 
       {scope === "disputed" ? (
@@ -150,10 +150,10 @@ export function StressQueue({ bookId, onClose, onPick }: StressQueueProps) {
         <>
           <p className="v2r-sheet-note">
             {scope === "names"
-              ? "Имена, места и придуманные слова: встречаются только с большой буквы и не известны словарю."
+              ? "Names, locations and invented words: capitalized terms not found in the dictionary."
               : counts?.common_words === undefined
-                ? "Все слова, для которых словари и контекст не дали ударения."
-                : "Обычные русские слова, для которых словарь и контекст пока не выбрали ударение."}
+                ? "All words whose stress was not resolved by dictionaries or context."
+                : "Common Russian words whose stress is not yet resolved by dictionary or context."}
           </p>
 
           <label className="v2r-search v2r-search--dock">
@@ -162,28 +162,28 @@ export function StressQueue({ bookId, onClose, onPick }: StressQueueProps) {
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Найти слово…"
-              aria-label="Поиск по очереди ударений"
+              placeholder="Find a word…"
+              aria-label="Search word stress queue"
             />
           </label>
 
           <section className="v2r-sheet-section">
             <ChipList
               items={shown}
-              empty={query ? "Ничего не найдено." : "Очередь пуста."}
+              empty={query ? "Nothing found." : "Queue is empty."}
               onPick={onPick}
               onSkip={(word) => skip.mutate(word)}
             />
             {data.has_more.unresolved && !query ? (
               <button type="button" className="btn btn-sm v2r-btn v2r-queue-more" onClick={() => setLimit((value) => value + PAGE)}>
-                Показать ещё {PAGE}
+                Show more {PAGE}
               </button>
             ) : null}
           </section>
 
         </>
       ) : queue.isLoading ? (
-        <p className="v2r-sheet-note">Собираю очередь…</p>
+        <p className="v2r-sheet-note">Loading queue…</p>
       ) : null}
     </Sheet>
   );

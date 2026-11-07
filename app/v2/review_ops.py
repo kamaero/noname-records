@@ -68,7 +68,7 @@ def set_chapter_approved(db, *, chapter_id: str, approved: bool, actor_uid: str,
     if book is not None:
         record_operator_intervention(
             db, book=book, action_type=ACTION, actor_uid=actor_uid, actor_name=actor_name,
-            reason="v2: проверка главы автором",
+            reason='v2: chapter reviewed by the author',
             payload={"chapter_id": chapter.id, "chapter_index": int(chapter.chapter_index or 0),
                      "approved": bool(approved), "previous_status": previous,
                      "published_now": published_now},
@@ -123,6 +123,6 @@ def approve_all(db, *, book: ScriptBook, actor_uid: str, actor_name: str = "") -
             changed += 1
     record_operator_intervention(
         db, book=book, action_type=ACTION, actor_uid=actor_uid, actor_name=actor_name,
-        reason="v2: проверены все главы", payload={"approved_now": changed, "before": counts},
+        reason='v2: all chapters reviewed', payload={"approved_now": changed, "before": counts},
     )
     return {"approved_now": changed, **approval_counts(db, book.id)}

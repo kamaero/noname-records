@@ -7,12 +7,12 @@ docker() {
 
 dry_run=0
 [[ "${1:-}" == "--dry-run" ]] && dry_run=1
-if (($# > 0)) && (( ! dry_run )); then echo "Использование: $0 [--dry-run]" >&2; exit 2; fi
+if (($# > 0)) && (( ! dry_run )); then echo "Usage: $0 [--dry-run]" >&2; exit 2; fi
 if ((dry_run)); then
-  echo "Остановить процессы записи, сохранить ./data и .env в backups/ с правами 600, затем запустить процессы."
+  echo "Stop processes that write data, archive ./data and .env in backups/ with permissions 600, then restart those processes."
   exit 0
 fi
-[[ -d data && -f .env ]] || { echo "Нет data/ или .env — сначала выполните установку." >&2; exit 1; }
+[[ -d data && -f .env ]] || { echo "data/ or .env is missing. Run the installer first." >&2; exit 1; }
 docker info >/dev/null
 mkdir -p backups
 chmod 700 backups
@@ -26,4 +26,4 @@ trap resume EXIT
 if (("${#active[@]}")); then docker compose stop "${active[@]}"; fi
 tar -czf "$archive" data .env
 chmod 600 "$archive"
-echo "Резервная копия: $archive"
+echo "Backup: $archive"

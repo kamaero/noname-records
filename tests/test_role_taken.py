@@ -114,7 +114,7 @@ def test_the_upload_refuses_an_audition_on_a_taken_role(monkeypatch):
 
     assert status_code == 400 and rows == []
     assert body["items"][0]["error"] == "role_taken"
-    assert "уже утверждена" in body["message"]
+    assert "already assigned" in body["message"]
 
 
 def test_the_preview_shows_the_same_refusal(monkeypatch):
@@ -140,7 +140,7 @@ def test_the_preview_shows_the_same_refusal(monkeypatch):
     }
     item = json.loads(asyncio.run(handler(_JsonRequest(payload))).body)["items"][0]
     assert item["ok"] is False and "role_taken" in item["errors"]
-    assert item["error_text"] == "роль «Нрарсх» уже утверждена — пробы на неё не принимаются"
+    assert item["error_text"] == "role «Нрарсх» is already assigned; auditions are not accepted"
 
 
 def test_the_approved_actor_still_uploads_his_take():

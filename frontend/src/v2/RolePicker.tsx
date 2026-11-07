@@ -1,3 +1,4 @@
+import { roleLabel } from "./types";
 /**
  * «Переназначить роль»: a picker docked under the toolbar like the stress
  * constructor. The chapter cast as chips (most lines first), then «Рассказчик»
@@ -134,7 +135,7 @@ export function RolePicker({ bookId, segment, span, initialSelection, cast, onCl
     const narrator = here.get(NARRATOR);
     const specials: Candidate[] = [
       { name: NARRATOR, actor: narrator?.actor || "", lines: narrator?.lines || 0, style: styleOf(narrator), foreign: false, here: true },
-      { name: UNSURE, actor: "не определено", lines: here.get(UNSURE)?.lines || 0, style: null, foreign: false, here: true },
+      { name: UNSURE, actor: "unassigned", lines: here.get(UNSURE)?.lines || 0, style: null, foreign: false, here: true },
     ];
     const seen = new Set([...chapterRoles.map((item) => item.name), NARRATOR, UNSURE]);
     const bookRoles: Candidate[] = (bookCast.data?.characters ?? [])
@@ -161,12 +162,12 @@ export function RolePicker({ bookId, segment, span, initialSelection, cast, onCl
   const shown = useMemo(() => {
     if (!needle) return candidates.filter((item) => item.here);
     const found = candidates.filter(
-      (item) => foldName(item.name).includes(needle) || (item.actor && foldName(item.actor).includes(needle)),
+      (item) => (foldName(roleLabel(item.name)).includes(needle) || foldName(item.name).includes(needle)) || (item.actor && foldName(item.actor).includes(needle)),
     );
     // «Завести роль» goes last, and only when nothing in the cast is already that name
-    const exists = candidates.some((item) => foldName(item.name) === needle);
+    const exists = candidates.some((item) => foldName(item.name) === needle || foldName(roleLabel(item.name)) === needle);
     if (!exists && typed.length >= 2) {
-      found.push({ name: typed, actor: "новая роль", lines: 0, style: null, foreign: false, here: false, create: true });
+      found.push({ name: typed, actor: "new role", lines: 0, style: null, foreign: false, here: false, create: true });
     }
     return found;
   }, [candidates, needle, typed]);
@@ -187,7 +188,7 @@ export function RolePicker({ bookId, segment, span, initialSelection, cast, onCl
       let name = speaker;
       if (create) {
         const made = await createRole(bookId, speaker);
-        if (!made.ok) throw new Error(made.error || "Роль не создалась.");
+        if (!made.ok) throw new Error(made.error || "Could not create role.");
         name = made.name;
       }
       const spans: ReassignSpan[] = range ? spansForRange(segment, range, name) : spansForWhole(segment, name);
@@ -195,14 +196,14 @@ export function RolePicker({ bookId, segment, span, initialSelection, cast, onCl
     },
     onSuccess: async (result, { speaker, keepOpen, create }) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Роль не изменена", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Role not changed", detail: result.error || "The server returned no details." });
         return;
       }
-      const label = speaker === UNSURE ? "не определено" : speaker;
+      const label = speaker === UNSURE ? "unassigned" : roleLabel(speaker);
       pushToast({
         tone: "success",
-        title: create ? `Новая роль: ${label}` : `Роль изменена: ${label}`,
-        detail: effectiveScope === "whole" ? "Весь абзац." : `«${preview(rangeText)}»`,
+        title: create ? `New role: ${label}` : `Role changed: ${label}`,
+        detail: effectiveScope === "whole" ? "Entire paragraph." : `«${preview(rangeText)}»`,
       });
       const impactToast = reassignImpactToast(result.recording_impact);
       if (impactToast) pushToast({ ...impactToast, durationMs: 9000 });
@@ -212,7 +213,7 @@ export function RolePicker({ bookId, segment, span, initialSelection, cast, onCl
       await invalidateReader(queryClient, bookId, ["chapters", "cast", "disputed"]);
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Роль не изменена", detail: describeReassignError(error) });
+      pushToast({ tone: "error", title: "Role not changed", detail: describeReassignError(error) });
     },
   });
 
@@ -271,26 +272,26 @@ export function RolePicker({ bookId, segment, span, initialSelection, cast, onCl
       ref={rootRef}
       className="v2r-dock v2r-dock--role"
       role="region"
-      aria-label="Переназначить роль"
+      aria-label="Reassign role"
       tabIndex={-1}
       onKeyDown={onKeyDown}
     >
       <div className="v2r-dock-head">
-        <span className="v2r-dock-title">Роль</span>
+        <span className="v2r-dock-title">Role</span>
         <span className="v2r-dock-source">
-          сейчас: <strong>{current === UNSURE ? "не определено" : current}</strong>
+          current: <strong>{current === UNSURE ? "unassigned" : roleLabel(current)}</strong>
         </span>
-        <div className="v2r-seg" role="group" aria-label="Что переназначить">
-          {scopeButton("whole", "Весь абзац", true)}
-          {spanPartial ? scopeButton("span", "Эта реплика", true) : null}
+        <div className="v2r-seg" role="group" aria-label="What to reassign">
+          {scopeButton("whole", "Entire paragraph", true)}
+          {spanPartial ? scopeButton("span", "This line", true) : null}
           {scopeButton(
             "selection",
-            "Только выделенное",
+            "Selection only",
             selection !== null,
-            selection ? undefined : "Выделите текст внутри абзаца",
+            selection ? undefined : "Select text within a paragraph",
           )}
         </div>
-        <button type="button" className="btn btn-sm btn-ghost v2r-btn v2r-dock-close" onClick={onClose} aria-label="Закрыть выбор роли" data-action="close">
+        <button type="button" className="btn btn-sm btn-ghost v2r-btn v2r-dock-close" onClick={onClose} aria-label="Close role picker" data-action="close">
           ✕
         </button>
       </div>
@@ -307,18 +308,18 @@ export function RolePicker({ bookId, segment, span, initialSelection, cast, onCl
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Найти роль в касте книги…"
-            aria-label="Поиск роли по касту книги"
+            placeholder="Find a role in the cast…"
+            aria-label="Search book cast"
             autoComplete="off"
           />
         </label>
-        {needle && bookCast.isLoading ? <span className="v2r-dock-hint">Загружаю каст книги…</span> : null}
-        {needle && bookCast.isError ? <span className="v2r-dock-hint">Каст книги недоступен, ищу только по главе.</span> : null}
+        {needle && bookCast.isLoading ? <span className="v2r-dock-hint">Loading book cast…</span> : null}
+        {needle && bookCast.isError ? <span className="v2r-dock-hint">Book cast unavailable; searching this chapter only.</span> : null}
       </div>
 
-      <div ref={listRef} className="v2r-pick-list" role="listbox" aria-label="Роли">
+      <div ref={listRef} className="v2r-pick-list" role="listbox" aria-label="Roles">
         {shown.length === 0 ? (
-          <span className="v2r-dock-hint">Впишите имя роли — её можно завести прямо отсюда.</span>
+          <span className="v2r-dock-hint">Enter a role name to create it here.</span>
         ) : null}
         {shown.map((candidate, index) => {
           const unsure = candidate.name === UNSURE;
@@ -348,22 +349,22 @@ export function RolePicker({ bookId, segment, span, initialSelection, cast, onCl
               onClick={(event) => onPickClick(event, candidate)}
               title={
                 candidate.create
-                  ? "Завести роль в касте книги и назначить её этой реплике"
+                  ? "Add this role to the cast and assign it to the line"
                   : candidate.foreign
-                    ? "Этого имени нет в касте — оно будет заведено и назначено"
+                    ? "This name is not in the cast; it will be created and assigned"
                     : candidate.here
                       ? undefined
-                      : "Роль из других глав"
+                      : "Role from other chapters"
               }
             >
-              <span className="v2r-role-chip">{candidate.create ? `+ ${candidate.name}` : unsure ? "?" : candidate.name}</span>
+              <span className="v2r-role-chip">{candidate.create ? `+ ${candidate.name}` : unsure ? "?" : roleLabel(candidate.name)}</span>
               <span className="v2r-role-meta">
                 <span className="v2r-role-actor">
                   {candidate.create
-                    ? "завести новую роль"
+                    ? "create new role"
                     : candidate.foreign
-                      ? "нет в касте — заведём"
-                      : candidate.actor || (unsure ? "" : "— актёр не назначен")}
+                      ? "not in cast; will be created"
+                      : candidate.actor || (unsure ? "" : "— voice actor unassigned")}
                 </span>
                 {candidate.create ? null : <span className="v2r-role-n num">{candidate.lines}</span>}
               </span>
@@ -375,8 +376,8 @@ export function RolePicker({ bookId, segment, span, initialSelection, cast, onCl
       <div className="v2r-dock-actions">
         <span className="v2r-dock-hint">
           {save.isPending
-            ? "Сохраняю…"
-            : "↑ ↓ роль · Enter — назначить · Shift — назначить и оставить открытым · Esc — закрыть · имени нет в касте — впишите его и выберите «+ имя»"}
+            ? "Saving…"
+            : "↑ ↓ role · Enter — assign · Shift — assign and keep open · Esc — close · To create a role, enter its name and choose + name"}
         </span>
       </div>
     </section>

@@ -97,7 +97,7 @@ def _extract_json_block(value: str) -> str:
     start = text.find("{")
     end = text.rfind("}")
     if start < 0 or end < 0 or end <= start:
-        raise RuntimeError("LLM не вернула JSON-объект")
+        raise RuntimeError('The model did not return a JSON object')
     return text[start:end + 1]
 
 
@@ -127,7 +127,7 @@ def _find_existing_character_match(
     return None
 
 
-def _operator_hints_suffix(db: Session, book: ScriptBook) -> str:
+def _operator_hints_suffix(db: Session, book: ScriptBook, *, language: str | None = None) -> str:
     """Deterministic, escaped operator-hint block merged into the reextract prompt.
 
     Operator notes are guidance, not system truth — kept in their own delimited
@@ -143,16 +143,23 @@ def _operator_hints_suffix(db: Session, book: ScriptBook) -> str:
     if not notes:
         return ""
     lines = "\n".join(f"- {name}: {note}" for name, note in notes)
+    if (language or getattr(book, "language", "ru")) == "en":
+        return ("\n\n=== Operator hints (use as guidance for characters already present; "
+                "do NOT invent new ones) ===\n" + lines + "\n=== End of hints ===")
     return (
         "\n\n=== Подсказки оператора (учитывай как уточнения по уже присутствующим "
         "персонажам; НЕ выдумывай новых) ===\n" + lines + "\n=== Конец подсказок ==="
     )
 
 
-def _char_extraction_system_prompt(db: Session, book: ScriptBook) -> str:
+def _char_extraction_system_prompt(db: Session, book: ScriptBook, *, language: str | None = None) -> str:
+    language = language or getattr(book, "language", "ru")
+    english = language == "en"
     base = _load_prompt_template(
-        "char_extraction_system.txt",
+        "char_extraction_system_en.txt" if english else "char_extraction_system.txt",
         (
+            "Extract all speaking characters from the English book. Return strictly valid JSON."
+            if english else
             "Ты эксперт по анализу художественных текстов. "
             "Извлеки всех говорящих персонажей и верни строго валидный JSON."
         ),
@@ -162,15 +169,16 @@ def _char_extraction_system_prompt(db: Session, book: ScriptBook) -> str:
     author_id = str(getattr(book, "author_id", "") or "")
     return (
         base
-        + author_seed.author_roster_system_suffix(db, author_id)
-        + canon_seed.canon_roster_system_suffix(db, book)
-        + _operator_hints_suffix(db, book)
+        + author_seed.author_roster_system_suffix(db, author_id, language="en" if english else "ru")
+        + canon_seed.canon_roster_system_suffix(db, book, language=language)
+        + _operator_hints_suffix(db, book, language=language)
     )
 
 
-def _run_char_extraction(db: Session, book: ScriptBook, job: ScriptJob) -> int:
+def _run_char_extraction(db: Session, book: ScriptBook, job: ScriptJob, *, language: str | None = None) -> int:
     """Run book-level character extraction, falling back to batched merge on long books."""
-    system_prompt = _char_extraction_system_prompt(db, book)
+    language = language or getattr(book, "language", "ru")
+    system_prompt = _char_extraction_system_prompt(db, book, language=language)
 
     # Build full-book text with chapter markers
     chapters = (
@@ -191,7 +199,7 @@ def _run_char_extraction(db: Session, book: ScriptBook, job: ScriptJob) -> int:
         "confidence": 0.0,
         "reason": "",
     }
-    full_text = _render_char_extraction_batch(chapters)
+    full_text = _render_char_extraction_batch(chapters, language=language)
     whole_book_limit = int(getattr(settings, "char_extraction_whole_book_max_chars", 350000) or 350000)
     if whole_book_limit <= 0:
         whole_book_limit = 350000
@@ -207,6 +215,7 @@ def _run_char_extraction(db: Session, book: ScriptBook, job: ScriptJob) -> int:
                 payload_text=full_text,
                 batch_label="whole-book",
                 chapter_numbers=[chapter.chapter_index for chapter in chapters],
+                language=language,
             )
             merged_characters = whole_book_payload["characters"]
             synopsis = whole_book_payload["book_synopsis"]
@@ -230,6 +239,7 @@ def _run_char_extraction(db: Session, book: ScriptBook, job: ScriptJob) -> int:
                 system_prompt=system_prompt,
                 chapters=batch,
                 batch_label=f"batch-{batch_no}",
+                language=language,
             )
             batch_items.extend(payload["characters"])
             if payload["book_synopsis"]:
@@ -270,10 +280,11 @@ def _build_char_extraction_batches(chapters: list[ScriptChapter], max_chars: int
     return batches or [chapters]
 
 
-def _render_char_extraction_batch(chapters: list[ScriptChapter]) -> str:
+def _render_char_extraction_batch(chapters: list[ScriptChapter], *, language: str = "ru") -> str:
     parts: list[str] = []
     for chapter in chapters:
-        header = f"=== Глава {chapter.chapter_index}" + (f": {chapter.chapter_title}" if chapter.chapter_title else "") + " ==="
+        heading = "Chapter" if language == "en" else "Глава"
+        header = f"=== {heading} {chapter.chapter_index}" + (f": {chapter.chapter_title}" if chapter.chapter_title else "") + " ==="
         parts.append(header + "\n" + (chapter.source_text or ""))
     return "\n\n".join(parts)
 
@@ -330,15 +341,25 @@ def _run_single_char_extraction_request(
     payload_text: str,
     batch_label: str,
     chapter_numbers: list[int],
+    language: str | None = None,
 ) -> dict[str, Any]:
-    user_prompt = (
+    if (language or getattr(book, "language", "ru")) == "en":
+        user_prompt = (
+            f"Book: {book.title}\nLanguage: English\nMode: char_extraction\n"
+            f"Batch: {batch_label}\n"
+            f"Chapters in this batch: {', '.join(str(item) for item in chapter_numbers)}\n\n"
+            f"{payload_text}\n\n"
+            "Return JSON with characters, book_synopsis and narrative_voice using the specified schema."
+        )
+    else:
+        user_prompt = (
         f"Книга: «{book.title}»\n"
         f"Режим: char_extraction\n"
         f"Сегмент: {batch_label}\n"
         f"Главы в сегменте: {', '.join(str(item) for item in chapter_numbers)}\n\n"
         f"{payload_text}\n\n"
         "Верни JSON с полями `characters` и `book_synopsis` строго по описанной схеме."
-    )
+        )
 
     api_key, base_url, _mode = _resolve_provider(job.provider)
     raw = call_chat(
@@ -363,6 +384,7 @@ def _run_char_extraction_batch_with_fallback(
     system_prompt: str,
     chapters: list[ScriptChapter],
     batch_label: str,
+    language: str | None = None,
     ) -> dict[str, Any]:
     chapter_numbers = [int(chapter.chapter_index or 0) for chapter in chapters if int(chapter.chapter_index or 0) > 0]
     try:
@@ -371,9 +393,10 @@ def _run_char_extraction_batch_with_fallback(
             book=book,
             job=job,
             system_prompt=system_prompt,
-            payload_text=_render_char_extraction_batch(chapters),
+            payload_text=_render_char_extraction_batch(chapters, language=language or getattr(book, "language", "ru")),
             batch_label=batch_label,
             chapter_numbers=chapter_numbers,
+            language=language,
         )
     except Exception:
         if len(chapters) <= 1:
@@ -400,6 +423,7 @@ def _run_char_extraction_batch_with_fallback(
                 system_prompt=system_prompt,
                 chapters=left,
                 batch_label=f"{batch_label}.a",
+                language=language,
             )
             items.extend(left_payload["characters"])
             if left_payload["book_synopsis"]:
@@ -413,6 +437,7 @@ def _run_char_extraction_batch_with_fallback(
                 system_prompt=system_prompt,
                 chapters=right,
                 batch_label=f"{batch_label}.b",
+                language=language,
             )
             items.extend(right_payload["characters"])
             if right_payload["book_synopsis"]:
@@ -432,11 +457,11 @@ def _parse_char_extraction_payload(content: str) -> dict[str, Any]:
             clean = re.sub(r"^```[a-z]*\n?", "", clean).rstrip("`").strip()
         data = json.loads(_extract_json_block(clean))
     except Exception as exc:
-        raise RuntimeError(f"char_extraction: не удалось распарсить JSON: {exc}\nContent: {content[:300]}") from exc
+        raise RuntimeError(f'char_extraction: could not parse JSON: {exc}\nContent: {content[:300]}') from exc
 
     characters = data.get("characters") or []
     if not characters:
-        raise RuntimeError("char_extraction: JSON не содержит поля 'characters' или список пуст")
+        raise RuntimeError("char_extraction: JSON has no 'characters' field or the list is empty")
     synopsis = str(data.get("book_synopsis") or "").strip()
     raw_voice = data.get("narrative_voice") or {}
     if not isinstance(raw_voice, dict):

@@ -41,8 +41,8 @@ const Block = memo(function Block({ block, query }: { block: SourceBlock; query:
   const body = highlight(block.text, query);
   if (block.kind === "gap") {
     return (
-      <p className="v2r-src-p v2r-src-p--gap" title="Этого текста нет в сценарии">
-        <span className="v2r-src-gap-tag">нет в сценарии</span>
+      <p className="v2r-src-p v2r-src-p--gap" title="This text is missing from the script">
+        <span className="v2r-src-gap-tag">missing from script</span>
         {body}
       </p>
     );
@@ -69,9 +69,9 @@ export function SourcePane({ chapterId, query }: { chapterId: string; query: str
     enabled: Boolean(chapterId),
   });
 
-  if (sourceQuery.isLoading) return <SkeletonPanel label="Загружаю оригинал…" lines={5} />;
+  if (sourceQuery.isLoading) return <SkeletonPanel label="Loading original…" lines={5} />;
   if (sourceQuery.isError || !sourceQuery.data) {
-    return <p className="v2r-notice">{describeApiError(sourceQuery.error, "Не удалось загрузить оригинал главы.")}</p>;
+    return <p className="v2r-notice">{describeApiError(sourceQuery.error, "Could not load the chapter's original text.")}</p>;
   }
 
   const { blocks, counts, aligned } = sourceQuery.data;
@@ -79,14 +79,14 @@ export function SourcePane({ chapterId, query }: { chapterId: string; query: str
     <>
       {!aligned ? (
         <p className="v2r-notice">
-          Текст главы менялся после разметки — показан текст сегментов, а не исходный файл.
+          The chapter text changed after annotation. Stored segment text is shown instead of the original file.
         </p>
       ) : counts.gaps > 0 ? (
         <p className="v2r-notice">
-          {counts.gaps === 1 ? "Один абзац оригинала не попал в сценарий" : `Абзацев оригинала вне сценария: ${counts.gaps}`} — отмечены слева.
+          {counts.gaps === 1 ? "One original paragraph is missing from the script" : `Original paragraphs missing from script: ${counts.gaps}`} — marked on the left.
         </p>
       ) : null}
-      {blocks.length === 0 ? <p className="v2r-src-empty">Исходный текст главы не сохранён.</p> : null}
+      {blocks.length === 0 ? <p className="v2r-src-empty">The original chapter text was not saved.</p> : null}
       {blocks.map((block, index) => (
         <Block key={block.segment_id || `gap-${index}`} block={block} query={query} />
       ))}

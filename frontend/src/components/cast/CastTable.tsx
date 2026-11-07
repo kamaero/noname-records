@@ -11,7 +11,7 @@ import { RoleDetailRow } from "./RoleDetailRow";
 import { DeadlineChip } from "../DeadlineChip";
 import { ActorPicker, type PickerDictor } from "./ActorPicker";
 
-const NARRATOR_HINT = "Рассказчик остаётся в нейтральной подаче";
+const NARRATOR_HINT = "Narrator keeps neutral styling";
 
 /* Строки рисуются все, без окна прокрутки. Окно считало строки одной высоты и потому
    резало описание персонажа в одну строку; характеристика и заметка о голосе не
@@ -87,7 +87,7 @@ function SortHeader({ label, column, sort, onSort }: { label: string; column: Ca
       type="button"
       className={["cast-sort", active ? "is-active" : "", active && sort?.dir === "asc" ? "is-asc" : ""].filter(Boolean).join(" ")}
       aria-pressed={active}
-      aria-label={`Сортировать по столбцу «${label}»`}
+      aria-label={`Sort by column «${label}»`}
       onClick={() => onSort(column)}
     >
       {label}
@@ -98,8 +98,8 @@ function SortHeader({ label, column, sort, onSort }: { label: string; column: Ca
 
 function chaptersTitle(row: CastRow): string {
   const list = row.appears_in_chapters || [];
-  if (!list.length) return "Ни в одной главе";
-  return `Главы: ${list.join(", ")}`;
+  if (!list.length) return "No chapters";
+  return `Chapters: ${list.join(", ")}`;
 }
 
 export function CastTable({
@@ -144,7 +144,7 @@ export function CastTable({
     return [
       {
         key: "swatch",
-        header: <span className="cast-sr">Цвет</span>,
+        header: <span className="cast-sr">Color</span>,
         className: "cast-col-swatch",
         nowrap: true,
         render: (row) => (
@@ -153,17 +153,17 @@ export function CastTable({
             className="cast-swatch"
             style={characterSwatchStyle(row)}
             disabled={row.is_narrator}
-            title={row.is_narrator ? NARRATOR_HINT : `Изменить цвет роли ${row.name}`}
-            aria-label={row.is_narrator ? NARRATOR_HINT : `Изменить цвет роли ${row.name}`}
+            title={row.is_narrator ? NARRATOR_HINT : `Change role color: ${row.name}`}
+            aria-label={row.is_narrator ? NARRATOR_HINT : `Change role color: ${row.name}`}
             onClick={() => !row.is_narrator && onSwatchClick(row)}
           >
-            <span aria-hidden="true">{row.is_narrator ? "Р" : row.name.slice(0, 1).toUpperCase()}</span>
+            <span aria-hidden="true">{row.is_narrator ? "R" : row.name.slice(0, 1).toUpperCase()}</span>
           </button>
         ),
       },
       {
         key: "role",
-        header: <SortHeader label="Роль" column="role" sort={sort} onSort={onSort} />,
+        header: <SortHeader label="Role" column="role" sort={sort} onSort={onSort} />,
         className: "cast-col-role",
         render: (row) => (
           <span className="cast-role-cell">
@@ -171,7 +171,7 @@ export function CastTable({
               type="button"
               className="cast-disc"
               aria-expanded={openDetail.has(row.character_id)}
-              aria-label={`${openDetail.has(row.character_id) ? "Свернуть" : "Развернуть"} роль ${row.name}`}
+              aria-label={`${openDetail.has(row.character_id) ? "Collapse" : "Expand"} role ${row.name}`}
               onClick={() => onToggleDetail(row.character_id)}
             >
               <Icon name="chevron" className="cast-disc-icon" />
@@ -188,7 +188,7 @@ export function CastTable({
       },
       {
         key: "actor",
-        header: <SortHeader label="Актёр" column="actor" sort={sort} onSort={onSort} />,
+        header: <SortHeader label="Voice actor" column="actor" sort={sort} onSort={onSort} />,
         className: "cast-col-actor",
         render: (row) =>
           <>
@@ -211,11 +211,11 @@ export function CastTable({
             ) : (
               <InlineCell
                 value={row.actor_name || ""}
-                placeholder="назначить"
+                placeholder="assign"
                 suggestions={actorNames}
                 listId="cast-actor-names"
                 saving={savingIds.has(row.character_id)}
-                label={`Актёр роли ${row.name}`}
+                label={`Voice actor for role ${row.name}`}
                 onCommit={(next) => onSaveActor(row, next)}
               />
             )}
@@ -225,32 +225,32 @@ export function CastTable({
       },
       {
         key: "who",
-        header: "Персонаж",
+        header: "Character",
         className: "cast-col-who",
         render: (row) => (
           <span className="cast-who">
             {/* what the pipeline guessed is a draft: all three lines edit in place */}
             <InlineCell
               value={row.race || ""}
-              placeholder="+ раса, вид"
+              placeholder="+ species"
               saving={savingIds.has(row.character_id)}
-              label={`Раса роли ${row.name}`}
+              label={`Role species: ${row.name}`}
               onCommit={(next) => onSaveAbout(row, { race: next })}
             />
             <InlineCell
               value={row.temperament || ""}
-              placeholder="+ характер, манера речи"
+              placeholder="+ personality, speech style"
               multiline
               saving={savingIds.has(row.character_id)}
-              label={`Характер роли ${row.name}`}
+              label={`Role personality: ${row.name}`}
               onCommit={(next) => onSaveAbout(row, { temperament: next })}
             />
             <InlineCell
               value={row.note || ""}
-              placeholder="+ заметка о голосе"
+              placeholder="+ voice note"
               multiline
               saving={savingIds.has(row.character_id)}
-              label={`Заметка о роли ${row.name}`}
+              label={`Role note: ${row.name}`}
               display={row.note ? <span className="cast-who-note">{row.note}</span> : undefined}
               onCommit={(next) => onSaveAbout(row, { note: next })}
             />
@@ -259,7 +259,7 @@ export function CastTable({
       },
       {
         key: "lines",
-        header: <SortHeader label="Реплик" column="lines" sort={sort} onSort={onSort} />,
+        header: <SortHeader label="Lines" column="lines" sort={sort} onSort={onSort} />,
         align: "right",
         className: "cast-col-lines",
         nowrap: true,
@@ -270,17 +270,17 @@ export function CastTable({
               to={`/reader/role/${encodeURIComponent(bookId)}?role=${encodeURIComponent(row.name)}&print=1`}
               target="_blank"
               rel="noopener"
-              title={`PDF со всеми репликами роли «${row.name}», с контекстом — откроется в новой вкладке`}
+              title={`PDF with all lines for «${row.name}», with context; opens in a new tab`}
             >
-              {row.lines_count.toLocaleString("ru-RU")}
+              {row.lines_count.toLocaleString("en-US")}
             </Link>
           ) : (
-            <span className="num">{row.lines_count.toLocaleString("ru-RU")}</span>
+            <span className="num">{row.lines_count.toLocaleString("en-US")}</span>
           ),
       },
       {
         key: "auditions",
-        header: "Пробы",
+        header: "Auditions",
         align: "right",
         className: "cast-col-auditions",
         nowrap: true,
@@ -291,7 +291,7 @@ export function CastTable({
             <button
               type="button"
               className="cast-auditions num"
-              title={`Послушать пробы на роль «${row.name}»`}
+              title={`Listen to auditions for «${row.name}»`}
               onClick={() => onAuditions(row.name)}
             >
               {count}
@@ -299,7 +299,7 @@ export function CastTable({
                 const best = auditionBest.get(row.name);
                 if (!best) return null;
                 return (
-                  <span className="cast-aud-best" aria-label={`Лучшая оценка автора: ${best} из 10`} title="Лучшая оценка автора среди проб">
+                  <span className="cast-aud-best" aria-label={`Best author rating: ${best} out of 10`} title="Best author rating among auditions">
                     {best}/10
                   </span>
                 );
@@ -310,7 +310,7 @@ export function CastTable({
       },
       {
         key: "chapters",
-        header: "Глав",
+        header: "Chapters",
         align: "right",
         className: "cast-col-chapters",
         nowrap: true,
@@ -323,7 +323,7 @@ export function CastTable({
           return (
             <span
               className="num cast-chapters is-mismatch"
-              title={`${describeChapterMismatch(mismatch)}. Расхождение — сигнал о тексте или разметке, а не о роли.`}
+              title={`${describeChapterMismatch(mismatch)}. A mismatch indicates a text or annotation issue, rather than a role issue.`}
             >
               {got}<span className="cast-chapters-claimed">/{mismatch.claimed}</span>
             </span>
@@ -332,7 +332,7 @@ export function CastTable({
       },
       {
         key: "intersections",
-        header: "Пересечения",
+        header: "Overlaps",
         className: "cast-col-cross",
         nowrap: true,
         render: (row) => {
@@ -343,14 +343,14 @@ export function CastTable({
           // Пересортировка здесь молча сломает выбор худшей пары — `pending[0]`
           // держится на этом инварианте, а не на случайном порядке ответа.
           const worst = pending[0];
-          const label = worst.severity === "dialogue" ? "диалог" : worst.severity === "scene" ? "сцена" : "глава";
+          const label = worst.severity === "dialogue" ? "dialogue" : worst.severity === "scene" ? "scene" : "chapter";
           const tone = worst.severity === "dialogue" ? "is-bad" : worst.severity === "scene" ? "is-warn" : "is-info";
           return (
             <button
               type="button"
               className={`cast-cross ${tone}`}
-              title={`${worst.partner} · ${worst.distance} абз.${worst.same_race ? " · одна раса" : ""}`}
-              aria-label={`Пересечения роли ${row.name}: ${pending.length}`}
+              title={`${worst.partner} · ${worst.distance} paragraphs${worst.same_race ? " · same species" : ""}`}
+              aria-label={`Overlaps for role ${row.name}: ${pending.length}`}
               onClick={() => onToggleDetail(row.character_id)}
             >
               {label}{pending.length > 1 ? ` +${pending.length - 1}` : ""}
@@ -387,7 +387,7 @@ export function CastTable({
   return (
     <div className="cast-table">
       <DataTable
-        aria-label="Каст книги"
+        aria-label="Book cast"
         columns={columns}
         rows={rows}
         rowKey={(row) => row.character_id}

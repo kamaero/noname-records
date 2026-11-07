@@ -14,6 +14,7 @@ from app.api._helpers import forbidden_response, not_found_response, unauthorize
 from app.auth import has_any_role, is_authenticated, is_owner_telegram, session_payload, session_roles
 from app.db import SessionLocal
 from app.services import dictors
+from app.services.studio_calendar import studio_timezone
 from app.services.audio_storage import file_size, read_range, resolve_path
 from app.services.auditions import inline_disposition, slice_for_range
 from app.services.dictors import DictorError
@@ -218,7 +219,7 @@ def api_dictor_demo_audio(request: Request, demo_id: str):
         demo = db.get(DictorDemo, str(demo_id or ""))
         if demo is None:
             return not_found_response("demo_not_found")
-        key, name = str(demo.stored_key or ""), f"{demo.title or 'демо'}.mp3"
+        key, name = str(demo.stored_key or ""), f"{demo.title or 'Demo'}.mp3"
     try:
         total = file_size(key)
     except OSError:
@@ -258,7 +259,7 @@ async def api_deadline_extend(request: Request, deadline_id: str):
         notified = False
         if chat:
             text = role_deadlines.extension_notice(row, role=str(getattr(character, "name", "") or ""),
-                                                   book_title=str(getattr(book, "title", "") or ""))
+                                                   book_title=str(getattr(book, "title", "") or ""), timezone=studio_timezone(db))
             notified = bool(send_telegram_message(db, text, chat_ids=[chat], direct=True))
         view = role_deadlines.deadline_view(db, row)
     return JSONResponse({"ok": True, "deadline": view, "notified": notified})

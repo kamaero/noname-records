@@ -10,6 +10,11 @@ _ROSTER_INSTRUCTION = (
     "указанные алиасы в одну личность; НЕ выдумывай появления персонажей, которых нет в "
     "тексте — список лишь для единообразия имён уже присутствующих):"
 )
+_ROSTER_INSTRUCTION_EN = (
+    "CONFIRMED AUTHOR ROSTER (use these canonical names and spellings; merge the listed "
+    "aliases into one character. Do NOT invent appearances absent from the source text; "
+    "the roster only standardizes names of characters already present):"
+)
 
 
 def _aliases(raw: str) -> list[str]:
@@ -39,11 +44,12 @@ def build_author_roster_text(db, author_id: str) -> str:
     return "; ".join(entries)
 
 
-def author_roster_system_suffix(db, author_id: str) -> str:
+def author_roster_system_suffix(db, author_id: str, *, language: str = "ru") -> str:
     roster = build_author_roster_text(db, author_id)
     if not roster:
         return ""
-    return f"\n\n{_ROSTER_INSTRUCTION}\n{roster}"
+    instruction = _ROSTER_INSTRUCTION_EN if language == "en" else _ROSTER_INSTRUCTION
+    return f"\n\n{instruction}\n{roster}"
 
 
 def link_character_to_author(db, book, character) -> dict:

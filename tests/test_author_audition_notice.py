@@ -40,7 +40,7 @@ def db():
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine)() as session:
         session.add(TelegramAuthAccount(id="t1", telegram_user_id="900000106", role="author",
-                                        display_name="Александр Примеродин", is_active="true",
+                                        display_name="Алексей Примеров", is_active="true",
                                         user_id="u1", created_at=utcnow_naive()))
         session.add(TelegramAuthAccount(id="t2", telegram_user_id="900000102", role="dictor",
                                         display_name="Сергей Зотов", is_active="true",

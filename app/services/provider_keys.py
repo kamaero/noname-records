@@ -90,10 +90,10 @@ def provider_key(name: str) -> str:
 
 def set_key(db, name: str, value: str, *, actor: str) -> None:
     if name not in PROVIDERS:
-        raise ValueError(f"провайдер {name} задаётся только в .env")
+        raise ValueError(f'Provider {name} is configured only in .env')
     clean = "".join(str(value or "").split())
     if not clean:
-        raise ValueError("пустой ключ")
+        raise ValueError('The key is empty')
     row = db.get(ProviderKey, name) or ProviderKey(provider=name)
     row.ciphertext = _fernet().encrypt(clean.encode()).decode()
     row.last4 = clean[-4:]
@@ -121,20 +121,24 @@ def record_check(db, name: str, status: str, detail: str) -> None:
 
 
 def key_info(db, name: str) -> dict:
+    from app.services.provider_checks import localized_detail
+
     row = db.get(ProviderKey, name)
     readable = row is not None and bool(row.ciphertext) and _decrypt(row) is not None
     source = "site" if readable else ("env" if _env_key(name) else "none")
     return {
         "provider": name, "source": source, "last4": row.last4 if readable else "",
         "unreadable": row is not None and bool(row.ciphertext) and not readable,
-        "check_status": row.check_status if row else "", "check_detail": row.check_detail if row else "",
+        # Старые системные ответы могут быть русскими; показываем текст статуса без изменения записи.
+        "check_status": row.check_status if row else "",
+        "check_detail": localized_detail(row.check_status, row.check_detail) if row else "",
         "checked_at": row.checked_at.isoformat() + "Z" if row and row.checked_at else "",
     }
 
 
 #: похоже на ключ, даже если его нет среди известных: чужой прокси мог отдать свой токен
 _TOKEN_LIKE = re.compile(r"\b(?:sk|xi|rk|gsk|key)[-_][A-Za-z0-9_\-]{12,}|\bBearer\s+\S{12,}|\b[A-Za-z0-9_\-]{40,}\b")
-REDACTED = "[ключ скрыт]"
+REDACTED = "[key redacted]"
 
 
 def _known_keys() -> set[str]:

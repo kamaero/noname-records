@@ -49,14 +49,20 @@ def _chapter_id_for_title(title: str) -> str:
 
 
 def _add_take(db, chapter: str, role: str, file_id: str) -> None:
-    """Дубль в составе главы — так, как его сегодня ищет `run_asr_for_chapter`:
-    по совпадению `AudioFile.chapter` с `chapter_title` строки `ScriptChapter`."""
+    """Дубль принадлежит реальной книге с однозначным кодом, а не только подписи главы."""
+    from app.models import ScriptBook
+    from app.services.audio_uploads import derive_book_code
     chapter_id = _chapter_id_for_title(chapter)
     if db.get(ScriptChapter, chapter_id) is None:
         db.add(ScriptChapter(id=chapter_id, book_id=BOOK, chapter_index=1, chapter_title=chapter))
+    book_id = db.get(ScriptChapter, chapter_id).book_id
+    if db.get(ScriptBook, book_id) is None:
+        db.add(ScriptBook(id=book_id, title="Synthetic Window", source_filename="test.txt", source_format="txt"))
+        db.flush()
+    code = derive_book_code(db.get(ScriptBook, book_id).title)
     db.add(AudioFile(
         id=file_id,
-        book_code=BOOK,
+        book_code=code,
         original_filename=f"{file_id}.wav",
         stored_key=f"{file_id}.wav",
         mime_type="audio/wav",
@@ -68,14 +74,7 @@ def _add_take(db, chapter: str, role: str, file_id: str) -> None:
 
 
 def _recognizable_take(db, chapter: str, role: str, file_id: str) -> None:
-    """Дубль, который распознавание действительно возьмёт в работу.
-
-    `_add_take` этого не даёт: `run_asr_for_take` ищет главу дубля через код
-    книги (`find_chapter_for_take`), а книги в базе нет вовсе — распознавание
-    падает с `chapter_not_found`, не дойдя до расшифровки. Здесь книга заведена,
-    а «Т» — код, который `derive_book_code` вывела бы из её заголовка «Тест»
-    (первая буква слова), а не сам заголовок целиком.
-    """
+    """Отдельная книга «Тест» с кодом «Т» проверяет настоящий поиск главы по коду."""
     from app.models import ScriptBook
 
     if db.get(ScriptBook, "book-1") is None:
@@ -347,7 +346,7 @@ class TestReportOnAssembly:
         assert len(sent) == 2, "по полному составу владелец обязан получить отчёт"
         assert chapter.coverage_reported_takes == chapter_take_fingerprint(db, "ch-1")
 
-    def test_упавший_до_создания_задания_дубль_назван_в_отчёте(self, db, sent):
+    def test_упавший_до_создания_задания_дубль_назван_в_отчёте(self, db, sent, monkeypatch):
         """`run_asr_for_take` бросает `AsrRunError` до того, как заведёт строку
         `AsrJob`: файла нет, это не дубль, главы не нашлось. Строки нет — значит
         отчёт, который читает только `AsrJob`, о такой роли не знает ничего, а
@@ -355,6 +354,10 @@ class TestReportOnAssembly:
         разделов нет — и владелец читает «всё на месте» про то, чего никто не
         слушал. Число упавших прогон знает; оно должно дойти до отчёта.
         """
+        from app.services.asr_run import AsrRunError
+        def missing_chapter(*args, **kwargs):
+            raise AsrRunError("chapter_not_found")
+        monkeypatch.setattr("app.services.asr_run.run_asr_for_take", missing_chapter)
         _chapter_with_roles(db, "ch-1", ["Гамук"])
         _add_take(db, chapter="Глава 1", role="Гамук", file_id="take-1")
         db.commit()
@@ -526,6 +529,7 @@ class TestTheEditorButtonEnqueuesForce:
         monkeypatch.setattr(v2_api, "chapter_recording_status", lambda db, cid: {"roles": [{"files": [1]}]})
         monkeypatch.setattr(v2_api, "enqueue_tracked_task", lambda **kw: enqueued.update(kw) or "job-1")
         monkeypatch.setattr(v2_api, "SessionLocal", lambda: _NullSession())
+        monkeypatch.setattr("app.services.asr_run.chapter_language", lambda db, cid: "ru")
 
         response = v2_api.api_v2_chapter_asr(SimpleNamespace(), "ch-1")
 
@@ -547,7 +551,7 @@ class TestTheEditorButtonEnqueuesForce:
 
         worker_tasks.perform_asr_chapter_task("ch-1", "run-1", force=True)
         assert seen == {"force": True}
-        assert finished["text"] == "распознано 1, пересчитано 1, не вышло 0"
+        assert finished["text"] == "transcribed 1, realigned 1, failed 0"
 
         seen.clear()
         worker_tasks.perform_asr_chapter_task("ch-1", "run-2")
@@ -672,7 +676,7 @@ class TestChapterUploadBorrowsBeforeWriting:
 
 
 class TestABusyServiceIsAskedAgain:
-    """«Карта», гл. 1 (23.10): дубль юмкуби получил 503 и так и остался «failed» — сессия
+    """«Карта», ch. 1 (23.10): дубль юмкуби получил 503 и так и остался «failed» — сессия
     положила его целым куском в начало главы. Четыре таких дубля висели неделями.
     Занятый сервис (429/502/503/504) спрашивают ещё раз; таймаут — нет: он мог быть оплачен."""
 

@@ -33,9 +33,9 @@ def test_named_take_uses_the_approved_actor_without_questions(db, extension):
     assert (row.purpose, row.state, row.character_id, row.actor_name, row.role_name, row.book_id) == \
         ("take", "queued", "c2", "Ортель Орвис", "Афыл", "b1")
     assert [item.method for item in out] == ["sendMessage", "enqueue_bot_take"]
-    assert "распознаю" in _text(out) and "reply_markup" not in out[0].payload
+    assert "transcribe" in _text(out) and "reply_markup" not in out[0].payload
     repeat = handle_update(db, _take_audio(f"KP_Ch13_Afyl_OrtelOrvis.{extension}"), now=NOW)
-    assert "уже принят" in _text(repeat) and db.query(BotUpload).count() == 1
+    assert "already been accepted" in _text(repeat) and db.query(BotUpload).count() == 1
 
 
 def test_mp3_named_as_a_take_is_rejected_without_audition_questions(db):
@@ -49,8 +49,8 @@ def test_unknown_filename_asks_only_kind_then_uses_the_approved_role(db):
     _recording(db)
     out = handle_update(db, _take_audio("Untitled.wav"), now=NOW)
     row = db.query(BotUpload).one()
-    assert _text(out) == "Это дубль или проба?" and row.purpose == "agentpick"
-    assert ("Дубль", f"at:t:{row.id}") in _buttons(out)
+    assert _text(out) == 'Is this a take or an audition?' and row.purpose == "agentpick"
+    assert ("Take", f"at:t:{row.id}") in _buttons(out)
     selected = handle_update(db, _press(f"at:t:{row.id}"), now=NOW)
     assert [item.method for item in selected] == ["answerCallbackQuery", "sendMessage", "enqueue_bot_take"]
     assert (row.purpose, row.state, row.actor_name) == ("take", "queued", "Ортель Орвис")
@@ -65,7 +65,7 @@ def test_unknown_mp3_can_be_an_audition_but_not_a_take(db):
     assert _text(handle_update(db, _press(f"at:t:{row.id}"), now=NOW)) == REQUIRED
     assert (row.purpose, row.state) == ("agentpick", "choose")
     out = handle_update(db, _press(f"at:a:{row.id}"), now=NOW)
-    assert _text(out) == "Чья это проба?" and row.purpose == "agent"
+    assert _text(out) == 'Whose audition is this?' and row.purpose == "agent"
     handle_update(db, _press(f"ba:w:{row.id}:0"), now=NOW)
     queued = handle_update(db, _press(f"ba:r:{row.id}:c1"), now=NOW)
     assert row.state == "queued" and row.purpose == "agent"
@@ -75,7 +75,7 @@ def test_unknown_mp3_can_be_an_audition_but_not_a_take(db):
 def test_explicit_audition_filename_keeps_the_old_mp3_flow(db):
     _recording(db)
     out = handle_update(db, _take_audio("KP_Afyl_OrtelOrvis_proba.mp3"), now=NOW)
-    assert _text(out) == "Чья это проба?"
+    assert _text(out) == 'Whose audition is this?'
     assert db.query(BotUpload).one().purpose == "agent"
 
 
@@ -102,7 +102,7 @@ def test_callbacks_recheck_agent_access_and_approved_role(db):
     db.get(Character, "c2").actor_name = "Ортель Орвис?"
     db.commit()
     out = handle_update(db, _press(f"at:r:{row.id}:c2"), now=NOW)
-    assert "больше не утверждена" in _text(out) and row.state == "choose"
+    assert "no longer approved" in _text(out) and row.state == "choose"
     db.query(UserRole).filter(UserRole.user_id == "u50").delete()
     db.query(TelegramAuthAccount).filter(TelegramAuthAccount.telegram_user_id == AGENT).update({"role": "dictor"})
     db.commit()
@@ -116,11 +116,11 @@ def test_choice_expires_and_cannot_follow_another_active_book(db):
     handle_update(db, _take_audio("Untitled.wav"), now=NOW)
     row = db.query(BotUpload).one()
     out = handle_update(db, _press(f"at:t:{row.id}"), now=NOW + timedelta(days=2))
-    assert "устарел" in _text(out) and row.state == "choose"
+    assert "expired" in _text(out) and row.state == "choose"
     set_active_book(db, None, updated_by="owner")
     db.commit()
     out = handle_update(db, _press(f"at:t:{row.id}"), now=NOW)
-    assert "не записывает ни одну книгу" in _text(out) and row.state == "choose"
+    assert "not currently recording a book" in _text(out) and row.state == "choose"
 
 
 def test_cancel_before_selecting_kind(db):
@@ -128,15 +128,15 @@ def test_cancel_before_selecting_kind(db):
     handle_update(db, _take_audio("Untitled.wav"), now=NOW)
     row = db.query(BotUpload).one()
     out = handle_update(db, _press(f"at:x:{row.id}"), now=NOW)
-    assert _text(out) == "Отменено." and row.state == "cancelled"
+    assert _text(out) == 'Cancelled.' and row.state == "cancelled"
 
 
 def test_no_active_book_does_not_turn_an_unknown_file_into_an_audition(db):
     out = handle_update(db, _take_audio("Untitled.wav"), now=NOW)
     row = db.query(BotUpload).one()
-    assert _text(out) == "Это дубль или проба?"
+    assert _text(out) == 'Is this a take or an audition?'
     out = handle_update(db, _press(f"at:t:{row.id}"), now=NOW)
-    assert "не записывает ни одну книгу" in _text(out) and row.purpose == "agentpick"
+    assert "not currently recording a book" in _text(out) and row.purpose == "agentpick"
 
 
 def test_role_choices_are_paged_and_callback_data_fits_telegram(db):
@@ -154,7 +154,7 @@ def test_role_choices_are_paged_and_callback_data_fits_telegram(db):
     buttons = _buttons(out)
     assert len([data for _, data in buttons if data.startswith("at:r:")]) == 20
     assert all(len(data.encode()) <= 64 for _, data in buttons)
-    assert ("Дальше ›", f"at:p:{row.id}:1") in buttons
+    assert ('Next ›', f"at:p:{row.id}:1") in buttons
     out = handle_update(db, _press(f"at:p:{row.id}:1"), now=NOW)
     assert ("Ясная роль — Ортель Орвис", f"at:r:{row.id}:c2") in _buttons(out)
-    assert ("‹ Назад", f"at:p:{row.id}:0") in _buttons(out)
+    assert ('‹ Back', f"at:p:{row.id}:0") in _buttons(out)

@@ -9,13 +9,13 @@ def _reset():
 def test_author_profile_tables_roundtrip():
     _reset()
     with SessionLocal() as db:
-        author = Author(name="Александр Примеродин", slug="primerodin")
+        author = Author(name="Алексей Примеров", slug="primerov")
         db.add(author)
         db.flush()
         db.add(AuthorCharacter(
             author_id=author.id, canonical_name="Хубол",
             aliases='["Полумракский Купец"]', reply_color="#660000",
-            actor_name="Примеродин Александр", source_topic="Полумрак. Бароны.",
+            actor_name="Примеров Алексей", source_topic="Полумрак. Бароны.",
             status="confirmed",
         ))
         db.add(AuthorPronunciation(

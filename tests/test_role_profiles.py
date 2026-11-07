@@ -105,3 +105,23 @@ def test_a_hand_edit_made_during_the_call_wins(db):
 
     report = role_profiles.run(db, BOOK, ask=ask, log=lambda _m: None)
     assert report["failed"] == [] and db.get(Character, "asa").text_profile == ""
+
+
+def test_english_profile_prompt_preserves_names_source_and_manual_profiles(db):
+    db.get(ScriptBook, BOOK).language = "en"
+    db.commit()
+    before = [(row.id, row.text) for row in db.query(V2Segment).order_by(V2Segment.id)]
+    calls = []
+
+    def ask(model, system, user, schema):
+        calls.append((system, user))
+        assert "English book" in system and "Write the profile in English" in system
+        assert "Book: Карта Приозерья" in user and "Role: Емеммо" in user
+        assert "▶ Абзац 3." in user
+        return {"profile": "A quiet traveller who speaks carefully.", "grounded": True}
+
+    result = role_profiles.run(db, BOOK, ask=ask, log=lambda message: None, only={"Емеммо"})
+    assert result["done"] == ["Емеммо"] and len(calls) == 1
+    assert db.get(Character, "asa").text_profile == "A quiet traveller who speaks carefully."
+    assert db.get(Character, "done").text_profile == "Уже есть."
+    assert [(row.id, row.text) for row in db.query(V2Segment).order_by(V2Segment.id)] == before

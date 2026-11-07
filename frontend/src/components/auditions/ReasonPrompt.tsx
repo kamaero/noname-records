@@ -48,22 +48,22 @@ export function useReasonPrompt(): {
   const tooLong = comment.trim().length > COMMENT_MAX_CHARS;
   const dialog = asked ? (
     <Dialog
-      title={asked.reasons ? "Чем не этот герой?" : "Пара слов для студии"}
+      title={asked.reasons ? "What does not fit this character?" : "A note for the studio"}
       subtitle={`${asked.pair.actor_name} · «${asked.pair.role}». `
-        + (asked.reasons ? "Голос может быть прекрасным — речь о том, как должен звучать персонаж." : "Каким вы слышите героя?")}
+        + (asked.reasons ? "The voice may be excellent; explain how this character should sound." : "How should this character sound?")}
       onClose={() => finish(null)}
       footer={
         <>
-          <Button variant="ghost" onClick={() => finish(null)}>Пропустить</Button>
+          <Button variant="ghost" onClick={() => finish(null)}>Skip</Button>
           <Button variant="primary" disabled={tooLong} onClick={() => finish({ reason, comment: comment.trim() })}>
-            Сохранить
+            Save
           </Button>
         </>
       }
     >
       {asked.reasons ? (
         <>
-          <div className="reason-choices" role="group" aria-label="Причина">
+          <div className="reason-choices" role="group" aria-label="Reason">
             {CHOICES.map(([value, label], index) => (
               <Button key={value} variant={reason === value ? "primary" : "secondary"} aria-pressed={reason === value}
                 data-autofocus={index === 0 ? true : undefined}
@@ -72,16 +72,16 @@ export function useReasonPrompt(): {
               </Button>
             ))}
           </div>
-          <p className="reason-hint">Причина одной фразой уйдёт диктору в вежливом отказе.</p>
+          <p className="reason-hint">This short reason will be included in the voice actor's rejection message.</p>
         </>
       ) : null}
-      <Field label="Своими словами — каким должен звучать герой"
-        hint={tooLong ? undefined : "Увидит только студия, диктору не уйдёт."}
-        error={tooLong ? `Слишком длинно — уложитесь в ${COMMENT_MAX_CHARS} знаков.` : undefined}>
+      <Field label="Describe how the character should sound"
+        hint={tooLong ? undefined : "Visible to the studio only; not sent to the voice actor."}
+        error={tooLong ? `Too long; use at most ${COMMENT_MAX_CHARS} characters.` : undefined}>
         {(props) => (
           <textarea {...props} className="ui-input reason-comment" rows={3} value={comment}
             data-autofocus={asked.reasons ? undefined : true}
-            placeholder="Например: голос должен быть звонким и девчачьим"
+            placeholder="For example: the character needs a bright, youthful voice"
             onChange={(event) => setComment(event.target.value)} />
         )}
       </Field>
@@ -111,10 +111,10 @@ export function ReasonNote({ pair, lane, canAsk, onAsk }: ReasonNoteProps) {
   return (
     <span className="reason-note">
       {label ? <span>{label}</span> : null}
-      {comment ? <q className="reason-comment-text" title="Видит только студия">{comment}</q> : null}
+      {comment ? <q className="reason-comment-text" title="Studio only">{comment}</q> : null}
       {canAsk ? (
         <button type="button" className="reason-ask" onClick={() => onAsk(low)}>
-          {low && !label ? "причина?" : label || comment ? "изменить" : "комментарий"}
+          {low && !label ? "reason?" : label || comment ? "edit" : "comment"}
         </button>
       ) : null}
     </span>

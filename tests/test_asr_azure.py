@@ -8,6 +8,8 @@ whisper. Меняется только то, кто их произвёл. Ра�
 подсказку, каких слов ждать; для книги, полной выдуманных имён вроде «Бимькмолепуса»,
 это не украшение, а разница между «реплика найдена» и «реплика пропущена».
 """
+import json
+
 import pytest
 
 # Модели импортируются здесь, а не внутри фикстуры: `Base.metadata.create_all` создаёт
@@ -108,7 +110,8 @@ class TestSendingIt:
 
         return _R()
 
-    def test_it_goes_to_the_fast_transcription_endpoint_with_the_key(self, tmp_path, monkeypatch):
+    @pytest.mark.parametrize("locale", ["en-US", "ru-RU"])
+    def test_it_goes_to_the_fast_transcription_endpoint_with_the_key(self, tmp_path, monkeypatch, locale):
         sent = {}
 
         def fake_post(url, headers=None, files=None, data=None, timeout=None):
@@ -119,12 +122,15 @@ class TestSendingIt:
         path = tmp_path / "a.mp3"
         path.write_bytes(b"x")
 
-        transcribe_file_azure(str(path), key="k", endpoint="https://studio.cognitiveservices.azure.com", locale="ru-RU")
+        transcribe_file_azure(str(path), key="k", endpoint="https://studio.cognitiveservices.azure.com", locale=locale)
 
         assert "/speechtotext/transcriptions:transcribe" in sent["url"]
         assert "api-version=" in sent["url"]
         assert sent["headers"]["Ocp-Apim-Subscription-Key"] == "k"
         assert "definition" in sent["data"]
+        definition = json.loads(sent["data"]["definition"])
+        assert definition["locales"] == [locale]
+        assert definition["profanityFilterMode"] == "None"
 
     def test_a_trailing_slash_on_the_endpoint_does_not_double_up(self, tmp_path, monkeypatch):
         sent = {}
@@ -277,7 +283,7 @@ class TestChoosingTheProvider:
         monkeypatch.setattr(provider_keys, "provider_key", lambda name: "")
         monkeypatch.setattr(asr_run, "compress_for_asr", lambda src, dst: pytest.fail("сжатие без ключа ни к чему"))
         job = asr_run.run_asr_for_take(db, "a1")
-        assert job.status == "failed" and "Настройки → Нейросети" in job.error_message
+        assert job.status == "failed" and "Settings → AI services" in job.error_message
 
 
     def test_a_recognised_take_is_booked_in_seconds(self, db, monkeypatch):

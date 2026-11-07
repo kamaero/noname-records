@@ -1,3 +1,4 @@
+import { roleLabel } from "./types";
 /**
  * Side sheet with the lines the model would not settle: it either named no speaker
  * (`UNSURE`) or named one with a low confidence. Clicking a line goes to it and
@@ -27,11 +28,11 @@ function Row({ item, here, onPick }: { item: DisputedItem; here: boolean; onPick
     <button type="button" className="v2r-dispute" onClick={() => onPick(item)}>
       <span className="v2r-dispute-head">
         <span className={item.kind === "unsure" ? "v2r-dispute-tag v2r-dispute-tag--unsure" : "v2r-dispute-tag"}>
-          {item.kind === "unsure" ? "не определил" : `сомневается · ${item.speaker}`}
+          {item.kind === "unsure" ? "unassigned" : `uncertain · ${roleLabel(item.speaker)}`}
         </span>
         <span className="v2r-dispute-where num">
-          гл. {item.chapter_index}
-          {here ? " · здесь" : ""}
+          ch. {item.chapter_index}
+          {here ? " · here" : ""}
         </span>
       </span>
       <span className="v2r-dispute-text">{item.excerpt || "…"}</span>
@@ -43,29 +44,28 @@ export function DisputedQueue({ bookId, currentChapterId, onClose, onPick }: Dis
   const query = useDisputed(bookId, true);
   const data = query.data;
   const subtitle = data
-    ? `${data.counts.total} ${plural(data.counts.total, "спорная реплика", "спорные реплики", "спорных реплик")} в ${data.counts.chapters} ${plural(data.counts.chapters, "главе", "главах", "главах")}`
+    ? `${data.counts.total} ${plural(data.counts.total, "uncertain line", "uncertain lines", "uncertain lines")} in ${data.counts.chapters} ${plural(data.counts.chapters, "chapter", "chapters", "chapters")}`
     : query.isLoading
-      ? "Загружаю…"
+      ? "Loading…"
       : null;
 
   const unsure = (data?.items ?? []).filter((item) => item.kind === "unsure");
   const low = (data?.items ?? []).filter((item) => item.kind === "low");
 
   return (
-    <Sheet title="Спорные реплики" subtitle={subtitle} onClose={onClose}>
-      {query.isError ? <p className="v2r-sheet-error">{describeApiError(query.error, "Не удалось загрузить список.")}</p> : null}
+    <Sheet title="Uncertain lines" subtitle={subtitle} onClose={onClose}>
+      {query.isError ? <p className="v2r-sheet-error">{describeApiError(query.error, "Could not load list.")}</p> : null}
       {data ? (
         <>
           <p className="v2r-sheet-note">
-            Модель не угадывает: если по тексту не видно, кто говорит, она отвечает «не определил», а не ставит
-            случайную роль. Клик по реплике открывает её в тексте с выбором роли.
+            When the text does not identify the speaker, the model leaves the role unassigned. Click a line to review it in context and select a role.
           </p>
           <section className="v2r-sheet-section">
             <h3 className="v2r-sheet-h">
-              Не определил <span className="v2r-legend-count num">{data.counts.unsure}</span>
+              Unassigned <span className="v2r-legend-count num">{data.counts.unsure}</span>
             </h3>
             {unsure.length === 0 ? (
-              <p className="v2r-sheet-empty">Таких реплик нет — все роли расставлены.</p>
+              <p className="v2r-sheet-empty">No unassigned lines; all roles have been assigned.</p>
             ) : (
               <div className="v2r-dispute-list">
                 {unsure.map((item) => (
@@ -76,14 +76,13 @@ export function DisputedQueue({ bookId, currentChapterId, onClose, onPick }: Dis
           </section>
           <section className="v2r-sheet-section">
             <h3 className="v2r-sheet-h">
-              Сомневается <span className="v2r-legend-count num">{data.counts.low}</span>
+              Uncertain <span className="v2r-legend-count num">{data.counts.low}</span>
             </h3>
             <p className="v2r-sheet-note">
-              Роль поставлена, но уверенность ниже {Math.round(data.threshold * 100)}%. Их можно не проверять — это
-              подстраховка, а не ошибка.
+              The role is assigned, but confidence is below {Math.round(data.threshold * 100)}%. Review is optional; this is a precaution rather than a confirmed error.
             </p>
             {low.length === 0 ? (
-              <p className="v2r-sheet-empty">Ни одной сомнительной реплики.</p>
+              <p className="v2r-sheet-empty">No uncertain lines.</p>
             ) : (
               <div className="v2r-dispute-list">
                 {low.map((item) => (
@@ -94,7 +93,7 @@ export function DisputedQueue({ bookId, currentChapterId, onClose, onPick }: Dis
           </section>
           {data.truncated ? (
             <p className="v2r-sheet-note">
-              Показаны первые {data.items.length} — остальные появятся, когда разберёте эти.
+              Showing the first {data.items.length} — more will appear after you resolve these.
             </p>
           ) : null}
         </>

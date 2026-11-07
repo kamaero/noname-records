@@ -1,3 +1,4 @@
+import { roleLabel } from "./types";
 /**
  * «Все реплики роли» — one actor's own lines across the whole book.
  *
@@ -35,7 +36,7 @@ type RoleSegment = ReaderSegment & { mine: boolean; after_gap: boolean };
 
 type RoleScriptResponse = {
   ok: boolean;
-  book: { id: string; title: string };
+  book: { id: string; title: string; language?: "ru" | "en" };
   role: string;
   /** что энциклопедия автора говорит об этой роли; null — связи с каноном нет */
   canon?: { name: string; aliases: string[]; description: string; topic: string; portrait?: string } | null;
@@ -58,8 +59,8 @@ type RoleScriptResponse = {
 /** Titles usually already start with «Глава N.»; do not print it twice. */
 function chapterHeading(index: number, title: string): string {
   const clean = (title || "").trim();
-  if (!clean) return `Глава ${index}`;
-  return /^глава\s*\d+/i.test(clean) ? clean : `Глава ${index}. ${clean}`;
+  if (!clean) return `Chapter ${index}`;
+  return /^глава\s*\d+/i.test(clean) ? clean : `Chapter ${index}. ${clean}`;
 }
 
 /** Сценарий роли файлом: те же главы и права, что у страницы (ручки role-script.pdf/.txt). */
@@ -123,7 +124,7 @@ export function RoleScriptPage() {
     if (!printMode || printedRef.current || !data || query.isFetching) return;
     printedRef.current = true;
     const book = data.book?.title || "";
-    document.title = book ? `${role} — ${book}` : role;
+    document.title = book ? `${roleLabel(role)} — ${book}` : roleLabel(role);
     setParams((current) => {
       const next = new URLSearchParams(current);
       next.delete("print");
@@ -209,21 +210,21 @@ export function RoleScriptPage() {
   const backHref = recordingContext
     ? (bookId ? recordingHref(bookId, params.toString()) : "/recording")
     : (bookId ? `/reader?book_id=${encodeURIComponent(bookId)}` : "/reader");
-  const backLabel = recordingContext ? "К сценарию" : "К читалке";
+  const backLabel = recordingContext ? "Back to script" : "Back to reader";
 
   if (!bookId || !role) {
     return (
       <div className="panel panel-pad v2r-empty">
-        <p>Не указана роль. Откройте её из каста главы или из панели записи.</p>
+        <p>No role selected. Open one from the chapter cast or recording panel.</p>
         <Link className="btn btn-sm" to={backHref}>{backLabel}</Link>
       </div>
     );
   }
-  if (query.isLoading) return <SkeletonPanel label={`Собираю реплики роли «${role}»…`} lines={6} />;
+  if (query.isLoading) return <SkeletonPanel label={`Loading lines for role «${roleLabel(role)}»…`} lines={6} />;
   if (query.isError || !data) {
     return (
       <div className="panel panel-pad v2r-empty">
-        <p>{describeApiError(query.error, "Не удалось собрать реплики роли.")}</p>
+        <p>{describeApiError(query.error, "Could not load role lines.")}</p>
         <Link className="btn btn-sm" to={backHref}>{backLabel}</Link>
       </div>
     );
@@ -243,15 +244,15 @@ export function RoleScriptPage() {
             <Icon name="back" /> {backLabel}
           </Link>
           <div className="v2r-title">
-            <span className="v2r-title-book">{data.book.title || "Книга"}</span>
+            <span className="v2r-title-book">{data.book.title || "Book"}</span>
             <h1 className="v2r-title-chapter">
               {roleColor ? <span className="v2r-title-dot" style={{ background: roleColor }} aria-hidden="true" /> : null}
-              Все реплики: {data.role}
+              All lines: {roleLabel(data.role)}
             </h1>
           </div>
           <span className="v2r-rolescript-count num">
-            {counts.lines} {plural(counts.lines, "реплика", "реплики", "реплик")} · {counts.chapters}{" "}
-            {plural(counts.chapters, "глава", "главы", "глав")}
+            {counts.lines} {plural(counts.lines, "line", "lines", "lines")} · {counts.chapters}{" "}
+            {plural(counts.chapters, "chapter", "chapters", "chapters")}
           </span>
         </div>
 
@@ -265,26 +266,26 @@ export function RoleScriptPage() {
             <span className="v2r-canon-body">
               <span ref={canonTextRef} className={`v2r-canon-text${canonOpen ? "" : " is-clamped"}`}>
                 <strong>{data.canon.name}</strong>
-                {data.canon.aliases.length ? ` (он же ${data.canon.aliases.join(", ")})` : ""}
+                {data.canon.aliases.length ? ` (also known as ${data.canon.aliases.join(", ")})` : ""}
                 {data.canon.description ? ` — ${data.canon.description}` : ""}
               </span>
               {canonClamped || canonOpen ? (
                 <button type="button" className="v2r-canon-more" aria-expanded={canonOpen} onClick={() => setCanonOpen((v) => !v)}>
-                  {canonOpen ? "Свернуть ▴" : "Подробнее ▾"}
+                  {canonOpen ? "Collapse ▴" : "Details ▾"}
                 </button>
               ) : null}
             </span>
             {hasLore ? (
               <button type="button" className="btn btn-sm v2r-btn" onClick={() => setLoreOpen(true)}>
-                В лор
+                Open lore
               </button>
             ) : null}
           </div>
         ) : null}
 
         {myRoles.length > 1 ? (
-          <div className="v2r-toolbar-row v2r-myroles" role="tablist" aria-label="Мои роли — какую озвучиваю">
-            <span className="v2r-myroles-label">Мои роли:</span>
+          <div className="v2r-toolbar-row v2r-myroles" role="tablist" aria-label="My roles — choose one to record">
+            <span className="v2r-myroles-label">My roles:</span>
             {myRoles.map((entry) => (
               <button
                 key={entry.character_id || entry.name}
@@ -294,10 +295,10 @@ export function RoleScriptPage() {
                 className={entry.name === role ? "v2r-myrole is-on" : "v2r-myrole"}
                 style={{ "--role-color": entry.character_color } as CSSProperties}
                 onClick={() => switchRole(entry.name)}
-                title={entry.name === role ? `Сейчас: ${entry.name}` : `Перейти к роли «${entry.name}» — только её реплики`}
+                title={entry.name === role ? `Current: ${roleLabel(entry.name)}` : `Go to role «${roleLabel(entry.name)}» — its lines only`}
               >
                 <span className="v2r-myrole-dot" aria-hidden="true" />
-                {entry.name}
+                {roleLabel(entry.name)}
                 <span className="v2r-myrole-count num">{entry.lines_count}</span>
               </button>
             ))}
@@ -314,9 +315,9 @@ export function RoleScriptPage() {
               else params.set("view", "traps");
               setParams(params, { replace: true });
             }}
-            title="Редкие слова из реплик роли, по главам, с ударением — посмотреть до записи"
+            title="Rare words in this role's lines, organized by chapter, with stress marks; review before recording"
           >
-            {traps ? "К репликам" : "Слова-ловушки"}
+            {traps ? "Back to lines" : "Pronunciation traps"}
           </button>
 
           {/* Шпаргалка о мире книги: актёру она нужнее, чем редактору, — он в Читалку
@@ -326,16 +327,16 @@ export function RoleScriptPage() {
               type="button"
               className="btn btn-sm v2r-btn"
               onClick={() => setLoreOpen(true)}
-              title="Мир книги: расы, титулы, кто есть кто — шпаргалка от автора"
+              title="Story world: species, titles and characters; the author's reference guide"
             >
-              Лор
+              Lore
             </button>
           ) : null}
 
           {traps ? null : (
-          <span className="v2r-cursor" role="group" aria-label="Переход по репликам">
-            <button type="button" className="btn btn-sm v2r-btn" onClick={() => cursor.go(-1)} aria-label="Предыдущая реплика">↑</button>
-            <button type="button" className="btn btn-sm v2r-btn" onClick={() => cursor.go(1)} aria-label="Следующая реплика">↓</button>
+          <span className="v2r-cursor" role="group" aria-label="Line navigation">
+            <button type="button" className="btn btn-sm v2r-btn" onClick={() => cursor.go(-1)} aria-label="Previous line">↑</button>
+            <button type="button" className="btn btn-sm v2r-btn" onClick={() => cursor.go(1)} aria-label="Next line">↓</button>
             <span className="v2r-cursor-count num">{cursor.position || "—"} / {cursor.total}</span>
           </span>
           )}
@@ -346,16 +347,16 @@ export function RoleScriptPage() {
               className={more ? "btn btn-sm v2r-btn v2r-more is-on" : "btn btn-sm v2r-btn v2r-more"}
               onClick={() => setMore((open) => !open)}
               aria-expanded={more}
-              title="Контекст, ударения, размер шрифта, PDF и текст"
+              title="Context, word stress, font size, PDF and text"
             >
-              {more ? "Свернуть" : "Ещё"}
+              {more ? "Collapse" : "More"}
             </button>
           ) : null}
 
             <div className="v2r-toolbar-more" hidden={compact && !more}>
             {traps ? null : (
-            <label className="v2r-radius" title="Сколько абзацев вокруг каждой реплики показывать">
-              <span className="v2r-radius-label">± абзацев</span>
+            <label className="v2r-radius" title="Paragraphs of context around each line">
+              <span className="v2r-radius-label">± paragraphs</span>
               <select
                 className="v2r-select"
                 value={radius}
@@ -374,10 +375,10 @@ export function RoleScriptPage() {
             <StressToggle
               prefs={prefs}
               onPrefs={updatePrefs}
-              hint={canVoice ? "Щёлкните по любому слову в тексте — поставите ударение" : undefined}
+              hint={canVoice ? "Click any word in the text to set its stress" : undefined}
             />
 
-            <div className="v2r-seg" role="group" aria-label="Размер шрифта">
+            <div className="v2r-seg" role="group" aria-label="Font size">
               {(["s", "m", "l"] as const).map((key) => (
                 <button
                   key={key}
@@ -399,7 +400,7 @@ export function RoleScriptPage() {
                 <Icon name="doc" /> PDF
               </a>
               <a className="btn btn-sm v2r-btn" href={exportHref(bookId, role, "txt")} download>
-                Текст
+                Text
               </a>
             </span>
           ) : null}
@@ -422,11 +423,11 @@ export function RoleScriptPage() {
         <div className="v2r-main">
           {/* шапка-панель при печати скрыта, а PDF без имени роли — безымянная стопка листов */}
           <div className="v2r-print-title">
-            <div className="v2r-print-title-book">{data.book.title || "Книга"}</div>
-            <h2>{data.role}</h2>
+            <div className="v2r-print-title-book">{data.book.title || "Book"}</div>
+            <h2>{roleLabel(data.role)}</h2>
             <div className="num">
-              {counts.lines} {plural(counts.lines, "реплика", "реплики", "реплик")} · {counts.chapters}{" "}
-              {plural(counts.chapters, "глава", "главы", "глав")}
+              {counts.lines} {plural(counts.lines, "line", "lines", "lines")} · {counts.chapters}{" "}
+              {plural(counts.chapters, "chapter", "chapters", "chapters")}
             </div>
           </div>
           {about || inChapters.length > 0 || data.canon ? (
@@ -435,9 +436,9 @@ export function RoleScriptPage() {
               {about?.facts ? <p className="v2r-rolecard-facts">{about.facts}</p> : null}
               {inChapters.length > 0 ? (
                 <p className="v2r-rolecard-chapters">
-                  В {inChapters.length === 1 ? "главе" : "главах"}:{" "}
+                  In {inChapters.length === 1 ? "chapter" : "chapters"}:{" "}
                   {inChapters.map((chapter, index) => {
-                    const hint = `${chapter.lines} ${plural(chapter.lines, "реплика", "реплики", "реплик")}`;
+                    const hint = `${chapter.lines} ${plural(chapter.lines, "line", "lines", "lines")}`;
                     return (
                       <span key={chapter.chapter_id}>
                         {index > 0 ? ", " : null}
@@ -445,7 +446,7 @@ export function RoleScriptPage() {
                         {shownChapters.has(chapter.chapter_id) ? (
                           <a
                             href={`#role-ch-${chapter.chapter_id}`}
-                            title={`${hint} — перейти ниже`}
+                            title={`${hint} — jump below`}
                             onClick={(event) => {
                               event.preventDefault();
                               document.getElementById(`role-ch-${chapter.chapter_id}`)?.scrollIntoView({ block: "start" });
@@ -454,7 +455,7 @@ export function RoleScriptPage() {
                             {chapter.chapter_index}
                           </a>
                         ) : (
-                          <Link to={chapterHref(chapter.chapter_id)} title={`${hint} — открыть главу`}>
+                          <Link to={chapterHref(chapter.chapter_id)} title={`${hint} — open chapter`}>
                             {chapter.chapter_index}
                           </Link>
                         )}
@@ -481,18 +482,18 @@ export function RoleScriptPage() {
           ) : counts.lines === 0 ? (
             <div className="v2r-empty">
               <Icon name="doc" />
-              <p>У роли «{data.role}» в этой книге нет реплик — возможно, она называется иначе в разметке.</p>
+              <p>Role «{roleLabel(data.role)}» has no lines in this book. It may have a different name in the annotation.</p>
             </div>
           ) : (
-            <article className="v2r-page" lang="ru" onClick={onArticleClick}>
+            <article className="v2r-page" lang={data.book.language} onClick={onArticleClick}>
               {data.chapters.map((chapter) => (
                 <section key={chapter.chapter_id} id={`role-ch-${chapter.chapter_id}`} className="v2r-rolescript-chapter">
                   <h2 className="v2r-rolescript-h">
-                    <Link to={chapterHref(chapter.chapter_id)} title="Открыть главу целиком">
+                    <Link to={chapterHref(chapter.chapter_id)} title="Open full chapter">
                       {chapterHeading(chapter.chapter_index, chapter.chapter_title)}
                     </Link>
                     <span className="num">
-                      {chapter.lines} {plural(chapter.lines, "реплика", "реплики", "реплик")}
+                      {chapter.lines} {plural(chapter.lines, "line", "lines", "lines")}
                     </span>
                   </h2>
                   {chapter.segments.map((segment) => (
@@ -519,13 +520,13 @@ export function RoleScriptPage() {
           {!traps && data.has_more ? (
             <div className="v2r-nav v2r-nav--bottom">
               <button type="button" className="btn v2r-btn" onClick={() => setLimit((value) => value + PAGE)}>
-                Показать ещё {PAGE} реплик (из {counts.lines})
+                Show more {PAGE} lines (of {counts.lines})
               </button>
             </div>
           ) : null}
         </div>
       </div>
-      <span className="v2r-sr">Стрелки вверх и вниз ведут по репликам роли</span>
+      <span className="v2r-sr">Use the up and down arrows to navigate role lines</span>
       {loreOpen ? <LorePanel bookId={bookId} onClose={() => setLoreOpen(false)} /> : null}
     </div>
   );

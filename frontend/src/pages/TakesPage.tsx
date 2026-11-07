@@ -40,7 +40,7 @@ export function TakesPage() {
       void queryClient.invalidateQueries({ queryKey: ["recording-workspace"] });
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Не удалено", detail: describeApiError(error, "Не удалось удалить запись.") });
+      pushToast({ tone: "error", title: "Not deleted", detail: describeApiError(error, "Could not delete the recording.") });
     },
   });
 
@@ -59,14 +59,14 @@ export function TakesPage() {
   const scriptHref = `/recording${sel.searchParams.toString() ? `?${sel.searchParams.toString()}` : ""}`;
 
   if (sel.workspaceQuery.isLoading) {
-    return <SkeletonPanel label="Открываю загрузку…" lines={6} />;
+    return <SkeletonPanel label="Opening uploads…" lines={6} />;
   }
   if (sel.workspaceQuery.isError) {
     return (
       <EmptyState
         icon="upload"
-        text={describeApiError(sel.workspaceQuery.error, "Не удалось открыть загрузку.")}
-        action={<LinkButton to="/">Открыть библиотеку</LinkButton>}
+        text={describeApiError(sel.workspaceQuery.error, "Could not open uploads.")}
+        action={<LinkButton to="/">Open library</LinkButton>}
       />
     );
   }
@@ -74,24 +74,24 @@ export function TakesPage() {
     return (
       <EmptyState
         icon="upload"
-        text="Ни у одной книги ещё нет опубликованных глав. Загрузка откроется, когда режиссёр опубликует сценарий."
-        action={<LinkButton to="/">Открыть библиотеку</LinkButton>}
+        text="No published chapters yet. Uploads will be available when the director publishes the script."
+        action={<LinkButton to="/">Open library</LinkButton>}
       />
     );
   }
 
   const uploadDisabledReason = !sel.chapters.length
-    ? "Загрузка откроется после публикации глав."
+    ? "Uploads will be available once chapters are published."
     : sel.preview && !bookCode
-      ? "Предпросмотр: книга не опубликована, загрузка отключена."
+      ? "Preview: this book is unpublished; uploads are disabled."
       : undefined;
 
   return (
     <div className="takes-page">
       <PageHeader
-        title="Загрузка"
-        subtitle="Дубли и пробы — по главам. Дубли книги, которая сейчас в работе, можно присылать и в бот студии, хоть всей ролью одним файлом."
-        back={{ to: scriptHref, label: "Сценарий" }}
+        title="Uploads"
+        subtitle="Takes and auditions, organized by chapter. You can also send takes for the active book to the studio bot, including an entire role in one file."
+        back={{ to: scriptHref, label: "Script" }}
       />
       <RecordingPanel
         books={sel.panelBooks}
@@ -116,7 +116,7 @@ export function TakesPage() {
         kind={expected.kind}
         chapterOptional={audition}
         expectedFilename={expected.filename}
-        notice={sel.preview ? "Предпросмотр: книга не опубликована, показаны размеченные главы." : undefined}
+        notice={sel.preview ? "Preview: this book is unpublished; annotated chapters are shown." : undefined}
         upload={{
           files: upload.files,
           preview: upload.preview,

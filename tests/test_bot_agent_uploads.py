@@ -84,10 +84,10 @@ def test_the_agent_is_asked_whose_audition_it_is(db):
     out = handle_update(db, _audio(), now=NOW)
     row = db.query(BotUpload).one()
     assert (row.purpose, row.state, row.telegram_user_id) == ("agent", "choose", AGENT)
-    assert _text(out) == "Чья это проба?"
+    assert _text(out) == 'Whose audition is this?'
     # озвученная книга не в счёт: Сидорова предлагали только туда
     assert _buttons(out) == [("Ветрова Ольга", f"ba:w:{row.id}:0"), ("Иванов Пётр", f"ba:w:{row.id}:1"),
-                             ("Отмена", f"ba:x:{row.id}")]
+                             ("Cancel", f"ba:x:{row.id}")]
 
 
 def test_the_ward_brings_the_roles_he_was_proposed_for(db):
@@ -97,7 +97,7 @@ def test_the_ward_brings_the_roles_he_was_proposed_for(db):
     assert db.get(BotUpload, row.id).actor_name == "Ветрова Ольга"
     assert "Ветрова Ольга" in _text(out)
     assert _buttons(out) == [("«Дракон» («Карта Приозерья»)", f"ba:r:{row.id}:c1"),
-                             ("Другая роль…", f"ba:o:{row.id}"), ("Отмена", f"ba:x:{row.id}")]
+                             ('Another role…', f"ba:o:{row.id}"), ("Cancel", f"ba:x:{row.id}")]
 
 
 def test_another_role_lists_the_whole_cast_of_the_only_open_book(db):
@@ -106,7 +106,7 @@ def test_another_role_lists_the_whole_cast_of_the_only_open_book(db):
     handle_update(db, _press(f"ba:w:{row.id}:0"), now=NOW)
     out = handle_update(db, _press(f"ba:o:{row.id}"), now=NOW)
     assert _buttons(out) == [("Дракон", f"ba:r:{row.id}:c1"), ("Убув", f"ba:r:{row.id}:c2"),
-                             ("Отмена", f"ba:x:{row.id}")]
+                             ("Cancel", f"ba:x:{row.id}")]
 
 
 def test_choosing_the_role_queues_the_audition_under_the_ward(db):
@@ -119,7 +119,7 @@ def test_choosing_the_role_queues_the_audition_under_the_ward(db):
     assert [item.method for item in out if item.method != "answerCallbackQuery"] == ["sendMessage", "enqueue_bot_upload"]
     assert "«Убув»" in _text(out) and "Иванов Пётр" in _text(out)
     assert handle_update(db, _press(f"ba:r:{row.id}:c2"), now=NOW)[-1].payload["text"] == \
-        "Эта проба уже принята или отменена."
+        'This audition has already been accepted or cancelled.'
 
 
 def test_a_long_list_of_wards_is_paged(db):
@@ -131,9 +131,9 @@ def test_a_long_list_of_wards_is_paged(db):
     row = db.query(BotUpload).one()
     first = _buttons(out)
     assert len([b for b in first if b[1].startswith("ba:w:")]) == bot_agent_uploads.PAGE
-    assert ("Дальше ›", f"ba:wp:{row.id}:1") in first
+    assert ('Next ›', f"ba:wp:{row.id}:1") in first
     second = _buttons(handle_update(db, _press(f"ba:wp:{row.id}:1"), now=NOW))
-    assert ("‹ Назад", f"ba:wp:{row.id}:0") in second
+    assert ('‹ Back', f"ba:wp:{row.id}:0") in second
     assert ("Ветрова Ольга", f"ba:w:{row.id}:{bot_agent_uploads.PAGE}") in second or \
         any(b[1] == f"ba:w:{row.id}:{bot_agent_uploads.PAGE}" for b in second)
 
@@ -148,7 +148,7 @@ def test_somebody_elses_press_is_ignored(db):
 
 def test_a_dictor_without_invitation_still_hears_the_old_rule(db):
     out = handle_update(db, _audio(tid="41"), now=NOW)
-    assert "только по приглашению" in _text(out)
+    assert "by invitation" in _text(out)
 
 
 def _fake_store(db, **kw):
@@ -188,7 +188,7 @@ def test_store_needs_no_invitation_for_the_agent(db, monkeypatch):
     audio = db.query(AudioFile).one()
     assert result == "stored"
     assert (audio.kind, audio.role, audio.actor_name) == ("audition", "Убув", "Иванов Пётр")
-    assert texts == [(AGENT, "Проба принята — «Убув», Иванов Пётр.")]
+    assert texts == [(AGENT, "Audition received — «Убув», Иванов Пётр.")]
     assert cards == [audio.id]
 
 
@@ -199,4 +199,4 @@ def test_store_refuses_a_role_in_a_voiced_book(db, monkeypatch):
     result = bot_uploads.store(db, "up1", fetch=_fetch, send_text=lambda chat, text: texts.append(text) or True,
                                send_audio=lambda chat, **kw: True, store_file=_fake_store, now=NOW)
     assert result == "failed" and db.query(AudioFile).count() == 0
-    assert "роль" in texts[0]
+    assert "role" in texts[0]

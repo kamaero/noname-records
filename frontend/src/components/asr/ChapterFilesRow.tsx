@@ -1,3 +1,4 @@
+import { roleLabel } from "../../v2/types";
 /**
  * Опись главы — что лежит на диске под строкой покрытия.
  *
@@ -30,14 +31,14 @@ type ChapterFilesRowProps = {
 function formatSize(bytes: number): string {
   if (!bytes) return "";
   const mb = bytes / (1024 * 1024);
-  return mb >= 1 ? `${mb.toFixed(1)} МБ` : `${Math.max(1, Math.round(bytes / 1024))} КБ`;
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 function formatWhen(iso: string): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString("en-US", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 /** «2:35», «0:07», «1:02:03» — тот же счёт, каким `AuditionsSheet` меряет пробу. */
@@ -53,10 +54,10 @@ function formatDuration(totalSeconds: number): string {
 
 /** «есть файл» и «файл цел и скопирован» — разные вещи, и молчать про разницу нельзя. */
 function describeMirror(take: ChapterTake): { text: string; broken: boolean } {
-  if (take.mirror_state === "mismatch") return { text: "копия разошлась", broken: true };
-  if (take.location === "nas") return { text: "только на NAS", broken: true };
-  if (take.mirrored_at) return { text: "копия ✓", broken: false };
-  return { text: "копия едет", broken: false };
+  if (take.mirror_state === "mismatch") return { text: "copy mismatch", broken: true };
+  if (take.location === "nas") return { text: "NAS only", broken: true };
+  if (take.mirrored_at) return { text: "copy verified ✓", broken: false };
+  return { text: "copy pending", broken: false };
 }
 
 /** Вопрос называет цену — чей дубль, какая роль, когда прислан, сколько длится, — а не
@@ -65,11 +66,11 @@ function describeMirror(take: ChapterTake): { text: string; broken: boolean } {
     вопрос задают панель записи и лист проб. */
 function confirmDelete(take: ChapterTake): boolean {
   return window.confirm(
-    `Удалить дубль роли «${take.role || "без роли"}»`
-      + (take.actor_name ? ` в исполнении «${take.actor_name}»` : "")
-      + `, загружен ${formatWhen(take.uploaded_at) || "неизвестно когда"}`
-      + `, длительность ${formatDuration(take.duration_seconds)}?\n\n`
-      + `Файл «${take.canonical_filename}» будет стёрт с сервера и с зеркала на NAS. Отката не будет.`,
+    `Delete take for role «${take.role || "no role"}»`
+      + (take.actor_name ? ` recorded by «${take.actor_name}»` : "")
+      + `, uploaded ${formatWhen(take.uploaded_at) || "at an unknown time"}`
+      + `, duration ${formatDuration(take.duration_seconds)}?\n\n`
+      + `File «${take.canonical_filename}» will be deleted from the server and NAS mirror. This cannot be undone.`,
   );
 }
 
@@ -95,21 +96,21 @@ function TakeLine({ take, canDelete, deleting, onDelete, onCopyPath }: {
         </span>
       </div>
       <audio className="cf-player" controls preload="none" src={audio}>
-        Ваш браузер не умеет проигрывать аудио.
+        Your browser does not support audio playback.
       </audio>
       <div className="cf-take-foot">
         {/* Путь — для человека за терминалом и для Audition: до файла иначе не дотянуться.
             Кнопкой, а не выделением мышью: путь не переносится и в узкой колонке обрезан. */}
-        <button type="button" className="cf-path mono" title={`${take.stored_key} — нажмите, чтобы скопировать`} onClick={() => onCopyPath(take)}>
+        <button type="button" className="cf-path mono" title={`${take.stored_key} — click to copy`} onClick={() => onCopyPath(take)}>
           {take.stored_key}
         </button>
         <div className="cf-actions">
-          <a className="cf-link" href={`${audio}?download=1`}>скачать</a>
+          <a className="cf-link" href={`${audio}?download=1`}>download</a>
           {canDelete ? (
             <Button size="sm" variant="danger" loading={deleting} onClick={() => {
               if (confirmDelete(take)) onDelete(take);
             }}>
-              Удалить
+              Delete
             </Button>
           ) : null}
         </div>
@@ -125,16 +126,16 @@ function RoleBlock({ role, canDelete, deletingId, onDelete, onCopyPath }: {
   onDelete: (take: ChapterTake) => void;
   onCopyPath: (take: ChapterTake) => void;
 }) {
-  const lines = `${role.lines} ${role.lines === 1 ? "реплика" : role.lines < 5 ? "реплики" : "реплик"}`;
+  const lines = `${role.lines} ${role.lines === 1 ? "line" : role.lines < 5 ? "lines" : "lines"}`;
   return (
     <div className="cf-role">
       <div className="cf-role-head">
-        <strong>{role.role}</strong>
+        <strong>{roleLabel(role.role)}</strong>
         {role.actor_name ? <span className="cf-dim"> · {role.actor_name}</span> : null}
         <span className="cf-dim"> · {lines}</span>
       </div>
       {role.takes.length === 0 ? (
-        <p className="cf-empty">не записан</p>
+        <p className="cf-empty">not recorded</p>
       ) : (
         <ul className="cf-takes">
           {role.takes.map((take) => (
@@ -169,14 +170,14 @@ export function ChapterFilesRow({ chapterId, canDelete, bookId }: ChapterFilesRo
     mutationFn: (take: ChapterTake) =>
       apiPostJson<{ ok: boolean }>(`/api/recording/files/${encodeURIComponent(take.id)}/delete`, {}),
     onSuccess: async (_result, take) => {
-      pushToast({ tone: "success", title: "Дубль стёрт", detail: `«${take.canonical_filename}» — с сервера и с зеркала.` });
+      pushToast({ tone: "success", title: "Take deleted", detail: `«${take.canonical_filename}» from the server and mirror.` });
       // И опись, и строка покрытия над ней: у роли стало меньше дублей, а глава могла
       // перестать быть готовой.
       await queryClient.invalidateQueries({ queryKey: ["v2", "chapter-recording", chapterId] });
       await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
     },
     onError: (error) =>
-      pushToast({ tone: "error", title: "Не вышло", detail: describeApiError(error, "сервер не ответил") }),
+      pushToast({ tone: "error", title: "Could not complete the action", detail: describeApiError(error, "the server did not respond") }),
   });
 
   /* Отчёт обязателен: скопировалось молча — неотличимо от не скопировалось, а путь
@@ -184,23 +185,23 @@ export function ChapterFilesRow({ chapterId, canDelete, bookId }: ChapterFilesRo
      контексте и под запретом разрешений, поэтому отказ тоже называется вслух. */
   const copyPath = (take: ChapterTake) => {
     navigator.clipboard?.writeText(take.stored_key).then(
-      () => pushToast({ tone: "success", title: "Путь скопирован", detail: take.stored_key }),
-      () => pushToast({ tone: "error", title: "Буфер недоступен", detail: take.stored_key }),
+      () => pushToast({ tone: "success", title: "Path copied", detail: take.stored_key }),
+      () => pushToast({ tone: "error", title: "Clipboard unavailable", detail: take.stored_key }),
     );
   };
 
-  if (opis.isLoading) return <p className="cf-note">Читаю опись главы…</p>;
+  if (opis.isLoading) return <p className="cf-note">Loading chapter inventory…</p>;
   if (opis.isError || !opis.data) {
     return (
       <p className="cf-note cf-broken">
-        Не удалось прочитать опись: {describeApiError(opis.error, "сервер не ответил")}.
+        Could not load inventory: {describeApiError(opis.error, "the server did not respond")}.
       </p>
     );
   }
 
   const { roles, orphan_takes: orphans } = opis.data;
   if (roles.length === 0 && orphans.length === 0) {
-    return <p className="cf-note">В этой главе некому говорить.</p>;
+    return <p className="cf-note">This chapter has no speaking roles.</p>;
   }
 
   return (
@@ -218,8 +219,8 @@ export function ChapterFilesRow({ chapterId, canDelete, bookId }: ChapterFilesRo
       {orphans.length > 0 ? (
         <div className="cf-role cf-orphans">
           <div className="cf-role-head">
-            <strong className="cf-broken">Ничья роль</strong>
-            <span className="cf-dim"> · этих ролей в сценарии больше нет — их переименовали или слили</span>
+            <strong className="cf-broken">Unassigned role</strong>
+            <span className="cf-dim"> · these roles were renamed or merged and are no longer in the script</span>
           </div>
           <ul className="cf-takes">
             {orphans.map((take) => (

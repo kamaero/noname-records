@@ -46,7 +46,7 @@ function ContextText({ text }: { text: string }) {
   return (
     <p className="ill-context">
       {before}
-      {after !== undefined ? <mark className="ill-here">здесь картинка</mark> : null}
+      {after !== undefined ? <mark className="ill-here">illustration here</mark> : null}
       {after}
     </p>
   );
@@ -104,7 +104,7 @@ export function IllustrationsPage() {
       setSearch("");
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Не сохранилось", detail: describeApiError(error, "Сервер не ответил.") });
+      pushToast({ tone: "error", title: "Not saved", detail: describeApiError(error, "The server did not respond.") });
     },
   });
 
@@ -135,19 +135,19 @@ export function IllustrationsPage() {
     return () => document.removeEventListener("keydown", onKey);
   }, [items.length, current, bind]);
 
-  if (data.isLoading) return <div className="ill"><p className="ill-dim">Открываю…</p></div>;
+  if (data.isLoading) return <div className="ill"><p className="ill-dim">Opening…</p></div>;
   if (data.isError) {
     return (
       <div className="ill">
-        <div className="ui-note ui-note--error">Не удалось открыть: {describeApiError(data.error, "сервер не ответил")}.</div>
+        <div className="ui-note ui-note--error">Could not open: {describeApiError(data.error, "the server did not respond")}.</div>
       </div>
     );
   }
   if (!items.length) {
     return (
       <div className="ill">
-        <PageHeader title="Иллюстрации" back={{ to: `/books/${bookId}`, label: "К книге" }} />
-        <EmptyState icon="doc" text="У этой книги нет загруженных иллюстраций." />
+        <PageHeader title="Illustrations" back={{ to: `/books/${bookId}`, label: "Back to book" }} />
+        <EmptyState icon="doc" text="This book has no uploaded illustrations." />
       </div>
     );
   }
@@ -162,19 +162,19 @@ export function IllustrationsPage() {
   return (
     <div className="ill">
       <PageHeader
-        title="Иллюстрации"
-        subtitle={`${data.data?.book.title ?? ""} · привязано ${counts.bound}, отложено ${counts.skipped}, осталось ${left}`}
-        back={{ to: `/books/${bookId}`, label: "К книге" }}
+        title="Illustrations"
+        subtitle={`${data.data?.book.title ?? ""} · linked ${counts.bound}, deferred ${counts.skipped}, remaining ${left}`}
+        back={{ to: `/books/${bookId}`, label: "Back to book" }}
       />
 
       <div className="ill-body">
         <figure className="ill-figure">
-          <img src={current.url} alt={`Иллюстрация ${current.ordinal}`} />
+          <img src={current.url} alt={`Illustration ${current.ordinal}`} />
           <figcaption className="ill-dim">
-            №{current.ordinal} из {counts.total}
+            №{current.ordinal} of {counts.total}
             {current.chapter ? ` · ${current.chapter}` : ""}
-            {current.status === "bound" && current.character ? ` · привязана: ${current.character.name}` : ""}
-            {current.status === "skipped" ? " · отложена как сцена" : ""}
+            {current.status === "bound" && current.character ? ` · linked: ${current.character.name}` : ""}
+            {current.status === "skipped" ? " · deferred as a scene" : ""}
           </figcaption>
         </figure>
 
@@ -182,7 +182,7 @@ export function IllustrationsPage() {
           <ContextText text={current.context} />
 
           <div className="ill-pick">
-            <h3 className="ill-h">Кто на картинке?</h3>
+            <h3 className="ill-h">Who is in this illustration?</h3>
             <div className="ill-buttons">
               {current.candidates.map((candidate, index) => (
                 <button
@@ -194,12 +194,12 @@ export function IllustrationsPage() {
                       : "btn btn-sm v2r-btn"
                   }
                   onClick={() => bind.mutate({ id: current.id, character_id: candidate.character_id })}
-                  title={`Названа в тексте ${candidate.hits} раз — клавиша ${index + 1}`}
+                  title={`Named in the text ${candidate.hits} times — key ${index + 1}`}
                 >
                   <span className="ill-key">{index + 1}</span> {candidate.name}
                 </button>
               ))}
-              {current.candidates.length ? null : <span className="ill-dim">В тексте рядом никого не нашлось — ищите вручную.</span>}
+              {current.candidates.length ? null : <span className="ill-dim">No nearby character names found. Search manually.</span>}
             </div>
 
             <label className="ill-search">
@@ -207,7 +207,7 @@ export function IllustrationsPage() {
               <input
                 className="ui-input"
                 value={search}
-                placeholder="Другой персонаж"
+                placeholder="Another character"
                 onChange={(event) => setSearch(event.target.value)}
               />
             </label>
@@ -229,11 +229,11 @@ export function IllustrationsPage() {
 
           <div className="ill-actions">
             <Button size="sm" variant="ghost" onClick={() => bind.mutate({ id: current.id, skip: true })} loading={bind.isPending}>
-              Не портрет <span className="ill-key">S</span>
+              Not a portrait <span className="ill-key">S</span>
             </Button>
             {current.status !== "new" ? (
               <Button size="sm" variant="ghost" onClick={() => bind.mutate({ id: current.id, character_id: "" })}>
-                Снять привязку
+                Unlink
               </Button>
             ) : null}
             <span className="ill-nav">
@@ -249,7 +249,7 @@ export function IllustrationsPage() {
               </Button>
             </span>
           </div>
-          <p className="ill-dim">Цифры 1–9 выбирают кандидата, S откладывает, стрелки листают.</p>
+          <p className="ill-dim">Keys 1–9 select a candidate, S defers, and arrow keys browse.</p>
         </div>
       </div>
     </div>

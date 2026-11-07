@@ -22,5 +22,5 @@ def test_the_pass_tells_the_owner_once(monkeypatch):
     exhaust_month(factory)
     script.main()
     script.main()
-    spend_letters = [s for s in sent if "лимита" in s[1]]
+    spend_letters = [s for s in sent if "of the limit" in s[1]]
     assert len(spend_letters) == 1 and spend_letters[0][0] == ["900000001"]

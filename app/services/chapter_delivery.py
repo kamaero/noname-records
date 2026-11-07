@@ -49,7 +49,7 @@ def _chapter_label(chapter: ScriptChapter) -> str:
     return str(chapter.chapter_title or "").strip() or f"Глава {int(chapter.chapter_index or 0)}"
 
 
-def book_role_counts_by_chapter(db, book_id: str) -> dict[str, dict[str, int]]:
+def book_role_counts_by_chapter(db, book_id: str, *, identities=None) -> dict[str, dict[str, int]]:
     """Кто сколько говорит в каждой главе книги — одним проходом.
 
     Поглавно это те же данные, что даёт `chapter_role_counts`, но шестьдесят вызовов —
@@ -62,7 +62,7 @@ def book_role_counts_by_chapter(db, book_id: str) -> dict[str, dict[str, int]]:
     counts: dict[str, dict[str, int]] = {}
     # реплика — абзац, где роль говорит, как в `chapter_role_counts`
     counted: set[tuple[str, str]] = set()
-    for segment_id, _start, _end, speaker, _source in effective_book_attributions(db, book_id):
+    for segment_id, _start, _end, speaker, _source in effective_book_attributions(db, book_id, identities=identities):
         name = str(speaker or "").strip()
         if not name or is_placeholder_name(name):
             continue
@@ -82,6 +82,8 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
     редактора — дикторам эмбиент не показан. Фоновая архивация их не просит; без флага
     поля нулевые.
     """
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
     book = db.get(ScriptBook, str(book_id or "").strip())
     if book is None:
         return None
@@ -91,7 +93,7 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
         .order_by(ScriptChapter.chapter_index.asc())
         .all()
     )
-    counts = book_role_counts_by_chapter(db, book.id)
+    counts = book_role_counts_by_chapter(db, book.id, identities=identities)
     labels = {_chapter_label(chapter): chapter for chapter in chapters}
     recorded: dict[str, set[str]] = {}
     audio_of_chapter: dict[str, list[str]] = {}
@@ -110,11 +112,17 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
     # Порог «дольше суток»: считаем от загрузки, не от текущего момента внутри цикла —
     # иначе тысяча файлов книги проверялась бы по тысяче чуть разных мгновений.
     stale_cutoff = utcnow_naive() - timedelta(days=1)
+    from types import SimpleNamespace
     rows_of_files = db.query(
-        AudioFile.id, AudioFile.chapter, AudioFile.role, AudioFile.verify_state, AudioFile.md5,
+        AudioFile.id, AudioFile.chapter, AudioFile.role, AudioFile.role_ref, AudioFile.role_book_id, AudioFile.book_code, AudioFile.verify_state, AudioFile.md5,
         AudioFile.mirrored_at, AudioFile.mirror_state, AudioFile.uploaded_at,
     ).filter(AudioFile.kind == TAKE).all()
-    for audio_id, label, role, verify_state, md5, mirrored_at, mirror_state, uploaded_at in rows_of_files:
+    for audio_id, label, role, role_ref, role_book_id, book_code, verify_state, md5, mirrored_at, mirror_state, uploaded_at in rows_of_files:
+        if not identities.owns_audio(SimpleNamespace(role_book_id=role_book_id, book_code=book_code)):
+            continue
+        if identities.typed and not identities.known_ref(role_ref):
+            continue
+        role = identities.name(role_ref, role)
         chapter = labels.get(str(label or "").strip())
         if chapter is None:
             continue
@@ -153,7 +161,8 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
                 mirror_broken[chapter.id] = mirror_broken.get(chapter.id, 0) + 1
             if str(mirror_state or "") == MIRROR_MISMATCH or uploaded_at < stale_cutoff:
                 stale[chapter.id] = stale.get(chapter.id, 0) + 1
-    heard = _recognised_by_audio(db, [audio_id for ids in audio_of_chapter.values() for audio_id in ids])
+    chapter_by_audio = {audio_id: cid for cid, ids in audio_of_chapter.items() for audio_id in ids}
+    heard = _recognised_by_audio(db, list(chapter_by_audio), chapter_by_audio=chapter_by_audio)
 
     rows = []
     for chapter in chapters:
@@ -189,6 +198,8 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
             # None — не считали. Ноль означал бы «ничего не произнесено».
             "asr_coverage": (matched / total_lines) if (seen and total_lines) else None,
             "asr_files": len(seen),
+            "asr_language_stale": any(entry["language"] != book.language for entry in seen),
+            "asr_stale_files": sum(entry["language"] != book.language for entry in seen),
             "total_lines": total_lines,
             "matched_lines": matched,
             "missing_lines": missing,
@@ -222,7 +233,7 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
     from app.config import settings
     from app.services.asr_audit import latest_audits
 
-    audits = latest_audits(db, [row["chapter_id"] for row in rows])
+    audits = latest_audits(db, [row["chapter_id"] for row in rows], identities_by_book={book.id: identities})
     for row in rows:
         row["audit"] = audits.get(row["chapter_id"])
         if row["audit"] and not ambient:
@@ -237,6 +248,8 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
             row.update(fields.get(row["chapter_id"], {}))
     return {
         "chapters": rows,
+        "language": book.language,
+        "asr_language_stale": any(row["asr_language_stale"] for row in rows),
         "total_chapters": len(rows),
         "ready_chapters": sum(1 for row in rows if row["ready"]),
         "started_chapters": sum(1 for row in rows if row["recorded_roles"]),
@@ -411,6 +424,8 @@ def _take_row(item: AudioFile) -> dict:
 
 def chapter_recording_status(db, chapter_id: str) -> dict | None:
     """Кто из говорящих ролей главы уже записан. `None` — главы нет."""
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter_id)
     chapter = db.get(ScriptChapter, str(chapter_id or "").strip())
     if chapter is None:
         return None
@@ -426,11 +441,21 @@ def chapter_recording_status(db, chapter_id: str) -> dict | None:
         .order_by(AudioFile.uploaded_at.asc())
         .all()
     )
+    takes = [item for item in takes if identities.owns_audio(item)]
     by_role: dict[str, list[AudioFile]] = {}
     for item in takes:
-        by_role.setdefault(str(item.role or "").strip(), []).append(item)
+        if not identities.owns_audio(item):
+            continue
+        if identities.typed and not identities.known_ref(getattr(item, "role_ref", "")):
+            role_name = "\0orphan:" + str(item.id)
+        else:
+            role_name = identities.name(getattr(item, "role_ref", ""), item.role)
+        by_role.setdefault(role_name, []).append(item)
 
-    heard = _recognised_by_audio(db, [item.id for item in takes])
+    heard = _recognised_by_audio(db, [item.id for item in takes],
+                                 chapter_by_audio={str(item.id): str(chapter.id) for item in takes})
+    book = db.get(ScriptBook, chapter.book_id)
+    language = str(getattr(book, "language", "ru") or "ru")
 
     rows = []
     for role, lines in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0].lower())):
@@ -446,6 +471,7 @@ def chapter_recording_status(db, chapter_id: str) -> dict | None:
             # None, а не ноль: ноль означал бы «ничего не произнесено», а мы не считали.
             # Знаменатель у роли свой: диктор отвечает за свои реплики, а не за главу.
             "asr_coverage": best["coverage"] if best else None,
+            "asr_language_stale": any(heard[item.id]["language"] != language for item in found if item.id in heard),
             "matched_lines": _heard_paragraphs(best, int(lines)) if best else 0,
             "missing_lines": best["missing"] if best else 0,
             "duration_seconds": round(sum(float(item.duration_seconds or 0.0) for item in found), 3),
@@ -473,6 +499,9 @@ def chapter_recording_status(db, chapter_id: str) -> dict | None:
         "total_lines": total_lines,
         "matched_lines": matched_lines,
         "asr_coverage": (matched_lines / total_lines) if (total_lines and any(row["asr_coverage"] is not None for row in rows)) else None,
+        "language": language,
+        "asr_language_stale": any(entry["language"] != language for entry in heard.values()),
+        "asr_stale_files": sum(entry["language"] != language for entry in heard.values()),
         "chapter_index": int(chapter.chapter_index or 0),
         "chapter_title": str(chapter.chapter_title or ""),
         "roles": rows,
@@ -511,7 +540,7 @@ def _heard_paragraphs(entry: dict, paragraphs: int) -> int:
     return max(0, paragraphs - min(int(entry["missing"]), paragraphs))
 
 
-def _recognised_by_audio(db, audio_ids: list[str]) -> dict[str, dict]:
+def _recognised_by_audio(db, audio_ids: list[str], *, chapter_by_audio=None) -> dict[str, dict]:
     """Что распознавание сказало про каждый файл — числами, а не долей.
 
     Доля здесь бесполезна: складывать доли нельзя, а покрытие главы — это найденные
@@ -521,14 +550,21 @@ def _recognised_by_audio(db, audio_ids: list[str]) -> dict[str, dict]:
     if not audio_ids:
         return {}
     out: dict[str, dict] = {}
+    allowed = set(audio_ids)
     for job in db.query(AsrJob).filter(AsrJob.audio_file_id.in_(audio_ids), AsrJob.status == "done").all():
+        if chapter_by_audio is not None and job.chapter_id and str(job.chapter_id) != str(chapter_by_audio.get(str(job.audio_file_id), "")):
+            continue
         try:
             payload = json.loads(job.alignment_json or "{}")
         except ValueError:
             payload = {}
+        if any(line.get("source_audio_file_id") and str(line["source_audio_file_id"]) not in allowed
+               for line in payload.get("lines") or []):
+            continue
         total = int(payload.get("total") or 0)
         missing = len(payload.get("missing") or [])
         out[str(job.audio_file_id)] = {
+            "language": str(job.language or "ru"),
             "matched": max(0, total - missing),
             "total": total,
             "missing": missing,
@@ -542,11 +578,11 @@ def _manifest(book: ScriptBook, status: dict, files: list[AudioFile],
     """Опись главы — первое, что откроет тот, кто распакует архив. Эмбиент — своим разделом:
     к записи он не относится и в роли не входит."""
     lines = [
-        f"Книга: {str(getattr(book, 'display_title', '') or book.title)}",
+        f"Book: {str(getattr(book, 'display_title', '') or book.title)}",
         _chapter_heading(status),
-        f"Ролей: {status['recorded_roles']} из {status['total_roles']}",
+        f"Roles: {status['recorded_roles']} of {status['total_roles']}",
         "",
-        "файл\tроль\tактёр\tреплик\tминут",
+        "file\trole\tactor\tlines\tminutes",
     ]
     by_role = {row["role"]: row for row in status["roles"]}
     for item in files:
@@ -557,9 +593,9 @@ def _manifest(book: ScriptBook, status: dict, files: list[AudioFile],
         )
     missing = [row["role"] for row in status["roles"] if not row["files"]]
     if missing:
-        lines += ["", "НЕ ЗАПИСАНЫ: " + ", ".join(missing)]
+        lines += ["", "NOT RECORDED: " + ", ".join(missing)]
     if ambient:
-        lines += ["", "Эмбиент", "файл\tминут"]
+        lines += ["", "Ambient", "file\tminutes"]
         lines += [f"{item.canonical_filename}\t{float(item.duration_seconds or 0.0) / 60.0:.1f}" for item in ambient]
     return "\n".join(lines) + "\n"
 
@@ -599,6 +635,10 @@ def build_chapter_archive(db, chapter_id: str, target_path: str) -> dict | None:
         .order_by(AudioFile.role.asc(), AudioFile.uploaded_at.asc())
         .all()
     )
+
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book.id)
+    files = [item for item in files if identities.owns_audio(item)]
 
     # Эмбиент — в архив рядом с дублями (сессия зовёт его по имени), но в счёт записи
     # не идёт: `files_written`/`files_missing` — по-прежнему только дубли.
@@ -667,7 +707,7 @@ BREATH_AFTER = 0.4
 CHARS_PER_SECOND = 14.0
 #: дорожки, которые монтажёр заводит руками перед каждой главой. Пустые, но заведённые:
 #: две под музыку, две под звуки и шумы.
-EXTRA_TRACKS = ("Саундтрек 1", "Саундтрек 2", "Интершум 1", "Интершум 2")
+EXTRA_TRACKS = ("Soundtrack 1", "Soundtrack 2", "Environmental 1", "Environmental 2")
 
 #: Цвета дорожек (владелец, 25.10): глаз находит Рассказчика и эмбиент сразу. Только
 #: оттенки палитры Audition — шаг 14,4°, 25 образцов; другие он рисует, но в своём
@@ -682,20 +722,21 @@ NOISE_HUE = 4 * HUE_STEP        # жёлтый
 CHARACTER_HUES = tuple(round(k * HUE_STEP, 1) for k in (0, *range(9, 19), *range(20, 25)))
 
 
-def colour_tracks(tracks: list[SessionTrack]) -> None:
+def colour_tracks(tracks: list[SessionTrack], *, identities=None) -> None:
     """Раскрасить дорожки сессии. Цвет персонажа выводится из имени — Хдыбдяр одного
     цвета во всех главах; совпади он с соседом по главе, берётся следующий свободный.
     Ролей больше, чем цветов (16), — дальше по кругу: лучше повтор, чем серая дорожка."""
+    is_narrator = identities.is_narrator if identities else is_narrator_name
     taken: set[float] = set()
     for track in tracks:
         name = str(track.name or "")
-        if is_narrator_name(name):
+        if is_narrator(name):
             track.hue = NARRATOR_HUE
         elif name in AMBIENT_TRACKS:
             track.hue = AMBIENT_HUE
-        elif name.startswith("Саундтрек"):
+        elif name.startswith("Soundtrack"):
             track.hue = SOUNDTRACK_HUE
-        elif name.startswith("Интершум"):
+        elif name.startswith("Environmental"):
             track.hue = NOISE_HUE
         else:
             # crc32, а не hash(): у hash() строк своя соль в каждом процессе
@@ -772,7 +813,8 @@ def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | 
         # архивацию дублей, как и сбой маркеров ниже.
         logger.exception("эмбиент не лёг в сессию главы %s — сессия соберётся без него", chapter_id)
     tracks += [SessionTrack(name=name) for name in EXTRA_TRACKS]
-    colour_tracks(tracks)
+    from app.services.role_identity import chapter_roles
+    colour_tracks(tracks, identities=chapter_roles(db, chapter_id))
     # Пресеты владельца — из его шаблона (`session_template`); нет шаблона — дорожки голые.
     from app.services import session_template
 
@@ -834,6 +876,8 @@ def _script_layout(db, chapter_id: str, *, relative: bool = False):
     конец разложенного. Одна функция на обоих — чтобы длина сцены у эмбиента и у
     маркера-отрезка в проекте не разошлись.
     """
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter_id)
     status = chapter_recording_status(db, chapter_id)
     if status is None:
         return None
@@ -847,10 +891,17 @@ def _script_layout(db, chapter_id: str, *, relative: bool = False):
         .order_by(AudioFile.uploaded_at.asc())
         .all()
     )
+    audio_files = [item for item in audio_files if identities.owns_audio(item)]
     by_role: dict[str, list[AudioFile]] = {}
     for item in audio_files:
-        by_role.setdefault(str(item.role or "").strip(), []).append(item)
-    heard = _lines_by_audio(db, [item.id for item in audio_files])
+        if not identities.owns_audio(item):
+            continue
+        if identities.typed and not identities.known_ref(getattr(item, "role_ref", "")):
+            role_name = "\0orphan:" + str(item.id)
+        else:
+            role_name = identities.name(getattr(item, "role_ref", ""), item.role)
+        by_role.setdefault(role_name, []).append(item)
+    heard = _lines_by_audio(db, [item.id for item in audio_files], chapter_id=chapter.id)
 
     replicas = chapter_replicas(db, chapter_id)
     starts: dict[str, float] = {}
@@ -965,7 +1016,7 @@ def _marker_guid(marker_id: str) -> str:
     return f"xmp:id:{uuid5(NAMESPACE_URL, f'noname-sound:{marker_id}')}"
 
 
-_SHIFTED_NOTE = "абзац не записан, маркер сдвинут"
+_SHIFTED_NOTE = "paragraph not recorded; marker shifted"
 
 
 def _resolve_marker_start(timeline: list[tuple[int, float]], ordinal: int) -> tuple[float, bool] | None:
@@ -981,10 +1032,10 @@ def _scene_comment(payload: dict, place) -> str:
     bits = []
     ambience = str(payload.get("ambience") or "").strip()
     if ambience:
-        bits.append(f"фон: {ambience}")
+        bits.append(f"background: {ambience}")
     mood = str(payload.get("mood") or "").strip()
     if mood:
-        bits.append(f"настроение: {mood}")
+        bits.append(f"mood: {mood}")
     queries = list((place.ambience_queries or []) if place is not None else []) + list(payload.get("music_queries") or [])
     bits += [f"🔎 {q}" for q in queries if str(q or "").strip()]
     return " · ".join(bits)
@@ -1000,7 +1051,7 @@ def _sound_comment(quote: str, payload: dict) -> str:
 
 
 def _scene_name(number: int, place_name: str, payload: dict) -> str:
-    parts = [f"СЦЕНА {number}", place_name, str(payload.get("time_of_day") or "").strip(),
+    parts = [f"SCENE {number}", place_name, str(payload.get("time_of_day") or "").strip(),
             str(payload.get("weather") or "").strip()]
     return " · ".join(part for part in parts if part)
 
@@ -1066,7 +1117,7 @@ def session_markers(db, chapter_id: str, starts: dict[str, float], end: float) -
                 skipped += 1
                 continue
             place = places.get(row["place_id"]) if row.get("place_id") else None
-            place_name = place.name if place is not None else "без места"
+            place_name = place.name if place is not None else "no location"
             name = _scene_name(scene_number[row["id"]], place_name, payload)
             comment = _scene_comment(payload, place)
         elif row["kind"] == "sound":
@@ -1149,7 +1200,7 @@ def _with_breath(take: dict, speech: list[tuple[float, float]], duration: float)
 def _clip_name(text: str, number: int, total: int) -> str:
     """Имя клипа. Единственный подход не нумеруется: «дубль 1/1» — шум."""
     head = str(text or "")[:80]
-    return head if total <= 1 else f"{head} · дубль {number}/{total}"
+    return head if total <= 1 else f"{head} · take {number}/{total}"
 
 
 def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=None,
@@ -1254,12 +1305,18 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
     return placed
 
 
-def _lines_by_audio(db, audio_ids: list[str]) -> dict[str, list[dict]]:
+def _lines_by_audio(db, audio_ids: list[str], *, chapter_id: str = "") -> dict[str, list[dict]]:
     """Выровненные реплики по каждому файлу — то, из чего режутся клипы."""
     if not audio_ids:
         return {}
-    return _lines_from_jobs(db.query(AsrJob).filter(
-        AsrJob.audio_file_id.in_(audio_ids), AsrJob.status == "done").all())
+    jobs = db.query(AsrJob).filter(AsrJob.audio_file_id.in_(audio_ids), AsrJob.status == "done").all()
+    if chapter_id:
+        jobs = [job for job in jobs if not job.chapter_id or str(job.chapter_id) == str(chapter_id)]
+    lines = _lines_from_jobs(jobs)
+    allowed = set(audio_ids)
+    return {aid: [dict(line, matched=False, takes=[], start=None, end=None)
+                  if line.get("source_audio_file_id") and str(line["source_audio_file_id"]) not in allowed else line
+                  for line in rows] for aid, rows in lines.items()}
 
 
 def _lines_from_jobs(jobs) -> dict[str, list[dict]]:
@@ -1303,13 +1360,18 @@ def session_fingerprint(xml: str) -> str:
     return hashlib.sha256(_COMPONENT_GUID_RE.sub("", xml).encode("utf-8")).hexdigest()
 
 
-def _backup_key(key: str, archived_at) -> str:
+def _backup_key(key: str, archived_at, *, studio_timezone: str = "") -> str:
     """Имя для прежней сессии: «… до ГГГГ-ММ-ДД ЧЧ-ММ.sesx», занятое — с номером.
 
-    Время в имени — уфимское (`SERVER_TIMEZONE`), а не UTC базы: имя читает монтажёр, и
-    «до 10-42» при правке в 15:42 по его часам отправило бы искать не ту версию.
+    Для старых установок сохраняем уфимское время, выбранный календарь действует
+    только на имена новых копий: существующие storage keys нельзя переименовывать.
     """
-    moment = (archived_at or utcnow_naive()).replace(tzinfo=timezone.utc).astimezone(SERVER_TIMEZONE)
+    moment = (archived_at or utcnow_naive()).replace(tzinfo=timezone.utc)
+    if studio_timezone:
+        from app.services.studio_calendar import local_time
+        moment = local_time(moment, studio_timezone)
+    else:
+        moment = moment.astimezone(SERVER_TIMEZONE)
     stamp = moment.strftime("%Y-%m-%d %H-%M")
     base = key[: -len(".sesx")] if key.endswith(".sesx") else key
     candidate = f"{base} до {stamp}.sesx"
@@ -1415,7 +1477,8 @@ def archive_chapter_session(db, chapter_id: str, *, book_status: dict | None = N
     # владельца 2026-09-15). Лишняя копия дешевле затёртого монтажа.
     replaced = ""
     if on_nas:
-        replaced = _backup_key(key, chapter.session_archived_at)
+        from app.services.studio_calendar import studio_timezone
+        replaced = _backup_key(key, chapter.session_archived_at, studio_timezone=studio_timezone(db))
         audio_storage.move_file(key, replaced, location="nas")
     audio_storage.write_file(key, data, location="nas")
     chapter.session_archived_at = utcnow_naive()
@@ -1518,7 +1581,7 @@ def _tell_owner_rebuilt(db, chapter, replaced_key: str) -> None:
     """Владельцу — одна строка: глава пересобрана, прежняя цела. Сбой письма архив не отменяет."""
     name = replaced_key.rsplit("/", 1)[-1]
     try:
-        send_telegram_message(db, f"🎬 Глава {int(chapter.chapter_index or 0)}: сессия пересобрана. "
-                                  f"Прежняя сохранена как «{name}».")
+        send_telegram_message(db, f"🎬 Chapter {int(chapter.chapter_index or 0)}: session rebuilt. "
+                                  f"The previous version was saved as «{name}».")
     except Exception:
         logger.exception("Не удалось сообщить о пересборке главы %s", chapter.id)

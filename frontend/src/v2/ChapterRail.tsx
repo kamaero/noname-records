@@ -57,12 +57,12 @@ export function ChapterRail({ bookTitle, chapters, currentId, open, mobileOpen, 
           className={itemClass}
           onClick={onClose}
           aria-current={chapter.id === currentId ? "page" : undefined}
-          title={chapter.has_v2 ? undefined : "Глава ещё не размечена в v2"}
+          title={chapter.has_v2 ? undefined : "Chapter not annotated yet"}
         >
           <span className="v2r-rail-index num">{chapter.index}</span>
-          <span className="v2r-rail-title">{chapter.title || "Без названия"}</span>
+          <span className="v2r-rail-title">{chapter.title || "Untitled"}</span>
           {chapter.approved ? (
-            <span className="v2r-rail-approved" title="Проверена автором" aria-label="Проверена">
+            <span className="v2r-rail-approved" title="Reviewed by author" aria-label="Reviewed">
               ✓
             </span>
           ) : null}
@@ -74,18 +74,18 @@ export function ChapterRail({ bookTitle, chapters, currentId, open, mobileOpen, 
   return (
     <>
       {mobileOpen ? <div className="v2r-backdrop" onClick={onClose} aria-hidden="true" /> : null}
-      <aside className={className} aria-label="Главы книги">
+      <aside className={className} aria-label="Book chapters">
         <div className="v2r-rail-head">
           <div className="v2r-rail-book">
-            <strong>{bookTitle || "Книга"}</strong>
+            <strong>{bookTitle || "Book"}</strong>
             <span className="faint num">
-              {marked} / {chapters.length} глав
-              {approved ? ` · проверено ${approved}` : ""}
+              {marked} / {chapters.length} chapters
+              {approved ? ` · reviewed ${approved}` : ""}
             </span>
           </div>
           {mobileOpen ? (
             // only the mobile sheet closes; on wide screens the toolbar's «Главы» toggles the rail
-            <button type="button" className="btn btn-sm btn-ghost v2r-btn v2r-rail-close" onClick={onClose} aria-label="Закрыть список глав">
+            <button type="button" className="btn btn-sm btn-ghost v2r-btn v2r-rail-close" onClick={onClose} aria-label="Close chapter list">
               ✕
             </button>
           ) : null}
@@ -105,7 +105,7 @@ export function ChapterRail({ bookTitle, chapters, currentId, open, mobileOpen, 
               <span className="v2r-rail-chevron" aria-hidden="true">
                 {releasedOpen ? "▾" : "▸"}
               </span>
-              Сданные ({released.length})
+              Delivered ({released.length})
             </button>
             {releasedOpen ? <ol className="v2r-rail-list">{released.map(renderItem)}</ol> : null}
           </div>

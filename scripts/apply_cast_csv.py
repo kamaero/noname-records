@@ -17,7 +17,7 @@ production ground truth, и для второй его не переназнач
 
     python scripts/apply_cast_csv.py --csv "Каст СВ - Лист1.csv" --book-id <id>
     python scripts/apply_cast_csv.py --csv … --book-id <id> --apply
-    python scripts/apply_cast_csv.py --csv … --author-slug primerodin --apply   # в ростер автора
+    python scripts/apply_cast_csv.py --csv … --author-slug primerov --apply   # в ростер автора
 """
 from __future__ import annotations
 

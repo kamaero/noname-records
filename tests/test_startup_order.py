@@ -32,7 +32,7 @@ def test_the_app_starts_on_a_database_that_still_needs_migrating(tmp_path):
     env = dict(os.environ)
     env["DATABASE_URL"] = f"sqlite:///{tmp_path / 'fresh.db'}"
     # a non-empty whitelist is what makes startup read the table it may not have yet
-    env["TELEGRAM_AUTH_WHITELIST"] = "900000100|Max Ray;900000106|Александр Примеродин"
+    env["TELEGRAM_AUTH_WHITELIST"] = "900000100|Max Ray;900000106|Алексей Примеров"
 
     done = subprocess.run(
         [sys.executable, "-c", BOOT],

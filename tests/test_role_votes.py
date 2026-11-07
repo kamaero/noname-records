@@ -19,7 +19,7 @@ from app.services.role_votes import cast_role_vote, role_votes, vote_weight
 from app.time_utils import utcnow_naive
 
 OWNER = ("u-kam", "Max Ray", 1)
-AUTHOR = ("u-rud", "Александр Примеродин", 2)
+AUTHOR = ("u-rud", "Алексей Примеров", 2)
 AGENT = ("u-agata", "Агата Ковалёва", 0)
 
 
@@ -95,7 +95,7 @@ class TestWhenTheTwoDisagree:
 
         assert result["actor_name"] == "Сергей Зотов"
         assert result["changed"] is False
-        assert result["overridden_by"] == "Александр Примеродин"
+        assert result["overridden_by"] == "Алексей Примеров"
 
     def test_the_owners_voice_is_not_lost_only_outweighed(self, db, role):
         """Он останется в списке и решит дело, если автор передумает."""
@@ -151,7 +151,7 @@ class TestWhatTheScreenShows:
 
         votes = {v["voter_name"]: (v["actor_name"], v["weight"]) for v in role_votes(db, role.id)}
 
-        assert votes == {"Max Ray": ("Роман Сомов", 1), "Александр Примеродин": ("Сергей Зотов", 2)}
+        assert votes == {"Max Ray": ("Роман Сомов", 1), "Алексей Примеров": ("Сергей Зотов", 2)}
 
 
 class TestACastThatPredatesTheVotes:

@@ -24,8 +24,8 @@ def db():
 
 
 def _approve(db, character, actor):
-    cast_role_vote(db, character=character, voter_uid="u", voter_name="Примеродин", weight=2, actor_name=actor)
-    casting.propagate_approval(db, character, voter_uid="u", voter_name="Примеродин", weight=2)
+    cast_role_vote(db, character=character, voter_uid="u", voter_name="Примеров", weight=2, actor_name=actor)
+    casting.propagate_approval(db, character, voter_uid="u", voter_name="Примеров", weight=2)
     db.commit()
 
 

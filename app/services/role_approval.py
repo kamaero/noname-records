@@ -22,6 +22,8 @@
 """
 from __future__ import annotations
 
+from app.services.studio_calendar import studio_timezone
+
 import logging
 
 from app.config import settings
@@ -37,9 +39,9 @@ from app.v2.cast_ops import parse_actor_name
 def _terms_lines(due_text: str, cost_rub: int) -> list[str]:
     lines = []
     if due_text:
-        lines.append(f"Срок: до {due_text}")
+        lines.append(f"Deadline: {due_text}")
     if int(cost_rub or 0) > 0:
-        lines.append(f"Стоимость роли: {int(cost_rub):,} ₽".replace(",", " "))
+        lines.append(f"Role fee: {int(cost_rub):,} ₽".replace(",", " "))
     return lines
 
 
@@ -48,8 +50,8 @@ def _help_lines() -> list[str]:
     base = (settings.app_base_url or "").strip().rstrip("/")
     lines = [""]
     if base:  # адрес не настроен — ссылок не выдумываем
-        lines += [f"Как записывать и загружать — {base}/app/help", f"Первые шаги — {base}/app/?onboarding=1"]
-    return lines + [f"Нужно больше времени — {studio.write_to()}."]
+        lines += [f"Recording and uploading: {base}/app/help", f"First steps: {base}/app/?onboarding=1"]
+    return lines + [f"Need more time? {studio.write_to()}."]
 
 
 def naming_block(*, book_title: str, book_code: str, chapter_index: int, chapter_label: str, role: str,
@@ -71,15 +73,15 @@ def naming_block(*, book_title: str, book_code: str, chapter_index: int, chapter
     actor_token = latin_word(actor_name) or "Unknown"
     example = f"{book_token_}_{chapter_token_}_{role_token}_{actor_token}.{file_extension('x.wav')}"
     chapter_number = int(chapter_token_[2:])
-    first = ("Пробу назовите так же, а роль, когда вас утвердят, записывайте по главам: один файл — одна глава."
-             if audition else "Записывайте роль по главам: один файл — одна глава.")
+    first = ("Use the same naming format for auditions. After approval, record the role chapter by chapter: one file per chapter."
+             if audition else "Record the role chapter by chapter: one file per chapter.")
     return [
         first,
-        f"Как называть файлы: {example}",
-        f"{book_token_} — книга («{str(book_title or '').strip()}»)",
-        f"{chapter_token_} — глава {chapter_number} (Chapter)",
-        f"{role_token} — роль латиницей",
-        f"{actor_token} — фамилия и имя диктора латиницей, без пробела",
+        f"Filename example: {example}",
+        f"{book_token_} — book («{str(book_title or '').strip()}»)",
+        f"{chapter_token_} — chapter {chapter_number} (Chapter)",
+        f"{role_token} — role in Latin letters",
+        f"{actor_token} — actor surname and given name in Latin letters, without spaces",
     ]
 
 
@@ -95,7 +97,7 @@ def _naming_for(db, *, book_id: str, book_title: str, role: str, actor_name: str
     chapters = role_chapters(db, character) if character is not None else {}
     # Первая глава, из названия которой выходит номер: «Пролог» или «Эпилог» токена главы не
     # дают, а пример в письме должен выглядеть как настоящее имя файла.
-    index, label = 1, "Глава 1"
+    index, label = 1, 'Chapter 1'
     for number in sorted(chapters):
         if chapter_token(chapters[number]):
             index, label = number, chapters[number]
@@ -112,17 +114,17 @@ def approval_notice(*, role: str, book_title: str, link: str = "", also_in=(), d
                     cost_rub: int = 0, naming=()) -> str:
     """Что диктор прочтёт в телеграме."""
     lines = [
-        f"🎬 Вы утверждены на роль «{str(role or '').strip()}»!",
-        f"Книга: {str(book_title or '').strip()}",
+        f"🎬 You are approved for the role «{str(role or '').strip()}»!",
+        f"Book: {str(book_title or '').strip()}",
     ]
     others = _other_books(also_in)
     if others:
         # Роль персонажа цикла — одна на все книги (профиль автора): одно письмо, не пачка.
-        lines.append(f"Также в книгах: {others}")
+        lines.append(f"Also in: {others}")
     lines += _terms_lines(due_text, cost_rub)
-    lines += list(naming) or ["Записывайте всю роль по главам."]
+    lines += list(naming) or ["Record the entire role chapter by chapter."]
     if str(link or "").strip():
-        lines.append(f"Все реплики роли: {link.strip()}")
+        lines.append(f"All lines for this role: {link.strip()}")
     return "\n".join(lines + _help_lines())
 
 
@@ -134,18 +136,18 @@ def audition_notice(*, role: str, book_title: str, link: str = "", due_text: str
     пробу» — разные новости, и диктор должен сразу понять, какая из двух.
     """
     lines = [
-        f"🎙 {studio.name()} — вас зовут на пробу",
-        f"Роль: «{str(role or '').strip()}»",
-        f"Книга: {str(book_title or '').strip()}",
+        f"🎙 {studio.name()} — you are invited to audition",
+        f"Role: «{str(role or '').strip()}»",
+        f"Book: {str(book_title or '').strip()}",
     ]
     lines += _terms_lines(due_text, cost_rub)
     # Пробу принимает и бот, и сайт. Предел зависит от выбранного узла Bot API.
-    lines.append("Запишите пробу и пришлите её сюда, в бот, — аудиофайлом или голосовым "
-                 f"(до {size_text(max_download_bytes())}). Можно и на "
-                 "сайте: раздел «Загрузка», выберите книгу и роль. Пробу послушает автор.")
+    lines.append("Record an audition and send it here as an audio file or voice message "
+                 f"(up to {size_text(max_download_bytes())}). You can also upload it on the "
+                 "website: select the book and role in Upload. The author will review it.")
     lines += list(naming)
     if str(link or "").strip():
-        lines.append(f"Все реплики роли: {link.strip()}")
+        lines.append(f"All lines for this role: {link.strip()}")
     return "\n".join(lines + _help_lines())
 
 
@@ -239,8 +241,8 @@ def agent_chat_ids(db) -> list[str]:
     return found
 
 
-AUDITION_RELAY_HEADER = f"📣 {studio.name()} — актёра надо позвать на пробу самим"
-APPROVAL_RELAY_HEADER = f"📣 {studio.name()} — актёра надо предупредить самим"
+AUDITION_RELAY_HEADER = f"📣 {studio.name()} — please invite the actor to audition directly"
+APPROVAL_RELAY_HEADER = f"📣 {studio.name()} — please notify the actor directly"
 
 
 def _other_books(also_in) -> str:
@@ -256,17 +258,17 @@ def relay_notice(*, role: str, book_title: str, actor_name: str, link: str = "",
     """
     lines = [
         header,
-        f"Роль: «{str(role or '').strip()}»",
-        f"Книга: {str(book_title or '').strip()}",
+        f"Role: «{str(role or '').strip()}»",
+        f"Book: {str(book_title or '').strip()}",
     ]
     others = _other_books(also_in)
     if others:
-        lines.append(f"Также в книгах: {others}")
+        lines.append(f"Also in: {others}")
     lines += [
-        f"Актёр: {str(actor_name or '').strip()} — учётки в системе нет, письмо ему не ушло.",
+        f"Actor: {str(actor_name or '').strip()} — no account was found; the message was not sent.",
     ]
     if str(link or "").strip():
-        lines.append(f"Все реплики роли: {link.strip()}")
+        lines.append(f"All lines for this role: {link.strip()}")
     return "\n".join(lines)
 
 
@@ -278,12 +280,12 @@ def ambiguous_relay_notice(*, role: str, book_title: str, actor_name: str, candi
     """
     lines = [
         header,
-        f"Роль: «{str(role or '').strip()}»",
-        f"Книга: {str(book_title or '').strip()}",
-        f"Актёр: {str(actor_name or '').strip()} — имя неоднозначное, подходят: {', '.join(candidates)}. Письмо никому не ушло.",
+        f"Role: «{str(role or '').strip()}»",
+        f"Book: {str(book_title or '').strip()}",
+        f"Actor: {str(actor_name or '').strip()} — ambiguous name; matches: {', '.join(candidates)}. No message was sent.",
     ]
     if str(link or "").strip():
-        lines.append(f"Все реплики роли: {link.strip()}")
+        lines.append(f"All lines for this role: {link.strip()}")
     return "\n".join(lines)
 
 
@@ -331,13 +333,15 @@ def _deliver(db, *, chat_id: str, actor_name: str, notice_text: str, relay_text:
 
 def _terms(db, *, book_id: str, role: str, kind: str) -> tuple[str, int]:
     """Срок тем же правилом, что у сверки сроков, и стоимость роли из сметы каста."""
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
     from app.models import Character, CharacterBudgetSnapshot
     from app.services.role_deadlines import due_for, format_due
     from app.services.shared_runtime import is_narrator_name
 
-    if is_narrator_name(str(role or "")):
+    if identities.is_narrator(str(role or "")):
         return "", 0  # рассказчик — актёр книги, без срока (спека); смета у него своя
-    due_text = format_due(due_for(db, kind, now=utcnow_naive()), kind=kind)
+    due_text = format_due(due_for(db, kind, now=utcnow_naive()), kind=kind, timezone=studio_timezone(db))
     character = db.query(Character).filter(Character.book_id == str(book_id or ""),
                                            Character.name == str(role or "")).first()
     cost = 0

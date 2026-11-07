@@ -69,8 +69,8 @@ class ParsedBook:
     text: str
     source_format: str
     author: str = ""  # from fb2 metadata when available; used for author auto-detect
-    #: автор, узнанный в имени файла («Примеродины») — им подписывают книгу на витрине,
-    #: тогда как `author` из метаданных fb2 («Александр Примеродин») ищет канон автора
+    #: автор, узнанный в имени файла («Примеровы») — им подписывают книгу на витрине,
+    #: тогда как `author` из метаданных fb2 («Алексей Примеров») ищет канон автора
     filename_author: str = ""
 
 
@@ -110,17 +110,18 @@ def extract_book_text(filename: str, payload: bytes) -> ParsedBook:
     if lower.endswith(".epub"):
         return ParsedBook(title=fname_title, text=_extract_epub_text(payload), source_format="epub",
                           filename_author=fname_author)
-    raise ValueError("Поддерживаются только txt, docx, fb2, epub")
+    raise ValueError("Supported formats: txt, docx, fb2, epub")
 
 
-def split_into_chapters(text: str) -> list[tuple[str, str]]:
+def split_into_chapters(text: str, *, language: str = "ru") -> list[tuple[str, str]]:
     full = text or ""
+    chapter_word = "Chapter" if language == "en" else "Глава"
     max_chapter_chars = max(45000, int(getattr(settings, "max_chapter_chars", DEFAULT_MAX_CHAPTER_CHARS) or DEFAULT_MAX_CHAPTER_CHARS))
     if not full.strip():
-        return [("Глава 1", "")]
+        return [(f"{chapter_word} 1", "")]
     lines = _build_lines(full)
     toc = _extract_toc(lines)
-    candidates = _collect_chapter_candidates(lines, toc_end=toc.get("end", -1))
+    candidates = _collect_chapter_candidates(lines, toc_end=toc.get("end", -1), language=language)
     selected = _select_candidates(candidates, toc_entries=toc.get("entries", []), text_len=len(full))
 
     if len(selected) < 2:
@@ -129,7 +130,7 @@ def split_into_chapters(text: str) -> list[tuple[str, str]]:
         selected = [ChapterCandidate(start=m.start(), title=(m.group(0) or "").strip(), score=1.0, kind="legacy") for m in chapter_header.finditer(full)]
 
     if not selected:
-        return _explode_large_chapters([("Глава 1", full.strip())], max_chars=max_chapter_chars)
+        return _explode_large_chapters([(f"{chapter_word} 1", full.strip())], max_chars=max_chapter_chars, language=language)
 
     selected = sorted(selected, key=lambda x: x.start)
     chunks: list[tuple[str, str]] = []
@@ -138,16 +139,16 @@ def split_into_chapters(text: str) -> list[tuple[str, str]]:
     first_start = selected[0].start
     preface = full[:first_start].strip()
     if preface and len(preface) > 220:
-        chunks.append(("Вступление", preface))
+        chunks.append(("Introduction" if language == "en" else "Вступление", preface))
 
     starts = [c.start for c in selected]
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(full)
         body = full[start:end].strip()
-        title = (selected[idx].title or f"Глава {idx + 1}").strip()
+        title = (selected[idx].title or f"{chapter_word} {idx + 1}").strip()
         if body:
             chunks.append((title, body))
-    return _explode_large_chapters(chunks, max_chars=max_chapter_chars)
+    return _explode_large_chapters(chunks, max_chars=max_chapter_chars, language=language)
 
 
 def _build_lines(text: str) -> list[ChapterLine]:
@@ -213,7 +214,7 @@ def _extract_toc(lines: list[ChapterLine]) -> dict[str, Any]:
     return {"entries": entries, "end": end_pos}
 
 
-def _score_heading_line(value: str, prev_blank: bool, next_blank: bool) -> tuple[float, str, str] | None:
+def _score_heading_line(value: str, prev_blank: bool, next_blank: bool, *, language: str = "ru") -> tuple[float, str, str] | None:
     raw = value.strip()
     if not raw or len(raw) > 150:
         return None
@@ -234,11 +235,11 @@ def _score_heading_line(value: str, prev_blank: bool, next_blank: bool) -> tuple
     elif _RE_HEADING_ARABIC_ONLY.match(raw):
         score = 0.82
         kind = "arabic_only"
-        title = f"Глава {_RE_HEADING_DIGITS_ONLY.sub('', raw)}"
+        title = f"{'Chapter' if language == 'en' else 'Глава'} {_RE_HEADING_DIGITS_ONLY.sub('', raw)}"
     elif _RE_HEADING_ROMAN_ONLY.match(raw):
         score = 0.82
         kind = "roman_only"
-        title = f"Глава {raw}"
+        title = f"{'Chapter' if language == 'en' else 'Глава'} {raw}"
     else:
         return None
 
@@ -251,14 +252,14 @@ def _score_heading_line(value: str, prev_blank: bool, next_blank: bool) -> tuple
     return max(0.0, min(1.2, score)), kind, title
 
 
-def _collect_chapter_candidates(lines: list[ChapterLine], toc_end: int) -> list[ChapterCandidate]:
+def _collect_chapter_candidates(lines: list[ChapterLine], toc_end: int, *, language: str = "ru") -> list[ChapterCandidate]:
     out: list[ChapterCandidate] = []
     for i, line in enumerate(lines):
         if line.start <= toc_end:
             continue
         prev_blank = i > 0 and not lines[i - 1].text.strip()
         next_blank = i + 1 < len(lines) and not lines[i + 1].text.strip()
-        scored = _score_heading_line(line.text, prev_blank, next_blank)
+        scored = _score_heading_line(line.text, prev_blank, next_blank, language=language)
         if not scored:
             continue
         score, kind, title = scored
@@ -350,6 +351,7 @@ def enqueue_book(
     created_by_name: str = "",
     title: str = "",
     author: str = "",
+    language: str = "ru",
 ) -> ScriptBook:
     """Parse the upload, persist the book and its chapters, and park it as `uploaded`.
 
@@ -360,8 +362,10 @@ def enqueue_book(
     имени файла. Книга показывается как «Автор - "Название"», но в `title` лежит
     только название: из него выводится код книги для имён файлов актёров.
     """
+    if language not in ("ru", "en"):
+        raise ValueError("unsupported_book_language")
     parsed = extract_book_text(filename, payload)
-    chapters = split_into_chapters(parsed.text)
+    chapters = split_into_chapters(parsed.text, language=language)
     total_chars, author_sheets_x1000, has_chapters = calc_book_stats(parsed.text, len(chapters))
 
     book_title = (title or "").strip() or parsed.title
@@ -372,6 +376,8 @@ def enqueue_book(
         display_title=book_title_service.compose_display_title(book_author, book_title),
         source_filename=filename,
         source_format=parsed.source_format,
+        language=language,
+        role_identity_mode="typed_v1" if language == "en" else "legacy",
         total_chars=total_chars,
         author_sheets_x1000=author_sheets_x1000,
         chapter_count=len(chapters),
@@ -396,7 +402,7 @@ def enqueue_book(
             ScriptLog(
                 book_id=book.id,
                 level="info",
-                message="Автор определён автоматически — подгружены канон и каст автора (имена, алиасы, актёры, цвета).",
+                message="Author detected automatically; the author canon and cast were loaded (names, aliases, actors and colours).",
             )
         )
     _persist_book_source_snapshot(book.id, filename, payload, parsed.text)
@@ -406,7 +412,7 @@ def enqueue_book(
         ScriptLog(
             book_id=book.id,
             level="info",
-            message=f"Книга загружена: {filename}. Глав: {len(chapters)}. Символов: {total_chars}. Ждёт запуска пайплайна v2.",
+            message=f"Book uploaded: {filename}. Chapters: {len(chapters)}. Characters: {total_chars}. Ready to start book processing.",
         )
     )
     db.commit()

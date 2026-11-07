@@ -79,7 +79,7 @@ class TestAboutEndpoint:
         monkeypatch.setattr(api, "SessionLocal", SessionLocal)
         monkeypatch.setattr(api, "_is_authenticated", lambda request: True)
         monkeypatch.setattr(api, "_can_edit", lambda request: can_edit)
-        monkeypatch.setattr(api, "session_payload", lambda request: {"uid": "u1", "display_name": "Примеродин"})
+        monkeypatch.setattr(api, "session_payload", lambda request: {"uid": "u1", "display_name": "Примеров"})
         return api
 
     def test_the_author_writes_the_note_and_it_lands_on_the_role(self, db, monkeypatch):
@@ -130,7 +130,7 @@ class TestEditingWhoTheCharacterIs:
         monkeypatch.setattr(api, "SessionLocal", sessionmaker(bind=db.get_bind(), autocommit=False, autoflush=False))
         monkeypatch.setattr(api, "_is_authenticated", lambda request: True)
         monkeypatch.setattr(api, "_can_edit", lambda request: can_edit)
-        monkeypatch.setattr(api, "session_payload", lambda request: {"uid": "u1", "display_name": "Примеродин"})
+        monkeypatch.setattr(api, "session_payload", lambda request: {"uid": "u1", "display_name": "Примеров"})
         return api
 
     def _send(self, api, body: dict, character_id: str = "c1"):

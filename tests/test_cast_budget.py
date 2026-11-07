@@ -26,3 +26,23 @@ def test_calc_character_total_prefers_fixed_budget_for_narrator_like_rows() -> N
     total = calc_character_total(lines_count=0, approx_seconds=0, character=character, snapshot=None)
 
     assert total == 4200
+
+
+def test_generated_role_description_uses_the_requested_book_language():
+    from app.services.cast_budget import promote_role_into_cast
+
+    for language, description in [("en", "chapter character"), ("ru", "персонаж главы")]:
+        content, changed = promote_role_into_cast("Source book text.", "Aster", language=language)
+        assert changed and f"[Aster] :: {description}" in content
+        assert content.endswith("Source book text.")
+    default, _ = promote_role_into_cast("", "Aster")
+    assert "персонаж главы" in default
+
+
+def test_role_defaults_preserve_existing_notes_and_explicit_source_descriptions():
+    from app.services.cast_budget import promote_role_into_cast
+
+    source = "[CAST]\n[Aster] :: Пользовательское описание\n\nSource text."
+    assert promote_role_into_cast(source, "Aster", language="en") == (source, False)
+    created, changed = promote_role_into_cast("", "Aster", "Точное описание автора", language="en")
+    assert changed and "Точное описание автора" in created

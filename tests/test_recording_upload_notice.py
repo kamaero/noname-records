@@ -32,7 +32,7 @@ def test_a_login_is_still_shown_when_there_is_no_name():
 def test_the_chapter_and_the_role_are_the_news():
     text = upload_notice("Сергей Иванович", [_file("12", "Гамук")])
 
-    assert "глава 12" in text
+    assert "chapter 12" in text
     assert "Гамук" in text
 
 
@@ -40,8 +40,8 @@ def test_one_file_and_many_read_differently():
     one = upload_notice("Сергей Иванович", [_file("12", "Гамук")])
     many = upload_notice("Сергей Иванович", [_file("12", "Гамук"), _file("12", "Гамук")])
 
-    assert "Файлов" not in one, "про один файл незачем писать «Файлов: 1»"
-    assert "Файлов: 2" in many
+    assert "Files" not in one, "про один файл незачем писать «Files: 1»"
+    assert "Files: 2" in many
 
 
 def test_takes_from_several_places_are_listed_once_each():
@@ -50,7 +50,7 @@ def test_takes_from_several_places_are_listed_once_each():
     ])
 
     assert text.count("Гамук") == 1
-    assert "глава 13 · Дгарнин" in text
+    assert "chapter 13 · Дгарнин" in text
 
 
 def test_a_long_batch_names_a_few_places_and_counts_the_rest():
@@ -58,8 +58,8 @@ def test_a_long_batch_names_a_few_places_and_counts_the_rest():
 
     text = upload_notice("Сергей Иванович", files)
 
-    assert "Файлов: 6" in text
-    assert "и ещё" in text
+    assert "Files: 6" in text
+    assert "and" in text
 
 
 def test_an_upload_with_nothing_in_it_still_says_who():
@@ -76,12 +76,12 @@ def test_an_audition_is_announced_as_one_not_as_takes():
     """Пробу владелец слушает и решает; дубль утверждённой роли — просто работа."""
     text = upload_notice("София Ершова", [_audition("Лирей")])
 
-    assert "Проб" in text
-    assert "Дубли" not in text
+    assert "auditions" in text
+    assert "takes" not in text
 
 
 def test_an_audition_names_the_role_and_no_chapter():
     text = upload_notice("София Ершова", [_audition("Лирей")])
 
     assert "Лирей" in text
-    assert "глава" not in text
+    assert "chapter" not in text

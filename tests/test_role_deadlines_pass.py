@@ -1,4 +1,4 @@
-"""Проход по срокам: сданное закрывается, рекаст, напоминания по разу, утренняя сводка."""
+"""Проход по срокам: сданное закрывается, recast, напоминания по разу, утренняя сводка."""
 from datetime import datetime, timedelta
 
 import pytest
@@ -79,7 +79,7 @@ def test_a_recast_letter_goes_once(db):
     row.closed_at, row.close_reason = NOW - timedelta(hours=1), "replaced"
     db.commit()
     sent, _ = _run(db)
-    assert [chat for chat, _ in sent] == ["42"] and "рекаст" in sent[0][1] and "Ныкфо" in sent[0][1]
+    assert [chat for chat, _ in sent] == ["42"] and "recast" in sent[0][1] and "Ныкфо" in sent[0][1]
     again, _ = _run(db)
     assert again == []
 
@@ -87,10 +87,10 @@ def test_a_recast_letter_goes_once(db):
 def test_reminders_go_once_before_and_once_after(db):
     _deadline(db, kind="audition", due=NOW + timedelta(hours=20))
     sent, _ = _run(db)
-    assert len(sent) == 1 and "Напоминаем" in sent[0][1]
+    assert len(sent) == 1 and "Reminder:" in sent[0][1]
     assert _run(db)[0] == []
     late, _ = _run(db, now=NOW + timedelta(hours=21))
-    assert len(late) == 1 and "Срок" in late[0][1] and "вышел" in late[0][1]
+    assert len(late) == 1 and "Deadline:" in late[0][1] and "overdue" in late[0][1]
     assert _run(db, now=NOW + timedelta(hours=30))[0] == []
 
 
@@ -98,7 +98,7 @@ def test_the_role_reminder_tells_the_progress(db):
     _deadline(db, due=NOW + timedelta(hours=10))
     _file(db, "Глава 1")
     sent, _ = _run(db)
-    assert "Сдано 1 из 2 глав" in sent[0][1]
+    assert "Completed 1 of 2 chapters" in sent[0][1]
 
 
 def test_the_owner_digest_goes_at_ten_moscow_once_and_never_empty(db):
@@ -107,7 +107,7 @@ def test_the_owner_digest_goes_at_ten_moscow_once_and_never_empty(db):
     _deadline(db, due=datetime(2026, 10, 1, 20, 0, 0), created=datetime(2026, 9, 1))  # просрочено
     sent, _ = _run(db, now=at_ten)
     digest = [text for chat, text in sent if chat == "900000100"]
-    assert len(digest) == 1 and "Просрочено" in digest[0] and "Ветрова Ольга" in digest[0]
+    assert len(digest) == 1 and "Overdue:" in digest[0] and "Ветрова Ольга" in digest[0]
     assert [t for c, t in _run(db, now=at_ten + timedelta(minutes=20))[0] if c == "900000100"] == []
 
 
@@ -117,7 +117,7 @@ def test_no_digest_outside_ten(db):
     assert [c for c, _ in sent if c == "900000100"] == []
 
 
-# --- ревью 01.10: ошибочные письма о рекасте и повторы ---
+# --- ревью 01.10: ошибочные письма о recastе и повторы ---
 
 def _recast_row(db, closed_at, actor="Ветрова Ольга"):
     row = _deadline(db, actor=actor)
@@ -178,7 +178,7 @@ def test_the_owner_hears_once_when_a_role_is_fully_recorded(db):
     _file(db, "Глава 2")
     sent, stats = _run(db)
     owner = [text for chat, text in sent if chat == "900000100"]
-    assert owner == ["Роль «Ныкфо» («Карта») записана полностью — Ветрова Ольга, 2 из 2 гл. Надо рассчитать."]
+    assert owner == ["Role «Ныкфо» («Карта») is fully recorded: Ветрова Ольга, 2 of 2 chapters. Payment can be calculated."]
     assert stats["done_notified"] == 1
     assert _run(db)[0] == []  # срок закрыт — второго письма нет
 

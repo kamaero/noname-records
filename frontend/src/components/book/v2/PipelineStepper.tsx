@@ -46,10 +46,10 @@ export function PipelineStepper({ bookId, progress, next, readerTo, compareTo, s
   return (
     <section className="panel hub-card hub-steps" aria-labelledby="hub-steps-title">
       <header className="hub-card-head">
-        <h2 id="hub-steps-title" className="hub-card-title">Ход работы</h2>
+        <h2 id="hub-steps-title" className="hub-card-title">Workflow</h2>
         {next ? (
           <span className={["hub-next", next.tone ? `hub-next--${next.tone}` : ""].filter(Boolean).join(" ")}>
-            Дальше: {next.text}
+            Next: {next.text}
           </span>
         ) : null}
       </header>
@@ -75,7 +75,7 @@ export function PipelineStepper({ bookId, progress, next, readerTo, compareTo, s
                     aria-valuemin={0}
                     aria-valuemax={progress.run.chapters_total || 0}
                     aria-valuenow={progress.run.chapters_done || 0}
-                    aria-label={`${step.label}: ${progress.run.chapters_done} из ${progress.run.chapters_total} глав`}
+                    aria-label={`${step.label}: ${progress.run.chapters_done} of ${progress.run.chapters_total} chapters`}
                   >
                     <span style={{ width: `${Math.round(runFraction(progress.run) * 100)}%` }} />
                   </div>
@@ -86,8 +86,8 @@ export function PipelineStepper({ bookId, progress, next, readerTo, compareTo, s
               </span>
               <div className="hub-step-foot">
               {key === "attribute" && step.state !== "pending" ? (
-                <LinkButton to={castTo} size="sm" variant="secondary" title="Таблица ролей: актёр, реплики, главы — и переход к репликам роли">
-                  Каст
+                <LinkButton to={castTo} size="sm" variant="secondary" title="Cast table: voice actors, lines, chapters and links to each role's script">
+                  Cast
                 </LinkButton>
               ) : null}
               {action?.kind === "stress" ? (
@@ -100,8 +100,8 @@ export function PipelineStepper({ bookId, progress, next, readerTo, compareTo, s
                     disabled
                     title={
                       !hasReader
-                        ? "Нет доступной для чтения размеченной главы"
-                        : "Недостаточно прав: очередь ударений доступна автору, диктору и администратору"
+                        ? "No annotated chapters available to read"
+                        : "The word stress queue is available to authors, voice actors and administrators"
                     }
                   >
                     {action.label}
@@ -112,34 +112,34 @@ export function PipelineStepper({ bookId, progress, next, readerTo, compareTo, s
                 hasReader ? (
                   <>
                     <LinkButton to={readerTo} size="sm" variant="secondary">{action.label}</LinkButton>
-                    <LinkButton to={compareTo} size="sm" variant="secondary">Сверить с оригиналом</LinkButton>
+                    <LinkButton to={compareTo} size="sm" variant="secondary">Compare with original</LinkButton>
                     {review.attributed > review.approved ? (
                       <Button
                         size="sm"
                         variant="secondary"
                         loading={approvePending}
                         onClick={onApproveAll}
-                        title="Отметить все размеченные главы проверенными — например, когда автор прочитал книгу целиком"
+                        title="Mark all annotated chapters as reviewed, for example after the author reviews the entire book"
                       >
-                        Проверены все ({review.attributed - review.approved})
+                        All reviewed ({review.attributed - review.approved})
                       </Button>
                     ) : null}
                     {consiliumTo ? <ConsiliumHubBlock bookId={bookId} consiliumTo={consiliumTo} /> : null}
                     {soundTo ? <SoundHubBlock bookId={bookId} soundTo={soundTo} /> : null}
                   </>
                 ) : (
-                  <Button size="sm" variant="secondary" disabled title="Появится после шага «Роли»">{action.label}</Button>
+                  <Button size="sm" variant="secondary" disabled title="Available after role attribution">{action.label}</Button>
                 )
               ) : null}
               {action?.kind === "publish" ? (
-                <label className="hub-check hub-autopublish" title="Как только автор отмечает главу проверенной, она открывается дикторам">
+                <label className="hub-check hub-autopublish" title="Chapters become available to voice actors as soon as the author marks them reviewed">
                   <input
                     type="checkbox"
                     checked={autoPublish}
                     disabled={autoPublishPending}
                     onChange={(event) => onAutoPublish(event.target.checked)}
                   />
-                  <span>Открывать дикторам после одобрения</span>
+                  <span>Publish automatically after approval</span>
                 </label>
               ) : null}
               {action?.kind === "publish" ? (
@@ -151,16 +151,16 @@ export function PipelineStepper({ bookId, progress, next, readerTo, compareTo, s
                   disabled={review.approved === 0 && review.attributed > 0}
                   title={
                     review.approved === 0 && review.attributed > 0
-                      ? "Сначала отметьте проверенные главы — публикуются только они"
+                      ? "Mark chapters as reviewed first; only reviewed chapters can be published"
                       : autoPublish
-                        ? "Открыть уже одобренные главы, которые ещё не ушли дикторам"
+                        ? "Publish approved chapters not yet shared with voice actors"
                         : undefined
                   }
                 >
                   {publishArmed
-                    ? "Подтвердить публикацию"
+                    ? "Confirm publication"
                     : review.approved > 0
-                      ? `Опубликовать (${review.approved})`
+                      ? `Publish (${review.approved})`
                       : action.label}
                 </Button>
               ) : null}

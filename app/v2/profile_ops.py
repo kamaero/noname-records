@@ -115,7 +115,7 @@ def bind_author(db, *, book: ScriptBook, author_id: str, actor_uid: str, actor_n
         applied = apply_author_profile_to_book(db, book)
     record_operator_intervention(
         db, book=book, action_type=BIND_ACTION, actor_uid=actor_uid, actor_name=actor_name,
-        reason="v2: привязка книги к автору",
+        reason='v2: book linked to author',
         payload={"author_id": wanted, "author_name": str(getattr(author, "name", "") or ""), "applied": applied},
     )
     return {"author_id": wanted, "author_name": str(getattr(author, "name", "") or ""), "applied": applied}
@@ -156,6 +156,7 @@ def book_profile(db, book_id: str) -> dict | None:
         "book": {
             "id": book.id,
             "title": _book_title(book),
+            "language": book.language or "ru",
             "pipeline_mode": str(book.pipeline_mode or ""),
             "validation_profile": str(book.validation_profile or ""),
             "author_id": author_id,
@@ -180,7 +181,7 @@ def sync_to_author(db, book, actor_uid: str, actor_name: str = "") -> dict:
     summary = sync_book_to_author_profile(db, book)
     record_operator_intervention(
         db, book=book, action_type=SYNC_ACTION, actor_uid=actor_uid, actor_name=actor_name,
-        reason="v2: книга → профиль автора", payload=summary,
+        reason='v2: book → author profile', payload=summary,
     )
     return summary
 
@@ -191,6 +192,6 @@ def apply_from_author(db, book, *, overwrite: bool, actor_uid: str, actor_name: 
     summary = {**summary, "overwrite": bool(overwrite)}
     record_operator_intervention(
         db, book=book, action_type=APPLY_ACTION, actor_uid=actor_uid, actor_name=actor_name,
-        reason="v2: профиль автора → книга", payload=summary,
+        reason='v2: author profile → book', payload=summary,
     )
     return summary

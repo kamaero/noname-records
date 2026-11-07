@@ -95,7 +95,7 @@ def test_run_enqueues_on_high_marks_the_book_v2_and_refuses_a_second_run(monkeyp
         assert (book.pipeline_mode, book.status, book.stop_requested) == ("v2", "processing", "false")
         run = db.get(V2Run, body["run_id"])
         assert run.status == "queued" and run.book_id == BOOK
-        assert any("поставлен в очередь" in r.message for r in db.query(ScriptLog).filter(ScriptLog.book_id == BOOK).all())
+        assert any("queued by" in r.message for r in db.query(ScriptLog).filter(ScriptLog.book_id == BOOK).all())
 
     again = client.post(f"/api/v2/books/{BOOK}/run", json={})
     assert again.status_code == 409 and again.json()["error"] == "run_in_progress" and again.json()["run_id"] == body["run_id"]

@@ -17,8 +17,8 @@ from app.services.take_split import transcribe_whole
 from app.services.telegram import max_download_bytes, size_text
 
 BT_PREFIX = "bt:"
-QUEUED = "Принял файл, распознаю и разложу по главам — пришлю отчёт через несколько минут."
-NO_BOOK = f"Сейчас студия не записывает ни одну книгу. Если это ошибка, {studio.write_to()}."
+QUEUED = "File received. I will transcribe it, split it into chapters and send a report in a few minutes."
+NO_BOOK = f"The studio is not currently recording a book. If this is an error, {studio.write_to()}."
 
 
 def my_roles(db, *, tid: str, user, book) -> list[Character]:
@@ -145,7 +145,7 @@ def receive(db, *, tid: str, chat_id, user, info: dict, now: datetime) -> list[O
         return None
     limit = max_download_bytes()
     if info["file_size"] > limit:
-        return [send(chat_id, f"Файл больше {size_text(limit)} — загрузите запись на сайте, раздел «Загрузка»: "
+        return [send(chat_id, f"The file is larger than {size_text(limit)}. Upload it on the website under Upload: "
                               f"{bot_uploads._site_link()}")]
     invited = bot_uploads._invitations(db, tid, user)
     if not invited and not take_format.allowed_filename(info.get("file_name", ""), kind=info["kind"]):
@@ -156,28 +156,28 @@ def receive(db, *, tid: str, chat_id, user, info: dict, now: datetime) -> list[O
         # раз; второй приём положил бы те же главы вторым дублем и прислал бы тот же отчёт.
         earlier = already_received(db, tid=tid, unique=unique, now=now)
         if earlier is not None:
-            return [send(chat_id, f"Этот файл уже принят {earlier.created_at:%d.%m}.")]
+            return [send(chat_id, f"This file was already received on {earlier.created_at:%d.%m}.")]
     row = BotUpload(telegram_user_id=str(tid), created_at=now, updated_at=now, purpose="take", book_id=book.id,
                     **{k: info[k] for k in ("file_id", "file_unique_id", "kind", "mime_type", "file_name",
                                             "file_size", "duration")})
     db.add(row)
     db.flush()
-    cancel = [{"text": "Отмена", "callback_data": f"{BT_PREFIX}x:{row.id}"}]
+    cancel = [{"text": "Cancel", "callback_data": f"{BT_PREFIX}x:{row.id}"}]
     if invited:
         # Редкий случай (решение агента): у человека и роль, и открытая проба. Кнопка пробы
         # несёт префикс проб — дальше строку ведёт нынешний поток проб как есть.
-        takes = [[{"text": f"Дубль: «{ch.name}»"[:60], "callback_data": f"{BT_PREFIX}c:{row.id}:{ch.id}"}]
+        takes = [[{"text": f"Take: «{ch.name}»"[:60], "callback_data": f"{BT_PREFIX}c:{row.id}:{ch.id}"}]
                  for ch in roles]
-        auditions = [[{"text": f"Проба: «{ch.name}»"[:60], "callback_data": f"{bot_uploads.BU_PREFIX}c:{row.id}:{ch.id}"}]
+        auditions = [[{"text": f"Audition: «{ch.name}»"[:60], "callback_data": f"{bot_uploads.BU_PREFIX}c:{row.id}:{ch.id}"}]
                      for ch, _book in invited]
-        return [send(chat_id, "Это дубль или проба?", {"inline_keyboard": [*takes, *auditions, cancel]})]
+        return [send(chat_id, "Is this a take or an audition?", {"inline_keyboard": [*takes, *auditions, cancel]})]
     ch = roles[0] if len(roles) == 1 else None
     if ch is None and info.get("kind") != "voice":
         ch = _role_from_filename(str(info.get("file_name") or ""), roles, book)
     if ch is not None:
         return _queued(db, chat_id, row) if _claim(db, row.id, ch, now) else []
     rows = [[{"text": str(ch.name)[:60], "callback_data": f"{BT_PREFIX}c:{row.id}:{ch.id}"}] for ch in roles]
-    return [send(chat_id, "Какая это роль?", {"inline_keyboard": [*rows, cancel]})]
+    return [send(chat_id, "Which role is this?", {"inline_keyboard": [*rows, cancel]})]
 
 
 def press(db, *, tid: str, chat_id, data: str, user, now: datetime) -> list[Outgoing]:
@@ -192,22 +192,22 @@ def press(db, *, tid: str, chat_id, data: str, user, now: datetime) -> list[Outg
             row.state, row.updated_at = "cancelled", now
             db.flush()
         if row.state == "cancelled":
-            return [send(chat_id, "Отменено.")]
+            return [send(chat_id, "Cancelled.")]
         if row.state == "done":
-            return [send(chat_id, "Этот файл уже обработан.")]
+            return [send(chat_id, "This file has already been processed.")]
         if row.state in ("failed", "unsorted"):
-            return [send(chat_id, "Этот файл уже передан студии.")]
-        return [send(chat_id, f"Файл уже в работе — отменить его в боте нельзя. Если нужно, {studio.write_to()}.")]
+            return [send(chat_id, "This file has already been sent to the studio.")]
+        return [send(chat_id, f"This file is being processed and cannot be cancelled in the bot. If needed, {studio.write_to()}.")]
     if action != "c" or row.state != "choose":
         return []  # второе нажатие: ответ на первое уже ушёл, повтор только запутает
     if row.created_at < now - bot_uploads.CHOICE_TTL:
-        return [send(chat_id, "Выбор устарел — пришлите файл ещё раз.")]
+        return [send(chat_id, "This choice has expired. Please send the file again.")]
     book = active_book(db)
     if book is None or book.id != row.book_id:
-        return [send(chat_id, "Книга, которую записывает студия, сменилась — пришлите файл ещё раз.")]
+        return [send(chat_id, "The studio has changed the active book. Please send the file again.")]
     ch = next((item for item in my_roles(db, tid=tid, user=user, book=book) if item.id == character_id), None)
     if ch is None:
-        return [send(chat_id, f"Эта роль больше не ваша. Если это ошибка, {studio.write_to()}.")]
+        return [send(chat_id, f"This role is no longer assigned to you. If this is an error, {studio.write_to()}.")]
     if not take_format.allowed_filename(row.file_name, kind=row.kind):
         return [send(chat_id, take_format.REQUIRED)]
     if not _claim(db, row.id, ch, now):
@@ -221,16 +221,52 @@ def enqueue_take(upload_id: str) -> str | None:
     from app.models import BackgroundRun
     from app.workers.launcher import enqueue_tracked_task
 
+    with SessionLocal() as db:
+        row = db.get(BotUpload, str(upload_id))
+        if row is None:
+            return None
+        language = snapshot_language(db, row)
+
     return enqueue_tracked_task(
         "high", "app.worker_tasks.perform_bot_take_task", SessionLocal, BackgroundRun,
         job_kind="bot_take", entity_type="bot_upload", entity_id=str(upload_id),
         run_key=f"bot_take:{upload_id}", upload_id=str(upload_id),
+        meta={"language": language}, language=language,
     )
+
+
+def snapshot_language(db, row, *, language: str | None = None, workdir: str | None = None) -> str:
+    """Сохраняем профиль до первой оплаты; ручной повтор использует уже оплаченный кэш."""
+    import json
+    import glob
+    import os
+    from app.services.asr_run import asr_language
+
+    try:
+        meta = json.loads(row.result_json or "{}")
+    except (TypeError, ValueError):
+        meta = {}
+    if not isinstance(meta, dict):
+        meta = {}
+    if meta.get("language"):
+        return asr_language(meta["language"])
+    book = db.get(ScriptBook, row.book_id)
+    selected = asr_language(language if language is not None else getattr(book, "language", "ru"))
+    cached = workdir or takes_workdir(row.id)
+    if os.path.exists(os.path.join(cached, "heard.json")) or glob.glob(os.path.join(cached, "part-*.json")):
+        # У старого оплаченного кэша нет профиля. Не выдаём его за новый английский
+        # транскрипт и не удаляем ради повторного списания; сохраняем прежний RU-режим.
+        selected = "ru"
+        meta["language_source"] = "legacy_cache_default"
+    meta["language"] = selected
+    row.result_json = json.dumps(meta, ensure_ascii=False)
+    db.commit()
+    return selected
 
 
 # --- Обработка в воркере (спека, часть 3, «Обработка» … «Учёт») ---------------------------------
 
-FAILED_TEXT = "Не получилось обработать файл — студия разберётся, присылать заново не нужно."
+FAILED_TEXT = "The file could not be processed. The studio will review it; you do not need to send it again."
 #: сколько ненайденных реплик главы называть диктору поимённо; дальше — «и ещё K»
 MISSING_SHOWN = 5
 #: длинная реплика в отчёте режется: диктору хватит начала, чтобы узнать её
@@ -247,7 +283,7 @@ def _plural(n: int, one: str, few: str, many: str) -> str:
 
 
 def _chapters_word(n: int) -> str:
-    return f"{n} {_plural(n, 'глава', 'главы', 'глав')}"
+    return f"{n} {'chapter' if n == 1 else 'chapters'}"
 
 
 def _quote(text: str) -> str:
@@ -263,26 +299,26 @@ def take_report(role: str, book_title: str, chapters: list[dict]) -> str:
     Подсказка в конце — только когда что-то не нашлось: при полном совпадении она
     заставила бы диктора искать, что же он пропустил.
     """
-    out = [f"Принято — «{role}», «{book_title}», {_chapters_word(len(chapters))}:"]
+    out = [f"Received — «{role}», «{book_title}», {_chapters_word(len(chapters))}:"]
     gaps = False
     for item in chapters:
         index, found, total = int(item["index"]), int(item["found"]), int(item["total"])
         missing = list(item.get("missing") or [])
         if not missing and found >= total:
             if total == 1:
-                out.append(f"гл. {index} — единственная реплика")
+                out.append(f"ch. {index} — the only line")
             else:
-                out.append(f"гл. {index} — все {total} {_plural(total, 'реплика', 'реплики', 'реплик')}")
+                out.append(f"ch. {index} — all {total} {('line' if total == 1 else 'lines')}")
             continue
         gaps = True
-        line = f"гл. {index} — {found} из {total}"
+        line = f"ch. {index} — {found} of {total}"
         if missing:
-            line += ", не нашли: " + ", ".join(_quote(text) for text in missing[:MISSING_SHOWN])
+            line += ", missing: " + ", ".join(_quote(text) for text in missing[:MISSING_SHOWN])
             if len(missing) > MISSING_SHOWN:
-                line += f" и ещё {len(missing) - MISSING_SHOWN}"
+                line += f" and {len(missing) - MISSING_SHOWN} more"
         out.append(line)
     if gaps:
-        out.append("Если реплика записана, но не нашлась, ничего делать не нужно — студия проверит.")
+        out.append("If a recorded line was not found, no action is needed; the studio will review it.")
     return "\n".join(out)
 
 
@@ -292,11 +328,11 @@ def owner_summary(actor: str, role: str, chapters: list[dict]) -> str:
     Номера глав, а не их число: четыре файла одного диктора (главы 5, 9, 16, 18) давали
     четыре одинаковых «1 глава», и владелец принял их за повтор сообщения (29.10)."""
     numbers = ", ".join(str(item["index"]) for item in chapters)
-    where = f"гл. {numbers}" if len(chapters) == 1 else f"главы {numbers}"
-    head = f"Дубль из бота: {actor}, «{role}», {where}."
-    gaps = [f"гл. {item['index']} — {int(item['total']) - int(item['found'])}"
+    where = f"ch. {numbers}" if len(chapters) == 1 else f"chapters {numbers}"
+    head = f"Take from bot: {actor}, «{role}», {where}."
+    gaps = [f"ch. {item['index']} — {int(item['total']) - int(item['found'])}"
             for item in chapters if int(item["found"]) < int(item["total"])]
-    return head + ("\nНе нашли реплик: " + ", ".join(gaps) + "." if gaps else "\nВсе реплики нашлись.")
+    return head + ("\nMissing lines: " + ", ".join(gaps) + "." if gaps else "\nAll lines were found.")
 
 
 def _extension(row: BotUpload) -> str:
@@ -372,12 +408,12 @@ def _same_content(db, row: BotUpload, now: datetime, workdir: str) -> tuple[BotU
                            and_(_taken_state(now), BotUpload.state.in_(IN_FLIGHT), earlier_than_me))) \
         .order_by(BotUpload.created_at.asc()).first()
     if done is not None:
-        return done, f"Этот файл уже принят {done.created_at:%d.%m}."
+        return done, f"This file was already received on {done.created_at:%d.%m}."
     parent = os.path.dirname(os.path.abspath(workdir))
     # `failed` тоже: файл не лёг, но распознавание уже оплачено и лежит в каталоге строки.
     for other in base.filter(BotUpload.state.in_(("unsorted", "failed"))).order_by(BotUpload.created_at.asc()).all():
         if os.path.exists(os.path.join(parent, other.id, "heard.json")):
-            return other, "Этот файл уже передан студии."
+            return other, "This file has already been sent to the studio."
     return None, ""
 
 
@@ -394,7 +430,7 @@ class _RecognitionFailed(Exception):
     """Распознавание упало: сохранённые части нужны повтору, их не стираем."""
 
 
-def _role_chapters(db, ch: Character) -> list[tuple[int, str, str, list[str]]]:
+def _role_chapters(db, ch: Character, *, language: str | None = None) -> list[tuple[int, str, str, list[str]]]:
     """(номер, id главы, метка, реплики роли) по возрастанию номера — вход `chapter_blocks`."""
     from app.models import ScriptChapter
     from app.services import asr_run
@@ -406,7 +442,7 @@ def _role_chapters(db, ch: Character) -> list[tuple[int, str, str, list[str]]]:
     rows = db.query(ScriptChapter).filter(ScriptChapter.book_id == ch.book_id,
                                           ScriptChapter.chapter_index.in_(sorted(labels))).all()
     ids = {int(item.chapter_index): str(item.id) for item in rows}
-    return [(index, ids[index], labels[index], asr_run.expected_lines(db, ids[index], str(ch.name or "")))
+    return [(index, ids[index], labels[index], asr_run.expected_lines(db, ids[index], str(ch.name or ""), language=language))
             for index in sorted(labels)]
 
 
@@ -426,7 +462,7 @@ def _chapter_result(db, job, block, role: str) -> dict:
     lines = alignment.get("lines")
     if getattr(job, "status", "") != "done" or lines is None:
         return {"index": block.chapter_index, "found": block.found, "total": block.total, "missing": []}
-    paragraphs = asr_run.expected_line_segments(db, block.chapter_id, role)
+    paragraphs = asr_run.expected_line_segments(db, block.chapter_id, role, language=getattr(job, "language", None))
     if len(paragraphs) != len(lines):
         # Разметку поменяли между сверкой и отчётом (или абзацев нет) — честнее счёт кусков,
         # чем чужие абзацы.
@@ -466,7 +502,7 @@ def _mark_failed(db, upload_id: str, now: datetime) -> None:
 
 
 def process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_owner, workdir: str,
-            now=None, clock=None) -> str:
+            now=None, clock=None, language: str | None = None) -> str:
     """Задача воркера: дубль из бота — скачать, распознать раз, разложить по главам, отчитаться.
 
     Возвращает `done` | `unsorted` | `failed` | `skip`. Распознавание — единственный
@@ -498,10 +534,11 @@ def process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_own
         return "skip"
     try:
         row = db.get(BotUpload, upload_id)
+        language = snapshot_language(db, row, language=language, workdir=workdir)
         if not take_format.allowed_filename(row.file_name, kind=row.kind):
             return _reject_format(db, row, send_text, now)
         return _process(db, upload_id, fetch=fetch, transcribe_part=transcribe_part, send_text=send_text,
-                        notify_owner=notify_owner, workdir=workdir, now=now, clock=clock)
+                        notify_owner=notify_owner, workdir=workdir, now=now, clock=clock, language=language)
     except BaseException:
         _mark_failed(db, upload_id, now)
         raise
@@ -522,7 +559,7 @@ def _beat(db, upload_id: str, at) -> None:
 
 
 def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_owner, workdir: str, now,
-             clock) -> str:
+             clock, language: str = "ru") -> str:
     import hashlib
     import json
     import logging
@@ -550,13 +587,13 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
 
     earlier = _already_taken(db, row, now)
     if earlier is not None:
-        return duplicate(f"Этот файл уже принят {earlier.created_at:%d.%m}.")
+        return duplicate(f"This file was already received on {earlier.created_at:%d.%m}.")
 
     ch = db.get(Character, row.character_id)
     book = db.get(ScriptBook, row.book_id) or (db.get(ScriptBook, ch.book_id) if ch is not None else None)
     if book is not None and book.voiced_at is not None:
         # Книгу объявили озвученной, пока файл ждал в очереди: в законченную книгу не кладём.
-        return duplicate("Книга уже озвучена — запись не принята.")
+        return duplicate("The book has already been recorded. This recording was not accepted.")
     role = str(row.role_name or "") or str(getattr(ch, "name", "") or "")
     actor = str(row.actor_name or "") or parse_actor_name(getattr(ch, "actor_name", "") or "")[0]
     code = derive_book_code(str(getattr(book, "title", "") or ""))
@@ -572,11 +609,34 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
     def fail(reason: str) -> str:
         row.state, row.updated_at = "failed", now
         db.commit()
-        notify_owner(f"Дубль из бота не обработан: {who}. Причина: {reason}. "
-                     f"Файл остался только в Telegram (строка учёта {upload_id}).")
+        notify_owner(f"Bot take was not processed: {who}. Reason: {reason}. "
+                     f"The file remains only in Telegram (upload record {upload_id}).")
         send_text(tid, FAILED_TEXT)
         return "failed"
 
+    # character_id и book_id из очереди — авторитетные границы до скачивания/STT.
+    # Иначе неоднозначный alias обнаруживался лишь после оплаченного распознавания.
+    try:
+        from app.services.role_identity import book_roles, CHARACTER_PREFIX, RoleIdentityError
+        from app.services.audio_naming import book_token
+        if ch is None or book is None or str(ch.book_id) != str(book.id) or not actor:
+            raise RoleIdentityError("audio_book_scope_mismatch")
+        identities = book_roles(db, book.id)
+        if not code or sum(book_token(derive_book_code(str(title or ""))) == book_token(code)
+                           for title, in db.query(ScriptBook.title).all()) != 1:
+            raise RoleIdentityError("ambiguous_book_code")
+        if identities.typed:
+            expected_ref = identities.character_ref(ch)
+            if identities.ref(ch.name) != expected_ref:
+                raise RoleIdentityError("ambiguous_role_identity")
+            role = str(ch.name or "")
+        for audio_id in already.values():
+            cached = db.get(AudioFile, audio_id)
+            if cached is None or not identities.owns_audio(cached):
+                raise RoleIdentityError("cached_audio_scope_mismatch")
+        role_chapters = _role_chapters(db, ch, language=language)
+    except (RoleIdentityError, LookupError) as exc:
+        return fail(str(exc))
     os.makedirs(workdir, exist_ok=True)
     source = os.path.join(workdir, f"source{_extension(row)}")
     finished = False
@@ -591,7 +651,7 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
         except Exception as exc:  # noqa: BLE001 — до скачивания класть в «не разобрано» нечего
             db.rollback()
             log.warning("Дубль из бота %s не скачан: %s", upload_id, type(exc).__name__)
-            return fail(f"не скачался: {type(exc).__name__}: {exc}"[:300])
+            return fail(f"Download failed: {type(exc).__name__}: {exc}"[:300])
         # До оплаченного распознавания проверяем сам файл: расширение .wav у MP3
         # не делает его исходником для сведения. Неподходящее аудио просим заменить.
         # Нечитаемый файл по-прежнему попадёт в «не разобрано» ниже: его не теряем
@@ -616,7 +676,7 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
             try:
                 label = str(chapter.chapter_title or "").strip()
                 take_ids = [str(item.id) for item in db.query(AudioFile).filter(
-                    AudioFile.kind == TAKE, AudioFile.chapter == label).all()]
+                    AudioFile.kind == TAKE, AudioFile.chapter == label).all() if identities.owns_audio(item)]
                 asr_run.after_new_takes(db, chapter, take_ids=take_ids)
                 db.commit()
             except Exception:
@@ -630,11 +690,11 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
 
         try:
             if ch is None or book is None or not actor:
-                raise LookupError("роль, книга или актёр строки учёта не найдены")
+                raise LookupError("The role, book or actor for this upload could not be found")
             duration = float(probe.get("duration_seconds") or 0.0)
             if duration <= 0:
                 # Не аудио (или битый файл): не платим за распознавание мусора.
-                raise ValueError("ffprobe не прочитал длительность — это не аудио или файл битый")
+                raise ValueError("ffprobe could not read the duration; the file is not audio or is corrupt")
 
             # 2. Распознать целиком — раз. Итог сохраняется рядом с частями: сбой ниже
             #    (диск, база) при ручном повторе не заплатит ещё раз.
@@ -651,7 +711,7 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
                     heard = transcribe_whole(source, transcribe_part=part, workdir=workdir,
                                              duration=duration)
                 except Exception as exc:
-                    raise _RecognitionFailed(f"распознавание: {type(exc).__name__}: {exc}") from exc
+                    raise _RecognitionFailed(f"Transcription: {type(exc).__name__}: {exc}") from exc
                 tmp = heard_path + ".tmp"
                 with open(tmp, "w", encoding="utf-8") as handle:
                     json.dump(heard, handle, ensure_ascii=False)
@@ -663,13 +723,13 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
                                                 normalize_role_label=normalize_role_label)
             named = int(parsed.get("filename_chapter_index") or 0)
             is_fix = fix_number(_source_name(row)) is not None
-            blocks = chapter_blocks(_role_chapters(db, ch), segments)
+            blocks = chapter_blocks(role_chapters, segments, language=language)
             try:
                 cuts = plan_cuts(blocks, duration, filename_chapter=named, is_fix=is_fix)
             except OutOfOrder as exc:
-                raise _Unsplittable(f"главы в записи не по порядку ({exc}) — резать не стал") from exc
+                raise _Unsplittable(f"Chapters are out of order in the recording ({exc}); the recording was not split") from exc
             if not cuts:
-                raise _NotFound("реплик роли в записи не нашлось")
+                raise _NotFound("No lines for this role were found in the recording")
             mismatch = name_mismatch(cuts, named)
 
             # 4. Каждый кусок — дубль своей главы, сверенный срезом услышанного.
@@ -685,6 +745,7 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
                         # тем же срезом услышанного — бесплатно, `heard.json` уже есть.
                         job = asr_run.run_asr_for_take(
                             db, already[block.chapter_index], notify=False,
+                            language=language,
                             transcribe=lambda _path, s=start, e=end: slice_transcript(segments, s, e),
                         )
                         db.commit()
@@ -704,6 +765,7 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
                     stored.append({"chapter": block.chapter_index, "audio_id": audio.id})
                     job = asr_run.run_asr_for_take(
                         db, audio.id, notify=False,
+                        language=language,
                         transcribe=lambda _path, s=start, e=end: slice_transcript(segments, s, e),
                     )
                     db.commit()
@@ -731,7 +793,7 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
             if stored:
                 numbers = ", ".join(str(item["chapter"]) for item in sorted(stored, key=lambda i: i["chapter"]))
                 ids = ", ".join(item["audio_id"] for item in stored)
-                saved = f" Уже легли дублями: гл. {numbers} (id: {ids}); повтор строки их не повторит."
+                saved = f" Already saved as takes: ch. {numbers} (id: {ids}); retrying this upload will not duplicate them."
             name = safe_name(_source_name(row))
             # Папка книги — тот же токен, что в `audio_mirror.storage_key`: «КП» кириллицей
             # иначе завело бы `rec/КП/` рядом с настоящим `rec/KP/`.
@@ -741,18 +803,18 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
                     audio_storage.write_stream(key, handle)
             except Exception as write_exc:  # noqa: BLE001
                 row = db.get(BotUpload, upload_id)
-                row.result_json = json.dumps({"reason": reason, "stored": stored}, ensure_ascii=False)
-                return fail(f"{reason[:200]}; в «не разобрано» не записался: "
+                row.result_json = json.dumps({"reason": reason, "stored": stored, "language": language}, ensure_ascii=False)
+                return fail(f"{reason[:200]}; could not save to unsorted: "
                             f"{type(write_exc).__name__}: {write_exc}.{saved}")
             row = db.get(BotUpload, upload_id)
             row.state, row.stored_key, row.updated_at = "unsorted", key[:255], now
-            row.result_json = json.dumps({"reason": reason, "stored": stored}, ensure_ascii=False)
+            row.result_json = json.dumps({"reason": reason, "stored": stored, "language": language}, ensure_ascii=False)
             db.add(AuditLog(user_id="", entity_type="bot_upload", entity_id=upload_id, action="bot_take_unsorted",
                             created_at=now, payload_json=json.dumps({"reason": reason, "stored_key": key,
                                                                      "stored": stored}, ensure_ascii=False)))
             db.commit()
-            notify_owner(f"Дубль из бота не разобран: {who}. Причина: {reason}. Файл: {key}.{saved}")
-            send_text(tid, f"Не нашёл в файле реплик роли «{role}». Передал студии, с вами свяжутся."
+            notify_owner(f"Bot take could not be split: {who}. Reason: {reason}. File: {key}.{saved}")
+            send_text(tid, f"No lines were found in the file for role «{role}». The studio has been notified and will contact you."
                       if isinstance(exc, _NotFound) and not stored else FAILED_TEXT)
             return "unsorted"
 
@@ -761,7 +823,7 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
         row = db.get(BotUpload, upload_id)
         row.state, row.updated_at, row.audio_id = "done", now, audio_ids[0] if audio_ids else ""
         row.result_json = json.dumps({"chapters": results, "audio_ids": audio_ids, "stored": stored,
-                                      "mismatch": mismatch or 0}, ensure_ascii=False)
+                                      "mismatch": mismatch or 0, "language": language}, ensure_ascii=False)
         db.add(AuditLog(user_id="", entity_type="bot_upload", entity_id=upload_id, action="bot_take_stored",
                         created_at=now, payload_json=json.dumps({"audio_ids": audio_ids, "telegram_user_id": tid},
                                                                 ensure_ascii=False)))
@@ -775,8 +837,8 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
         finished = True
         summary = owner_summary(actor, role, results)
         if mismatch:
-            summary += (f"\nВ имени файла глава {mismatch}, а по записи — глава {cuts[0][0].chapter_index}; "
-                        f"положил по записи.")
+            summary += (f"\nThe filename says chapter {mismatch}, but the recording matches chapter {cuts[0][0].chapter_index}; "
+                        f"saved under the chapter found in the recording.")
         send_text(tid, take_report(role, str(book.title or ""), results))
         notify_owner(summary)
         return "done"

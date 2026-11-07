@@ -153,13 +153,13 @@ def test_estimate_counts_unread_chapters_and_places(book, tmp_path):
 
 
 def _run_row(session_factory, mode="recheck"):
-    from app.models import BackgroundRun
+    from app.models import BackgroundRun, ScriptBook
     from app.time_utils import utcnow_naive
 
     with session_factory() as db:
         row = BackgroundRun(id="run1", run_key=f"consilium:{BOOK}", job_kind="consilium",
                             entity_type="script_book", entity_id=BOOK, status="running",
-                            meta_json=json.dumps({"mode": mode}), created_at=utcnow_naive(),
+                            meta_json=json.dumps({"mode": mode, "language": getattr(db.get(ScriptBook, BOOK), "language", "ru")}), created_at=utcnow_naive(),
                             updated_at=utcnow_naive(), started_at=utcnow_naive())
         db.add(row)
         db.commit()
@@ -216,7 +216,7 @@ def test_a_full_run_reads_arbitrates_and_saves(book, tmp_path):
         run = db.get(BackgroundRun, run_id)
         meta = json.loads(run.meta_json)
         assert run.status == "done" and meta["phase"] == "done" and meta["result"]["added"] == 1
-    assert notes and "Книга" in notes[0]
+    assert notes and "Review «Книга»" in notes[0]
 
 
 def test_recheck_does_not_call_readers_or_arbiter_when_nothing_changed(book, tmp_path):
@@ -281,7 +281,7 @@ def test_stop_request_stops_between_chunks_and_keeps_what_was_read(book, tmp_pat
     assert out["status"] == "stopped" and out["reason"] == "stopped_by_user"
     with book() as db:
         run = db.get(BackgroundRun, run_id)
-        assert run.status == "stopped" and "остановлен вручную" in (run.error_message or "")
+        assert run.status == "stopped" and "stopped by the user" in (run.error_message or "")
 
 
 def test_over_budget_stops_the_run(book, tmp_path):
@@ -483,7 +483,7 @@ def test_a_failure_before_the_run_starts_marks_the_run_failed(book, tmp_path, mo
     with book() as db:
         run = db.get(BackgroundRun, run_id)
         assert run.status == "failed" and "смета упала" in run.error_message
-    assert notes and "упал" in notes[0]
+    assert notes and "failed" in notes[0]
 
 
 def test_a_running_row_without_a_heartbeat_for_an_hour_is_dead(book):
@@ -497,7 +497,7 @@ def test_a_running_row_without_a_heartbeat_for_an_hour_is_dead(book):
         payload = latest_run(db, BOOK)
         db.commit()
     assert payload["status"] == "failed"
-    assert payload["error"] == "воркер остановился — прогон можно продолжить"
+    assert payload["error"] == "The worker stopped; you can resume the run"
     with book() as db:
         assert db.get(BackgroundRun, run_id).status == "failed"
 
@@ -546,7 +546,7 @@ def test_stop_on_a_queued_row_stops_it_at_once(book):
         db.commit()
     with book() as db:
         run = db.get(BackgroundRun, run_id)
-        assert run.status == "stopped" and run.error_message == "остановлен вручную"
+        assert run.status == "stopped" and run.error_message == "stopped by the user"
         assert run.finished_at is not None
         assert latest_run(db, BOOK)["status"] == "stopped"
 
@@ -666,7 +666,7 @@ def test_an_unanswered_paragraph_does_not_make_its_finding_gone(book, tmp_path):
     with book() as db:
         assert db.query(ConsiliumFinding).one().status == "new"
     assert out["chapters_incomplete"] == 1
-    assert "неполных глав: 1 — пересверка их дочитает" in notes[0]
+    assert "incomplete chapters: 1 — a recheck will finish them" in notes[0]
 
 
 def test_incomplete_chapters_are_counted_in_the_run(book, tmp_path):
@@ -689,7 +689,7 @@ def test_a_complete_run_says_nothing_about_incomplete_chapters(book, tmp_path):
     out = run_consilium(session_factory=book, book_id=BOOK, run_id=_run_row(book, "reread"), mode="reread",
                         ask=FakeModels(), read_credits=_credits([1000.0]), notify=notes.append,
                         root=str(tmp_path), arbiter_workers=1)
-    assert out["chapters_incomplete"] == 0 and "неполных" not in notes[0]
+    assert out["chapters_incomplete"] == 0 and "incomplete" not in notes[0]
 
 
 def test_a_reread_does_not_replace_a_complete_artifact_with_an_incomplete_one(book, tmp_path):

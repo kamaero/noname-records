@@ -62,14 +62,16 @@ def role_fees(db, book) -> list[dict]:
     """Роли книги с утверждённым актёром и их суммы — как в смете каста: снапшот строки,
     свёрнутой `collapse_budget_character_rows`; Рассказчик — из сметы книги. Сторож —
     `test_role_fee_matches_the_cast_budget_row` (сравнение с настоящей ручкой сметы)."""
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book.id)
     characters = db.query(Character).filter(Character.book_id == book.id).order_by(Character.name.asc()).all()
     snapshots = [_snapshot_copy(s) for s in
                  db.query(CharacterBudgetSnapshot).filter(CharacterBudgetSnapshot.book_id == book.id).all()]
-    rows, snap = collapse_budget_character_rows(characters, snapshots)
+    rows, snap = collapse_budget_character_rows(characters, snapshots, identities=identities)
     budget = db.query(BookBudget).filter(BookBudget.book_id == book.id).first()
     out = []
     for row in rows:
-        if is_narrator_name(str(row.get("name") or "")) or is_narrator_name(str(row.get("aliases") or "")):
+        if identities.is_narrator(str(row.get("name") or "")) or identities.is_narrator(str(row.get("aliases") or "")):
             continue  # Рассказчик — ниже, из сметы книги, как в смете каста
         actor, tentative = parse_actor_name(str(row.get("actor_name") or ""))
         if not actor or tentative:
@@ -214,7 +216,7 @@ def _past_line(person: dict, row: FeePayment, titles: dict) -> dict:
     for line in person["roles"]:
         if line["state"] == "past" and line["book_id"] == row.book_id and line["role_key"] == row.role_key:
             return line
-    line = {"book_id": row.book_id, "book_title": titles.get(row.book_id) or "книга удалена", "role_key": row.role_key,
+    line = {"book_id": row.book_id, "book_title": titles.get(row.book_id) or "Book deleted", "role_key": row.role_key,
             "role_name": str(row.role_name or ""), "actor_name": str(row.actor_name or ""), "fee": None, "done": 0,
             "total": 0, "state": "past", "payments": [], "paid": 0, "owed": 0, "overpaid": 0}
     person["roles"].append(line)
@@ -395,9 +397,9 @@ def cancel(db, payment_id: str, *, by: str, now) -> None:
 
 # ---------- выгрузка ----------
 
-STATE_WORDS = {"done": "сдана", "in_progress": "в работе", "no_chapters": "нет глав", "no_fee": "сумма не посчитана",
-               "past": "прошлая роль (снята или книга удалена)"}
-KIND_WORDS = {"advance": "аванс", "final": "выплата", "offset": "зачёт аванса", "person_advance": "аванс без роли"}
+STATE_WORDS = {"done": "Complete", "in_progress": "In progress", "no_chapters": "No chapters", "no_fee": "Fee not calculated",
+               "past": "Former role (unassigned or book deleted)"}
+KIND_WORDS = {"advance": "Advance", "final": "Payment", "offset": "Advance applied", "person_advance": "Unallocated advance"}
 MONEY_FORMAT = '# ##0 "₽"'
 
 
@@ -416,23 +418,23 @@ def export_xlsx(data: dict, *, today) -> bytes:
     from openpyxl import Workbook
 
     book = Workbook()
-    book.properties.title = f"Смета на {today:%d.%m.%Y}"
+    book.properties.title = f"Payouts as of {today:%d.%m.%Y}"
     people = book.active
-    people.title = "Дикторы"
-    people.append(["Диктор", "Telegram", "К оплате", "Выплачено", "Авансы по ролям в работе",
-                   "Аванс без роли: выдано", "Аванс без роли: не зачтено", "В работе"])
+    people.title = "Actors"
+    people.append(["Actor", "Telegram", "Due", "Paid", "Advances for roles in progress",
+                   "Unallocated advance: issued", "Unallocated advance: remaining", "In progress"])
     for person in data["people"]:
         given = sum(a["amount_rub"] for a in person["person_advances"])
         role_advances = person["advances"] - person["credit"]
         people.append([_text(person["name"]), _text(person["telegram_url"]), person["owed"], person["paid"],
                        role_advances, given, person["credit"], person["in_work"]])
     t = data["totals"]
-    people.append(["Итого", "", t["owed"], t["paid"], t["advances"] - t["credit"],
+    people.append(["Total", "", t["owed"], t["paid"], t["advances"] - t["credit"],
                    sum(sum(a["amount_rub"] for a in p["person_advances"]) for p in data["people"]), t["credit"],
                    t["in_work"]])
-    roles = book.create_sheet("Роли")
-    roles.append(["Диктор", "Книга", "Роль", "Сдано глав", "Всего глав", "Состояние", "Сумма роли", "Выплачено",
-                  "К оплате", "Выплаты"])
+    roles = book.create_sheet("Roles")
+    roles.append(["Actor", "Book", "Role", "Chapters completed", "Chapters total", "Status", "Role fee", "Paid",
+                  "Due", "Payments"])
     for person in data["people"]:
         for line in person["roles"]:
             history = "; ".join(f"{KIND_WORDS.get(p['kind'], p['kind'])} {p['amount_rub']:,} ₽ {_date(p['paid_at'])}"

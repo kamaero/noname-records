@@ -98,30 +98,29 @@ export function HomographReview({ bookId, onOpenPlace }: HomographReviewProps) {
       }),
     onSuccess: (_result, { place, vowel }) => {
       const form = place.options.find((option) => option.vowel_offset === vowel)?.form || "";
-      pushToast({ tone: "success", title: `Здесь «${form}»`, detail: `Глава ${place.chapter_index}. Решение только для этого места.` });
+      pushToast({ tone: "success", title: `Here «${form}»`, detail: `Chapter ${place.chapter_index}. This decision applies to this occurrence only.` });
       void queryClient.invalidateQueries({ queryKey: ["v2", "homographs", bookId] });
       void queryClient.invalidateQueries({ queryKey: editorKeys.queue(bookId) });
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не сохранено", detail: describeApiError(error, "") }),
+    onError: (error) => pushToast({ tone: "error", title: "Not saved", detail: describeApiError(error, "") }),
   });
 
-  if (words.isLoading) return <p className="v2r-sheet-note">Собираю спорные места…</p>;
+  if (words.isLoading) return <p className="v2r-sheet-note">Loading ambiguous words…</p>;
   if (words.isError || !words.data) {
-    return <p className="v2r-sheet-error">{describeApiError(words.error, "Не удалось собрать спорные ударения.")}</p>;
+    return <p className="v2r-sheet-error">{describeApiError(words.error, "Could not load ambiguous stress marks.")}</p>;
   }
 
   const { counts } = words.data;
   if (counts.words === 0) {
-    return <p className="v2r-sheet-empty">Спорных ударений нет: слов с двумя чтениями в книге не нашлось.</p>;
+    return <p className="v2r-sheet-empty">No ambiguous stress patterns found in this book.</p>;
   }
 
   return (
     <>
       <p className="v2r-sheet-note">
-        Модель выбрала чтение в {counts.places.toLocaleString("ru-RU")}{" "}
-        {plural(counts.places, "месте", "местах", "местах")}. Сверху — где она колебалась сильнее всего;{" "}
-        <strong>{counts.rare_places}</strong> {plural(counts.rare_places, "место", "места", "мест")} прочитано не так,
-        как обычно у этого слова, — с них и стоит начать.
+        The model selected pronunciations for {counts.places.toLocaleString("en-US")}{" "}
+        {plural(counts.places, "occurrence", "occurrences", "occurrences")}. The most uncertain appear first;{" "}
+        <strong>{counts.rare_places}</strong> {plural(counts.rare_places, "location", "locations", "locations")} are pronounced differently from the usual pattern. Start with those.
       </p>
 
       {words.data.words.map((row) => {
@@ -142,12 +141,12 @@ export function HomographReview({ bookId, onOpenPlace }: HomographReviewProps) {
                   </span>
                 ))}
               </span>
-              {row.mixed ? <span className="v2r-homo-flag">по-разному</span> : null}
+              {row.mixed ? <span className="v2r-homo-flag">different</span> : null}
             </button>
 
             {open ? (
               places.isLoading ? (
-                <p className="v2r-sheet-note">Ищу места…</p>
+                <p className="v2r-sheet-note">Finding occurrences…</p>
               ) : (
                 <ol className="v2r-homo-places">
                   {(places.data?.places ?? []).map((place) => {
@@ -160,7 +159,7 @@ export function HomographReview({ bookId, onOpenPlace }: HomographReviewProps) {
                           {cut.after}
                         </p>
                         <div className="v2r-homo-actions">
-                          <span className="v2r-homo-where num">гл. {place.chapter_index}</span>
+                          <span className="v2r-homo-where num">ch. {place.chapter_index}</span>
                           {place.options.map((option) => (
                             <button
                               key={option.vowel_offset}
@@ -173,8 +172,8 @@ export function HomographReview({ bookId, onOpenPlace }: HomographReviewProps) {
                               disabled={decide.isPending}
                               title={
                                 option.vowel_offset === place.chosen
-                                  ? "Так прочла модель — нажмите, чтобы закрепить"
-                                  : "Поставить это чтение здесь"
+                                  ? "Model pronunciation; click to confirm"
+                                  : "Use this pronunciation here"
                               }
                               onClick={() => decide.mutate({ place, vowel: option.vowel_offset })}
                             >
@@ -185,9 +184,9 @@ export function HomographReview({ bookId, onOpenPlace }: HomographReviewProps) {
                             type="button"
                             className="btn btn-sm btn-ghost v2r-btn"
                             onClick={() => onOpenPlace({ segment_id: place.segment_id, chapter_index: place.chapter_index, word: row.word })}
-                            title="Открыть главу и поставить ударение вручную"
+                            title="Open chapter to set stress manually"
                           >
-                            В главе
+                            In chapter
                           </button>
                         </div>
                       </li>

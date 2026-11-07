@@ -17,19 +17,19 @@ export function CastConflictsNote({ conflicts, onFix }: CastConflictsNoteProps) 
   const rest = conflicts.length - shown.length;
   return (
     <div className="cast-conflicts" role="status">
-      <span className="cast-conflicts-title" title="Две роли одного цвета, которые говорят в одной главе: на распечатке их не различить">
-        Похожие цвета у ролей из одной главы: <strong className="num">{conflicts.length}</strong>
+      <span className="cast-conflicts-title" title="Two roles share a color within a chapter and cannot be distinguished in print">
+        Similar role colors in the same chapter: <strong className="num">{conflicts.length}</strong>
       </span>
       <span className="cast-conflicts-list">
         {shown.map((item) => (
-          <span key={`${item.leftId}:${item.rightId}`} className="cast-conflicts-pair" title={`главы ${item.chapters.join(", ")}`}>
+          <span key={`${item.leftId}:${item.rightId}`} className="cast-conflicts-pair" title={`chapters ${item.chapters.join(", ")}`}>
             {item.leftName} ↔ {item.rightName}
           </span>
         ))}
-        {rest > 0 ? <span className="cast-conflicts-more num">ещё {rest}</span> : null}
+        {rest > 0 ? <span className="cast-conflicts-more num">more {rest}</span> : null}
       </span>
       <Button size="sm" variant="secondary" onClick={onFix}>
-        Развести цвета
+        Adjust colors
       </Button>
     </div>
   );

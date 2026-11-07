@@ -108,19 +108,23 @@ def role_canon(db, book_id: str, role: str) -> dict | None:
 
 def _spoken_by(db, book_id: str, role: str) -> list[str]:
     """The raw speaker strings in this book's markup that mean `role`."""
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
+    identities.ref(role)
     wanted = role_aliases(db, book_id, role)
-    narrator = is_narrator_name(role)
+    narrator = identities.is_narrator(role)
     segment_ids = select(V2Segment.id).where(V2Segment.book_id == book_id)
     speakers = db.execute(
-        select(V2Attribution.speaker).where(V2Attribution.segment_id.in_(segment_ids)).distinct()
-    ).scalars().all()
+        select(V2Attribution.speaker, V2Attribution.role_ref).where(V2Attribution.segment_id.in_(segment_ids)).distinct()
+    ).all()
     out = []
-    for speaker in speakers:
-        name = str(speaker or "").strip()
+    for speaker, role_ref in speakers:
+        name = identities.name(role_ref, speaker)
         if not name or name == UNSURE:
             continue
-        if (narrator and is_narrator_name(name)) or normalize_name(name) in wanted:
-            out.append(name)
+        matches = identities.same(name, role, left_ref=role_ref) if identities.typed else ((narrator and identities.is_narrator(name)) or normalize_name(name) in wanted)
+        if matches:
+            out.append(str(speaker))
     return out
 
 
@@ -167,7 +171,7 @@ def role_script(
     # актёр открывает страницу роли раньше, чем в книге появляются её реплики.
     canon = role_canon(db, book.id, role)
     empty = {
-        "book": {"id": book.id, "title": str(book.display_title or book.title or "").strip()},
+        "book": {"id": book.id, "title": str(book.display_title or book.title or "").strip(), "language": book.language or "ru"},
         "role": str(role or "").strip(),
         "canon": canon,
         "radius": radius,
@@ -239,7 +243,9 @@ def role_script(
     segment_ids = [segment.id for segment in picked]
     attributions = effective_attributions(db, segment_ids)
     stress = effective_stress(db, segment_ids)
-    payload = {item["id"]: item for item in segments_payload(picked, attributions, stress)}
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
+    payload = {item["id"]: item for item in segments_payload(picked, attributions, stress, identities=identities)}
 
     mine = {(chapter_id, ordinal) for chapter_id, ordinal in page}
     out_chapters = []
@@ -268,7 +274,7 @@ def role_script(
         })
 
     return {
-        "book": {"id": book.id, "title": str(book.display_title or book.title or "").strip()},
+        "book": {"id": book.id, "title": str(book.display_title or book.title or "").strip(), "language": book.language or "ru"},
         "role": str(role or "").strip(),
         "canon": canon,
         "radius": radius,

@@ -61,7 +61,7 @@ def build_book_actions_handlers(deps: dict[str, Any]) -> dict[str, Callable[...,
             book=book,
             triggered_by="operator",
             start_reason_code="RUN_OPERATOR_REPAIR",
-            start_reason=f"Оператор: {action_type}",
+            start_reason=f'Operator: {action_type}',
         )
         before = {"book_status": str(book.status or ""), "stop_requested": str(book.stop_requested or "")}
 
@@ -93,7 +93,7 @@ def build_book_actions_handlers(deps: dict[str, Any]) -> dict[str, Callable[...,
             event_type="operator_repair",
             level="warning",
             code=f"OPERATOR_{action_type.upper()}",
-            message=f"Операторское вмешательство: {action_type}",
+            message=f'Operator intervention: {action_type}',
             details={"actor_user_id": actor_user_id, "actor_name": actor_name, "reason": reason[:300]},
         )
         guardrails = enforce_hotfix_guardrails(
@@ -109,9 +109,7 @@ def build_book_actions_handlers(deps: dict[str, Any]) -> dict[str, Callable[...,
                 event_code=f"OPERATOR_{action_type.upper()}",
                 event_details_json=json.dumps({"reason": reason, "guardrails": guardrails}, ensure_ascii=False),
                 message=(
-                    f"Операторское вмешательство: {action_type}. "
-                    f"manual_actions_24h={int(guardrails['manual_actions_24h'])} "
-                    f"needs_investigation={int(bool(guardrails['needs_investigation']))}"
+                    f'Operator intervention: {action_type}. manual_actions_24h={int(guardrails['manual_actions_24h'])} needs_investigation={int(bool(guardrails['needs_investigation']))}'
                 ),
             )
         )
@@ -125,10 +123,13 @@ def build_book_actions_handlers(deps: dict[str, Any]) -> dict[str, Callable[...,
         title: str = "",
         author: str = "",
         file: UploadFile | None = None,
+        language: str = "ru",
     ):
         access_error = require_full_workspace_access(request)
         if access_error:
             return access_error
+        if language not in ("ru", "en"):
+            return JSONResponse({"ok": False, "error": "unsupported_book_language"}, status_code=status.HTTP_400_BAD_REQUEST)
         if file is None:
             return JSONResponse({"ok": False, "error": "file_required"}, status_code=status.HTTP_400_BAD_REQUEST)
 
@@ -149,6 +150,7 @@ def build_book_actions_handlers(deps: dict[str, Any]) -> dict[str, Callable[...,
                         created_by_name=session_display_name(request),
                         title=title,
                         author=author,
+                        language=language,
                     )
                     audit(
                         db,
@@ -159,6 +161,7 @@ def build_book_actions_handlers(deps: dict[str, Any]) -> dict[str, Callable[...,
                         payload={
                             "title": book.title,
                             "author": book.author_label,
+                            "language": book.language,
                             "pipeline_mode": book.pipeline_mode,
                             "validation_profile": book.validation_profile,
                         },
@@ -169,6 +172,7 @@ def build_book_actions_handlers(deps: dict[str, Any]) -> dict[str, Callable[...,
                         "book_id": book.id,
                         "book_title": book.display_title or book.title,
                         "source_filename": book.source_filename,
+                        "language": book.language,
                         "status": book.status,
                         "chapter_count": int(book.chapter_count or 0),
                         "total_chars": int(book.total_chars or 0),

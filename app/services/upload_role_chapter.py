@@ -76,8 +76,8 @@ def role_not_in_chapter(db, *, book_code: str, chapter_label: str, role: str) ->
 
 def refusal_text(role: str, chosen_chapter: int, speaks_in: list[int]) -> str:
     """Отказ словами: диктор должен понять, куда грузить, а не только что нельзя."""
-    head = f"у роли «{role}» нет реплик в главе {chosen_chapter}"
+    head = f"role «{role}» has no lines in chapter {chosen_chapter}"
     if not speaks_in:
-        return f"{head} — по разметке роль не говорит ни в одной главе"
-    where = f"в главе {speaks_in[0]}" if len(speaks_in) == 1 else f"в главах {', '.join(str(n) for n in speaks_in)}"
-    return f"{head} — роль говорит {where}"
+        return f"{head}; this role has no attributed lines in any chapter"
+    where = f"in chapter {speaks_in[0]}" if len(speaks_in) == 1 else f"in chapters {', '.join(str(n) for n in speaks_in)}"
+    return f"{head}; this role speaks {where}"

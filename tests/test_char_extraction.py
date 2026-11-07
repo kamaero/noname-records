@@ -225,9 +225,9 @@ def test_merge_extracted_characters_skips_non_speaker_like_entities() -> None:
     assert merged[0]["canonical_name"] == "Астрид Гудисди"
 
 
-def test_display_title_from_filename_keeps_soft_sign_in_semya() -> None:
-    title = _display_title_from_filename("primerodiny_sad_velikanov_2.fb2")
-    assert title == 'Примеродины - "Сад великанов 2"'
+def test_display_title_from_filename_recognizes_public_author_token() -> None:
+    title = _display_title_from_filename("strugatskie_sad_velikanov_2.fb2")
+    assert title == 'Стругацкие - "Сад великанов 2"'
 
 
 def test_run_char_extraction_batch_with_fallback_splits_failed_batch(monkeypatch) -> None:

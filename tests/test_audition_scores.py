@@ -130,7 +130,7 @@ def test_studio_label_prefers_the_linked_account_name_over_the_telegram_name(db,
 
 def test_lane_labels_fall_back_to_words(db, monkeypatch):
     monkeypatch.setattr(sc.settings, "owner_telegram_id", "")
-    assert sc.lane_labels(db, _book(db)) == {"author": "Автор", "studio": "Студия"}
+    assert sc.lane_labels(db, _book(db)) == {"author": "Author", "studio": "Studio"}
 
 
 # ---------- причина низкой оценки автора (04.10) ----------
@@ -218,8 +218,8 @@ def test_the_owner_notice_carries_score_reason_and_comment(db):
     sc.set_score(db, score=4, reason="voice", **kw)
     sc.set_comment(db, comment="звонче и моложе", **kw)
     text = sc.reaction_notice(db, book_id=book.id, role="Саяху", actor_name="Гленто Гарсин")
-    assert "о пробе «Саяху»" in text and "Гленто Гарсин, 4/10" in text
-    assert "Тембр не этого героя" in text and "«звонче и моложе»" in text
+    assert "on the audition for «Саяху»" in text and "Гленто Гарсин, 4/10" in text
+    assert "Voice does not fit this character" in text and "«звонче и моложе»" in text
 
 
 def test_no_notice_for_a_bare_score(db):

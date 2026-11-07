@@ -68,8 +68,8 @@ def _network_error(exc: BaseException) -> ElevenLabsError:
     reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
     kind = type(reason).__name__ if isinstance(reason, BaseException) else str(reason)[:80]
     if _never_sent(reason if isinstance(reason, BaseException) else None):
-        return ElevenLabsUnavailable(f"сеть недоступна: {kind}", sent=False)
-    return ElevenLabsInterrupted(f"ответ ElevenLabs оборвался: {kind}")
+        return ElevenLabsUnavailable(f'Network unavailable: {kind}', sent=False)
+    return ElevenLabsInterrupted(f'ElevenLabs response interrupted: {kind}')
 
 
 def _is_quota_status(status: int, body_text: str) -> bool:
@@ -138,7 +138,7 @@ def compose_music(
 
     key = api_key if api_key is not None else provider_key("elevenlabs")
     if not key:
-        raise ElevenLabsError("ELEVENLABS_API_KEY не задан")
+        raise ElevenLabsError('ELEVENLABS_API_KEY is not set')
 
     send = transport or _urllib_transport
     body = json.dumps({
@@ -158,17 +158,17 @@ def compose_music(
         raise _network_error(exc) from exc
 
     if status >= 500:
-        raise ElevenLabsUnavailable(f"ElevenLabs недоступен: http {status}", status=status, sent=True)
+        raise ElevenLabsUnavailable(f'ElevenLabs unavailable: HTTP {status}', status=status, sent=True)
     if status >= 400:
         text = (resp_body or b"").decode("utf-8", errors="replace")[:200]
         if _is_quota_status(status, text):
-            raise QuotaExhausted(f"квота исчерпана: http {status}", status=status)
+            raise QuotaExhausted(f'Quota exhausted: HTTP {status}', status=status)
         if status in (401, 403):
-            raise BadKey(f"ключ отклонён: http {status}", status=status)
+            raise BadKey(f'Key rejected: HTTP {status}', status=status)
         from app.services.provider_keys import redact
 
         raise ElevenLabsError(redact(f"http {status}: {text}"), status=status)
     if not resp_body:
-        raise ElevenLabsError(f"пустой ответ: http {status}", status=status)
+        raise ElevenLabsError(f'Empty audio response: HTTP {status}', status=status)
 
     return resp_body, _song_id_from_headers(resp_headers)

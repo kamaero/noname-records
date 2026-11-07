@@ -101,4 +101,4 @@ def role_taken_by_other(db, *, book_code: str, role: str, actor_name: str) -> bo
 
 
 def role_taken_text(role: str) -> str:
-    return f"роль «{role}» уже утверждена — пробы на неё не принимаются"
+    return f"role «{role}» is already assigned; auditions are not accepted"

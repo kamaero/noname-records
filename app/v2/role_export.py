@@ -41,6 +41,12 @@ class Line:
     pieces: list[Piece]
     cue_speaker: str = ""
     cue_text: str = ""
+    cue_role_ref: str = ""
+    cue_role_kind: str = ""
+
+    @property
+    def cue_label(self) -> str:
+        return "Narrator (system)" if self.cue_role_kind == "system_narrator" else self.cue_speaker
 
 
 @dataclass
@@ -60,6 +66,12 @@ class RoleExport:
     facts: str
     note: str
     chapters: list[Chapter]
+    role_ref: str = ""
+    role_kind: str = ""
+
+    @property
+    def role_label(self) -> str:
+        return "Narrator (system)" if self.role_kind == "system_narrator" else self.role
 
     @property
     def line_count(self) -> int:
@@ -158,7 +170,9 @@ def build_role_export(db, book_id: str, role: str, *, published_only: bool = Fal
     role = str(role or "").strip()
     characters = db.query(Character).filter(Character.book_id == book.id).all()
     row = _character(characters, role)
-    if is_narrator_name(role):
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
+    if identities.is_narrator(role):
         actor = approved_actor(_narrator_actor(db, book.id, characters))
     else:
         actor = approved_actor(str(row.actor_name or "")) if row is not None else ""
@@ -175,8 +189,12 @@ def build_role_export(db, book_id: str, role: str, *, published_only: bool = Fal
         facts=facts,
         note=str(getattr(row, "operator_note", "") or "").strip(),
         chapters=[],
+        role_ref=identities.ref(role),
+        role_kind=identities.kind(role),
     )
     spellings = set(_spoken_by(db, book.id, role))
+    if identities.typed:
+        spellings.add(identities.name(identities.ref(role), role))
     code = derive_book_code(book.title or "")
     by_id: dict[str, Chapter] = {}
     # «Своё» — по всем уже пройденным страницам: на стыке страниц предыдущий абзац мог
@@ -206,7 +224,8 @@ def build_role_export(db, book_id: str, role: str, *, published_only: bool = Fal
                 previous = by_ordinal.get(segment["ordinal"] - 1)
                 own_before = (chapter_id, segment["ordinal"] - 1) in seen
                 speaker, cue = ("", "") if previous is None or own_before else _cue(previous)
-                target.lines.append(Line(pieces=pieces, cue_speaker=speaker, cue_text=cue))
+                target.lines.append(Line(pieces=pieces, cue_speaker=speaker, cue_text=cue,
+                                         cue_role_ref=identities.ref(speaker), cue_role_kind=identities.kind(speaker)))
         if not page["has_more"]:
             break
         offset += page["counts"]["shown"]
@@ -214,15 +233,15 @@ def build_role_export(db, book_id: str, role: str, *, published_only: bool = Fal
     return export
 
 
-_CHAPTER_WORD = re.compile(r"^глава\s*\d+", re.I)
+_CHAPTER_WORD = re.compile(r"^(?:глава|chapter)\s*\d+", re.I)
 
 
 def chapter_heading(chapter: Chapter) -> str:
     """Как на экране роли: «Глава N. Название», без повтора, если название уже с «Главой»."""
     title = chapter.title.strip()
     if not title:
-        return f"Глава {chapter.index}"
-    return title if _CHAPTER_WORD.match(title) else f"Глава {chapter.index}. {title}"
+        return f"Chapter {chapter.index}"
+    return title if _CHAPTER_WORD.match(title) else f"Chapter {chapter.index}. {title}"
 
 
 def line_text(line: Line) -> str:
@@ -230,32 +249,32 @@ def line_text(line: Line) -> str:
 
 
 def render_text(export: RoleExport) -> str:
-    out = [f"{export.role} — «{export.book_title}»"]
+    out = [f"{export.role_label} — «{export.book_title}»"]
     if export.actor:
-        out.append(f"Актёр: {export.actor}")
+        out.append(f"Actor: {export.actor}")
     if export.description:
-        out.append(f"Кто это: {export.description}")
+        out.append(f"Character: {export.description}")
     if export.facts:
         out.append(export.facts)
     if export.note:
-        out.append(f"Заметка режиссёра: {export.note}")
-    out.append(f"Реплик: {export.line_count}, глав: {len(export.chapters)}. Ударения стоят в редких словах.")
+        out.append(f"Director note: {export.note}")
+    out.append(f"Lines: {export.line_count}, chapters: {len(export.chapters)}. Rare words may carry pronunciation marks.")
     for chapter in export.chapters:
         out += ["", f"=== {chapter_heading(chapter)} ==="]
         if chapter.filename:
-            out.append(f"Файл записи: {chapter.filename}")
+            out.append(f"Recording file: {chapter.filename}")
         for line in chapter.lines:
             out.append("")
             if line.cue_text:
-                label = f"{line.cue_speaker}: " if line.cue_speaker else ""
+                label = f"{line.cue_label}: " if line.cue_speaker else ""
                 out.append(f"  {label}{line.cue_text}")
-            out.append(f"▶ {export.role}: {line_text(line)}")
+            out.append(f"▶ {export.role_label}: {line_text(line)}")
     return "\n".join(out) + "\n"
 
 
 def download_names(export: RoleExport, ext: str) -> tuple[str, str]:
     """Имя для человека и латинский запасной для программ, не понимающих `filename*`."""
-    full = f"{export.role} — «{export.book_title}».{ext}"
+    full = f"{export.role_label} — «{export.book_title}».{ext}"
     code = book_token(derive_book_code(export.book_title)) or "BOOK"
     role = (latin_word(export.role) or "Role").encode("ascii", "ignore").decode() or "Role"
     return full, f"{code}_{role}.{ext}"

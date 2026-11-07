@@ -26,9 +26,9 @@ export function SpendBanner({ enabled }: { enabled: boolean }) {
   return (
     <div className={`spend-banner${over ? " is-over" : ""}`} role="status">
       {over
-        ? "Месячный лимит трат на нейросети исчерпан: новые платные прогоны не запустятся без «сверх лимита». "
-        : `Потрачено ${Math.round(share * 100)} % месячного лимита на нейросети. `}
-      <Link to="/settings?tab=spend">Траты</Link>
+        ? "The monthly AI spending limit has been reached. New paid runs need an over-limit confirmation. "
+        : `Spent ${Math.round(share * 100)} % of the monthly AI limit. `}
+      <Link to="/settings?tab=spend">Spending</Link>
     </div>
   );
 }

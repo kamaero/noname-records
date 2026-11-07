@@ -57,27 +57,26 @@ def upload_notice(
     в точности как обычная, а она — ровно тот случай, ради которого сверку и завели:
     один такой файл стоил 82 МБ платного распознавания и разбора вручную.
     """
-    who = str(user_name or "").strip() or str(login or "").strip() or "неизвестно кто"
+    who = str(user_name or "").strip() or str(login or "").strip() or 'Unknown actor'
     # проба и дубль приходят разными пачками: одна — заявка на роль, другая — работа
     auditions = bool(files) and all(str(item.get("kind") or "take") == "audition" for item in files)
     places: list[str] = []
     for item in files:
         chapter = "" if auditions else str(item.get("chapter") or "").strip()
         role = str(item.get("role") or "").strip()
-        where = " · ".join(part for part in (f"глава {chapter}" if chapter else "", role) if part)
+        where = " · ".join(part for part in (f'chapter {chapter}' if chapter else "", role) if part)
         if where and where not in places:
             places.append(where)
 
-    lines = ["🎧 Пробы на роль" if auditions else "📦 Дубли в студии", who]
+    lines = ['🎧 Role auditions' if auditions else '📦 Studio takes', who]
     lines.extend(places[:places_shown])
     if len(places) > places_shown:
-        lines.append(f"…и ещё {len(places) - places_shown}")
+        lines.append(f'…and {len(places) - places_shown}')
     if len(files) != 1:
-        lines.append(f"Файлов: {len(files)}")
+        lines.append(f'Files: {len(files)}')
     for filename_chapter, chosen_chapter in confirmed_chapters or []:
         lines.append(
-            f"⚠️ Глава подтверждена вручную: в имени файла глава {filename_chapter}, "
-            f"выбрана глава {chosen_chapter}"
+            f'⚠️ Chapter confirmed manually: filename chapter {filename_chapter}, selected chapter {chosen_chapter}'
         )
     return "\n".join(lines)
 

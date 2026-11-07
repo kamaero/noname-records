@@ -15,6 +15,7 @@ from datetime import datetime
 
 from app.models import TelegramAuthAccount, User, UserRole
 from app.config import settings
+from app.services.studio_calendar import studio_timezone
 from app.services.bot_out import DD_PREFIX, DL_PREFIX, DX_PREFIX, Outgoing, send as _send
 from app.services import audition_card, bot_agent_takes, bot_agent_uploads, bot_broadcast, bot_demos, bot_contacts, bot_deadlines, bot_intro, bot_reminder, bot_status, bot_studio, bot_takes, bot_uploads, onboarding, session_template, studio
 from app.services.login_identity import TELEGRAM_PASSWORD_HASH, account_can_sign_in
@@ -22,50 +23,56 @@ from app.services.user_admin import (
     TELEGRAM_LOGIN_PREFIX, BOT_PASSWORD_LIMIT_PER_HOUR, bot_passwords_issued_last_hour, issue_password_by_bot,
 )
 
-BUTTON_TEXT = "🔑 Логин и пароль"
+BUTTON_TEXT = "🔑 Login and password"
 CONFIRM_PREFIX = "pwreset:"
 CONFIRM_TTL_SECONDS = 600
 
 def greeting() -> str:
     """Имя студии и адрес сайта — из настроек в момент письма, а не при импорте модуля."""
-    return (f"Вы на связи с {studio.name()}. Сюда будут приходить назначения на роли и реплики для "
-            f"перезаписи. Вход на сайт: {studio.site_host()} → «Войти через Telegram».")
-NOT_OPEN = "Вы на связи. Доступ к сайту пока не открыт — мы напишем, когда откроем."
-NOT_OPEN_SHORT = "Доступ к сайту пока не открыт — мы напишем, когда откроем."
-ADMIN_ONLY_SITE = "Пароль администратора меняется только на сайте."
-ASK_RESET = "У вас уже есть пароль. Выдать новый? Старый перестанет работать."
-STALE = "Кнопка устарела — нажмите «Логин и пароль» ещё раз."
-TOO_OFTEN = "Слишком часто — попробуйте через час."
-ONLY_THIS = ("Я присылаю задания и выдаю вход на сайт. Команды: /status — ваши роли, пробы и сроки; "
-             "/help — как мы работаем.")
-ASK_NAME = "Как вас зовут? Напишите фамилию и имя, например: Ветрова Ольга."
-ASK_AGAIN = "Не получилось разобрать. Напишите фамилию и имя, например: Ветрова Ольга."
-INTRO_STALE = "Нажмите ещё раз ссылку из приглашения — вопрос устарел."
+    return (f"You are connected to {studio.name()}. Role assignments and lines to record again will arrive here. "
+            f"Sign in at {studio.site_host()} → Sign in with Telegram.")
+NOT_OPEN = "You are connected. Website access is not open yet; we will let you know when it opens."
+NOT_OPEN_SHORT = "Website access is not open yet; we will let you know when it opens."
+ADMIN_ONLY_SITE = "The administrator password can only be changed on the website."
+ASK_RESET = "You already have a password. Issue a new one? The old one will stop working."
+STALE = "This button has expired. Select Login and password again."
+TOO_OFTEN = "Too many requests. Try again in an hour."
+ONLY_THIS = ("I send assignments and provide website access. Commands: /status for your roles, auditions and deadlines; "
+             "/help for how we work.")
+ASK_NAME = "What is your name? Enter your surname followed by your given name, for example: Smith Alex."
+ASK_AGAIN = "I could not read that name. Enter your surname followed by your given name, for example: Smith Alex."
+INTRO_STALE = "Open the invitation link again; this question has expired."
 
-HOW_BUTTON = "ℹ️ Как мы работаем"
+HOW_BUTTON = "ℹ️ How we work"
 WELCOME = (
-    f"🎙 Добро пожаловать в {studio.name()}.\n\n"
-    "Как мы работаем — по шагам:\n\n"
-    f"1. <b>Доступ.</b> Вход на сайт: {studio.site_host()} → «Войти через Telegram» или кнопка "
-    "«🔑 Логин и пароль» здесь, в боте.\n"
-    "2. <b>Проба — только по приглашению.</b> Ничего не записывайте заранее. Когда понадобится ваш "
-    "голос, бот пришлёт приглашение на пробу: роль, книгу и срок. Пробу можно прислать прямо сюда, в бот, — "
-    "файлом или голосовым.\n"
-    "3. <b>Утверждение.</b> Если голос подошёл, бот пришлёт утверждение на роль и срок записи. Только "
-    "после этого записывайте роль по главам.\n"
-    "4. <b>Запись и проверка.</b> Загружайте главы на сайте, раздел «Загрузка», или присылайте файл сюда, в бот (для книги, которая сейчас в работе): главу или всю роль одним файлом, с любым именем — бот сам разложит по главам. Дубли — только WAV или FLAC, MP3 допустим для проб. Система сверит запись с "
-    "текстом и покажет покрытие реплик. Пропущенные реплики нужно дописать.\n\n"
-    f"Вопросы — {studio.write_to()}."
+    f"🎙 Welcome to {studio.name()}.\n\n"
+    "How we work:\n\n"
+    f"1. <b>Access.</b> Sign in at {studio.site_host()} with Telegram, or select "
+    "🔑 Login and password here in the bot.\n"
+    "2. <b>Auditions are by invitation.</b> Please wait for an invitation with the role, book and deadline before recording. "
+    "You can send the audition here as an audio file or voice message.\n"
+    "3. <b>Approval.</b> If selected, you will receive a role approval and recording deadline. "
+    "Then record the role chapter by chapter.\n"
+    "4. <b>Recording and alignment.</b> Upload chapters on the website or send a file here for the book currently being recorded. "
+    "You can send one chapter or the entire role in one file, with any filename; the bot splits it into chapters. "
+    "Takes must be WAV or FLAC; MP3 is accepted for auditions. The system compares the recording with the text "
+    "and shows line coverage. Record any missing lines.\n\n"
+    f"Questions: {studio.write_to()}."
 )
-STATUS_BUTTON = "📋 Мой статус"
-STUDIO_BUTTON = "🏢 Студия"
+STATUS_BUTTON = "📋 My status"
+STUDIO_BUTTON = "🏢 Studio"
 OVERVIEW_ROLES = frozenset({"admin", "agent", "author"})
 KEYBOARD = {"keyboard": [[{"text": BUTTON_TEXT}, {"text": HOW_BUTTON}], [{"text": STATUS_BUTTON}]],
             "resize_keyboard": True, "is_persistent": True}
 STAFF_KEYBOARD = {"keyboard": KEYBOARD["keyboard"] + [[{"text": STUDIO_BUTTON}]],
                   "resize_keyboard": True, "is_persistent": True}
-BROADCAST_BUTTON = "📢 Рассылка"
-REMIND_BUTTON = "⏰ Напомнить"
+BROADCAST_BUTTON = "📢 Broadcast"
+REMIND_BUTTON = "⏰ Remind"
+LEGACY_BUTTONS = {
+    "🔑 Логин и пароль": BUTTON_TEXT, "ℹ️ Как мы работаем": HOW_BUTTON,
+    "📋 Мой статус": STATUS_BUTTON, "🏢 Студия": STUDIO_BUTTON,
+    "📢 Рассылка": BROADCAST_BUTTON, "⏰ Напомнить": REMIND_BUTTON,
+}
 ADMIN_KEYBOARD = {"keyboard": [[{"text": BROADCAST_BUTTON}, {"text": REMIND_BUTTON}],
                                [{"text": STUDIO_BUTTON}, {"text": STATUS_BUTTON}]],
                   "resize_keyboard": True, "is_persistent": True}
@@ -134,10 +141,10 @@ def _issue(db, chat_id, user: User, now: datetime, markup: dict | None = None) -
     if bot_passwords_issued_last_hour(db, user.id, now=now) >= BOT_PASSWORD_LIMIT_PER_HOUR:
         return _send(chat_id, TOO_OFTEN)
     issued = issue_password_by_bot(db, user.id, now=now)
-    text = (f"Логин: <code>{html.escape(issued['login'])}</code>\n"
-            f"Пароль: <code>{html.escape(issued['password'])}</code>\n"
-            f"Вход: {studio.site_url('/app/login')}\n\n"
-            "Сохраните пароль. Забудете — нажмите кнопку снова.")
+    text = (f"Login: <code>{html.escape(issued['login'])}</code>\n"
+            f"Password: <code>{html.escape(issued['password'])}</code>\n"
+            f"Sign in: {studio.site_url('/app/login')}\n\n"
+            "Keep your password. If you forget it, select the button again.")
     return _send(chat_id, text, markup or KEYBOARD, html_mode=True)
 
 
@@ -157,23 +164,23 @@ def _introduce(db, chat_id, tid: str, text: str, now: datetime) -> list[Outgoing
     if not name:
         return [_send(chat_id, ASK_AGAIN)]
     made = bot_intro.create_dictor(db, tid, name, now=now)
-    out = [_send(chat_id, f"Готово, {name}! Вход: {studio.site_host()} → «Войти через Telegram».", KEYBOARD),
+    out = [_send(chat_id, f"Ready, {name}! Sign in: {studio.site_host()} → Sign in with Telegram.", KEYBOARD),
            _send(chat_id, WELCOME, KEYBOARD, html_mode=True),
            Outgoing("enqueue_intro", {"telegram_user_id": tid})]
     owner = str(settings.owner_telegram_id or "").strip()
     notes = []
     if made["twins"]:
-        notes.append(f"похожие учётки: {', '.join(made['twins'])} — если это один человек, слейте на экране учёток")
+        notes.append(f"similar accounts: {', '.join(made['twins'])} — merge them on the Users page if they belong to the same person")
     if made["cast"]:
         roles = "; ".join(f"{m['role']} («{m['book']}»)" for m in made["cast"])
-        notes.append(f"имя стоит в касте: {roles} — эти роли теперь у новой учётки")
+        notes.append(f"name found in the cast: {roles} — these roles now belong to the new account")
     if notes and owner:
-        out.append(_send(owner, f"Бот: представился {name} (учётка tg_{tid}). " + ". ".join(notes) + "."))
+        out.append(_send(owner, f"Bot: introduced as {name} (account tg_{tid}). " + ". ".join(notes) + "."))
     return out
 
 
 def _bc_cancel_row(bc_id: str) -> list[dict]:
-    return [{"text": "Отмена", "callback_data": f"{BC_PREFIX}x:{bc_id}"}]
+    return [{"text": "Cancel", "callback_data": f"{BC_PREFIX}x:{bc_id}"}]
 
 
 def _broadcast_start(db, chat_id, tid: str, now: datetime) -> list[Outgoing]:
@@ -181,9 +188,9 @@ def _broadcast_start(db, chat_id, tid: str, now: datetime) -> list[Outgoing]:
     bc = bot_broadcast.start(db, tid, now=now)
     rows = [[{"text": str(b.display_title or b.title or "")[:60], "callback_data": f"{BC_PREFIX}b:{bc.id}:{b.id[:12]}"}]
             for b in bot_broadcast.books(db)]
-    rows.append([{"text": "Всем дикторам", "callback_data": f"{BC_PREFIX}all:{bc.id}"}])
+    rows.append([{"text": "All voice actors", "callback_data": f"{BC_PREFIX}all:{bc.id}"}])
     rows.append(_bc_cancel_row(bc.id))
-    return [_send(chat_id, "Кому рассылка? Выберите книгу — письмо уйдёт её касту, — или всех дикторов.",
+    return [_send(chat_id, "Who should receive the broadcast? Select a book to contact its cast, or all voice actors.",
                   {"inline_keyboard": rows})]
 
 
@@ -191,7 +198,7 @@ def _broadcast_ask_text(db, chat_id, bc) -> Outgoing:
     bc.state = "text"
     count = len(bot_broadcast.recipients(db, bc))
     return _send(chat_id, f"{bot_broadcast.header(db, bc)} — {bot_broadcast.people(count)}.\n"
-                          "Напишите текст рассылки одним сообщением (только текст; передумали — «Отмена»).",
+                          "Enter the broadcast as one text message, or select Cancel.",
                  {"inline_keyboard": [_bc_cancel_row(bc.id)]})
 
 
@@ -200,20 +207,20 @@ def _broadcast_preview(db, chat_id, bc, text: str) -> list[Outgoing]:
     full = f"{bot_broadcast.header(db, bc)}\n\n{body}"
     if len(full.encode("utf-16-le")) // 2 > bot_broadcast.TELEGRAM_LIMIT:
         # Telegram считает 4096 в единицах UTF-16; обрезать молча нельзя — смысл потеряется
-        return [_send(chat_id, f"Текст слишком длинный для одного сообщения Telegram — сократите "
-                               f"до ~{bot_broadcast.TELEGRAM_LIMIT - 100} знаков и пришлите снова.")]
+        return [_send(chat_id, f"The text is too long for one Telegram message. Shorten it "
+                               f"to about {bot_broadcast.TELEGRAM_LIMIT - 100} characters and send it again.")]
     bc.text = body
     bc.state = "confirm"
     found = bot_broadcast.recipients(db, bc)
     with_tg = [name for name, chat in found if chat]
     without = [name for name, chat in found if not chat]
-    summary = f"Получат в Telegram: {len(with_tg)}."
+    summary = f"Telegram recipients: {len(with_tg)}."
     if without:
-        summary += f" Без Telegram: {', '.join(without)} — им напишите сами."
-    buttons = {"inline_keyboard": [[{"text": "Отправить", "callback_data": f"{BC_PREFIX}s:{bc.id}"}],
+        summary += f" Without Telegram: {', '.join(without)} — please contact them directly."
+    buttons = {"inline_keyboard": [[{"text": "Send", "callback_data": f"{BC_PREFIX}s:{bc.id}"}],
                                    _bc_cancel_row(bc.id)]}
     return [_send(chat_id, f"{bot_broadcast.header(db, bc)}\n\n{bc.text}"),
-            _send(chat_id, summary.replace("Без Telegram", "без Telegram"), buttons)]
+            _send(chat_id, summary.replace("Without Telegram", "without Telegram"), buttons)]
 
 
 def _broadcast_press(db, chat_id, tid: str, data: str, now: datetime) -> list[Outgoing]:
@@ -227,20 +234,20 @@ def _broadcast_step(db, chat_id, tid: str, data: str, now: datetime) -> list[Out
     action, bc_id = parts[0], (parts[1] if len(parts) > 1 else "")
     bc = bot_broadcast.own(db, bc_id, tid, now=now)
     if bc is None or bc.state in ("sent", "cancelled"):
-        return [_send(chat_id, "Эта рассылка уже закрыта. Начните заново: «📢 Рассылка».")] if bc is None or bc.state == "cancelled" else []
+        return [_send(chat_id, "This broadcast is closed. Start again with 📢 Broadcast.")] if bc is None or bc.state == "cancelled" else []
     if action == "x":
         bc.state = "cancelled"
-        return [_send(chat_id, "Рассылка отменена.", ADMIN_KEYBOARD)]
+        return [_send(chat_id, "Broadcast cancelled.", ADMIN_KEYBOARD)]
     if action == "b" and bc.state == "choose":
         book = bot_broadcast.find_book(db, parts[2] if len(parts) > 2 else "")
         if book is None:
-            return [_send(chat_id, "Книга не нашлась — начните заново.")]
+            return [_send(chat_id, "Book not found. Start again.")]
         bc.scope, bc.book_id, bc.state = "book", book.id, "audience"
-        rows = [[{"text": "Утверждённым", "callback_data": f"{BC_PREFIX}a:{bc.id}:0"}],
-                [{"text": "+ позванным на пробу", "callback_data": f"{BC_PREFIX}a:{bc.id}:1"}],
+        rows = [[{"text": "Approved actors", "callback_data": f"{BC_PREFIX}a:{bc.id}:0"}],
+                [{"text": "+ invited to audition", "callback_data": f"{BC_PREFIX}a:{bc.id}:1"}],
                 _bc_cancel_row(bc.id)]
-        return [_send(chat_id, f"{bot_broadcast.header(db, bc)}: кому — утверждённым или ещё и позванным на пробу? "
-                               "Рассказчик книги получит в обоих случаях.", {"inline_keyboard": rows})]
+        return [_send(chat_id, f"{bot_broadcast.header(db, bc)}: send to approved actors only, or include audition invitations? "
+                               "The narrator receives it in either case.", {"inline_keyboard": rows})]
     if action == "all" and bc.state == "choose":
         bc.scope = "all"
         return [_broadcast_ask_text(db, chat_id, bc)]
@@ -259,12 +266,12 @@ def _broadcast_step(db, chat_id, tid: str, data: str, now: datetime) -> list[Out
         if claimed != 1:
             return []
         db.expire(bc)
-        return [_send(chat_id, "Отправляю…"), Outgoing("broadcast", {"id": bc.id, "admin_chat": chat_id})]
+        return [_send(chat_id, "Sending…"), Outgoing("broadcast", {"id": bc.id, "admin_chat": chat_id})]
     return []
 
 
 def _rm_cancel_row(bc_id: str) -> list[dict]:
-    return [{"text": "Отмена", "callback_data": f"{RM_PREFIX}x:{bc_id}"}]
+    return [{"text": "Cancel", "callback_data": f"{RM_PREFIX}x:{bc_id}"}]
 
 
 def _remind_start(db, chat_id, tid: str, now: datetime) -> list[Outgoing]:
@@ -273,11 +280,11 @@ def _remind_start(db, chat_id, tid: str, now: datetime) -> list[Outgoing]:
     bc.scope = bot_reminder.SCOPE
     rows = [[{"text": str(b.display_title or b.title or "")[:60], "callback_data": f"{RM_PREFIX}b:{bc.id}:{b.id[:12]}"}]
             for b in bot_broadcast.books(db)]
-    rows.append([{"text": "Все книги", "callback_data": f"{RM_PREFIX}b:{bc.id}:"}])
+    rows.append([{"text": "All books", "callback_data": f"{RM_PREFIX}b:{bc.id}:"}])
     rows.append(_rm_cancel_row(bc.id))
     db.flush()
-    return [_send(chat_id, "О какой книге напомнить? Письмо уйдёт утверждённым дикторам, которые ещё не "
-                           "начали записывать свою роль.", {"inline_keyboard": rows})]
+    return [_send(chat_id, "Which book needs a reminder? It will go to approved actors who have not "
+                           "started recording their roles.", {"inline_keyboard": rows})]
 
 
 def _remind_step(db, chat_id, tid: str, data: str, now: datetime) -> list[Outgoing]:
@@ -285,36 +292,36 @@ def _remind_step(db, chat_id, tid: str, data: str, now: datetime) -> list[Outgoi
     action, bc_id = parts[0], (parts[1] if len(parts) > 1 else "")
     bc = bot_broadcast.own(db, bc_id, tid, now=now)
     if bc is None or bc.scope != bot_reminder.SCOPE or bc.state == "cancelled":
-        return [_send(chat_id, "Это напоминание уже закрыто. Начните заново: «⏰ Напомнить».")]
+        return [_send(chat_id, "This reminder is closed. Start again with ⏰ Remind.")]
     if bc.state == "sent":
         return []
     if action == "x":
         bc.state = "cancelled"
-        return [_send(chat_id, "Напоминание отменено.", ADMIN_KEYBOARD)]
+        return [_send(chat_id, "Reminder cancelled.", ADMIN_KEYBOARD)]
     if action == "b" and bc.state == "choose":
         prefix = parts[2] if len(parts) > 2 else ""
         book = bot_broadcast.find_book(db, prefix) if prefix else None
         if prefix and book is None:
-            return [_send(chat_id, "Книга не нашлась — начните заново.")]
+            return [_send(chat_id, "Book not found. Start again.")]
         bc.book_id = book.id if book is not None else ""
         found = bot_reminder.targets(db, book_id=bc.book_id)
         if not found:
             bc.state = "cancelled"
-            return [_send(chat_id, f"{bot_reminder.header(db, bc)}: напоминать некому — все утверждённые уже "
-                                   "начали запись или сдали роли.", ADMIN_KEYBOARD)]
+            return [_send(chat_id, f"{bot_reminder.header(db, bc)} has no reminder recipients: all approved actors have already "
+                                   "started recording or completed their roles.", ADMIN_KEYBOARD)]
         bc.state = "confirm"
         with_tg = [t for t in found if t.chat]
         without = [t.actor for t in found if not t.chat]
         roles = sum(len(t.roles) for t in with_tg)
-        summary = f"{bot_reminder.header(db, bc)}: напоминание уйдёт {bot_reminder.dictors_word(len(with_tg))} ({roles} рол.)."
+        summary = f"{bot_reminder.header(db, bc)}: reminder recipients: {bot_reminder.dictors_word(len(with_tg))} ({roles} roles)."
         if without:
-            summary += f"\nБез Telegram: {', '.join(without)} — им напишите сами."
+            summary += f"\nWithout Telegram: {', '.join(without)} — please contact them directly."
         out = []
         if with_tg:
-            out.append(_send(chat_id, f"Образец — письмо для «{with_tg[0].actor}»:\n\n{bot_reminder.reminder_text(with_tg[0])}"))
-        buttons = [[{"text": "Отправить", "callback_data": f"{RM_PREFIX}s:{bc.id}"}]] if with_tg else []
+            out.append(_send(chat_id, f"Preview — message for «{with_tg[0].actor}»:\n\n{bot_reminder.reminder_text(with_tg[0], timezone=studio_timezone(db))}"))
+        buttons = [[{"text": "Send", "callback_data": f"{RM_PREFIX}s:{bc.id}"}]] if with_tg else []
         buttons.append(_rm_cancel_row(bc.id))
-        out.append(_send(chat_id, summary.replace("напоминание уйдёт", "Напоминание уйдёт"), {"inline_keyboard": buttons}))
+        out.append(_send(chat_id, summary.replace("reminder recipients", "Reminder recipients"), {"inline_keyboard": buttons}))
         return out
     if action == "s" and bc.state == "confirm":
         from app.models import BotBroadcast
@@ -325,7 +332,7 @@ def _remind_step(db, chat_id, tid: str, data: str, now: datetime) -> list[Outgoi
         if claimed != 1:
             return []
         db.expire(bc)
-        return [_send(chat_id, "Отправляю…"), Outgoing("reminder", {"id": bc.id, "admin_chat": chat_id})]
+        return [_send(chat_id, "Sending…"), Outgoing("reminder", {"id": bc.id, "admin_chat": chat_id})]
     return []
 
 
@@ -438,6 +445,8 @@ def handle_update(db, update: dict, *, now: datetime) -> list[Outgoing]:
     tid, chat_id = str((message.get("from") or {}).get("id") or ""), chat.get("id")
     bot_contacts.touch(db, message.get("from") or {}, now=now)
     text = str(message.get("text") or "").strip()
+    # Уже отправленная клавиатура остаётся рабочей после обновления языка интерфейса.
+    text = LEGACY_BUTTONS.get(text, text)
     kind, user = _person(db, tid)
     roles = _roles(db, tid, user) if kind != "none" else set()
     keyboard = _keyboard(kind, roles)
@@ -562,7 +571,7 @@ def handle_update(db, update: dict, *, now: datetime) -> list[Outgoing]:
             return [_send(chat_id, ADMIN_ONLY_SITE, ADMIN_KEYBOARD)]
         if str(user.password_hash or "") == TELEGRAM_PASSWORD_HASH:
             return [_issue(db, chat_id, user, now)]
-        confirm = {"inline_keyboard": [[{"text": "Да, новый пароль",
+        confirm = {"inline_keyboard": [[{"text": "Yes, issue a new password",
                                          "callback_data": f"{CONFIRM_PREFIX}{now_ts}"}]]}
         return [_send(chat_id, ASK_RESET, confirm)]
 

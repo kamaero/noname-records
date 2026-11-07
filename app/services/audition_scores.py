@@ -22,13 +22,13 @@ REASON_MAX_SCORE = 6
 #: Поэтому автор мог не объяснить, что голос хорош, но не подходит персонажу.
 #: Смысл ключей прежний — письмо диктору («нужен другой тембр») не меняется.
 REASON_LABELS = {
-    "voice": "Тембр не этого героя",
-    "manner": "Подача не этого героя",
-    "all": "И тембр, и подача",
+    "voice": "Voice does not fit this character",
+    "manner": "Delivery does not fit this character",
+    "all": "Both voice and delivery",
 }
 #: Комментарий — живой ответ, а не сочинение; длиннее телеграм-сообщения не нужен.
 COMMENT_MAX_CHARS = 1000
-_FALLBACK_LABELS = {"author": "Автор", "studio": "Студия"}
+_FALLBACK_LABELS = {"author": "Author", "studio": "Studio"}
 
 
 class ScoreError(ValueError):
@@ -158,9 +158,9 @@ def reaction_notice(db, *, book_id: str, role: str, actor_name: str, lane: str =
     entry = _pair_scores(db, book_id=str(book_id or ""), role=role, actor_name=actor_name).get(lane) if book else None
     if not entry or not (entry["reason"] or entry["comment"]):
         return ""
-    who = lane_labels(db, book).get(lane, "Автор")  # из записи автора: в учётке «Фамилия Имя» вперемешку
+    who = lane_labels(db, book).get(lane, "Author")  # из записи автора: в учётке «Фамилия Имя» вперемешку
     title = str(getattr(book, "display_title", "") or book.title or "").strip()
-    lines = [f"💬 {who} о пробе «{role_title or role}» ({title}) — {actor_name}, {entry['score']}/10"]
+    lines = [f"💬 {who} on the audition for «{role_title or role}» ({title}) — {actor_name}, {entry['score']}/10"]
     if entry["reason"] in REASON_LABELS:
         lines.append(REASON_LABELS[entry["reason"]])
     if entry["comment"]:

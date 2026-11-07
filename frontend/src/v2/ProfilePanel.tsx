@@ -17,19 +17,19 @@ type ProfilePanelProps = {
 };
 
 const COUNT_LABELS: Array<[keyof BookProfileResponse["counts"], string]> = [
-  ["author_characters", "Персонажей у автора"],
-  ["author_characters_confirmed", "— из них подтверждённых"],
-  ["linked_characters", "Персонажей книги, связанных с автором"],
-  ["author_pronunciations", "Ударений в словаре автора"],
-  ["book_pronunciation_terms", "Ударений в словаре книги"],
-  ["v2_segments", "Сегментов v2"],
-  ["v2_attributed_segments", "— из них с ролями"],
-  ["v2_stress_marks", "Ударений в тексте v2"],
+  ["author_characters", "Author's characters"],
+  ["author_characters_confirmed", "— confirmed"],
+  ["linked_characters", "Book characters linked to author"],
+  ["author_pronunciations", "Author dictionary stress entries"],
+  ["book_pronunciation_terms", "Book dictionary stress entries"],
+  ["v2_segments", "Annotated segments"],
+  ["v2_attributed_segments", "— with roles"],
+  ["v2_stress_marks", "Stress marks in annotated text"],
 ];
 
 /** The sync/apply summaries are free-form on the backend; show whatever shape arrives as a compact list. */
 export function SummaryList({ summary }: { summary: unknown }): ReactNode {
-  if (summary === null || summary === undefined || summary === "") return <p className="v2r-sheet-empty">Без подробностей.</p>;
+  if (summary === null || summary === undefined || summary === "") return <p className="v2r-sheet-empty">No details.</p>;
   if (typeof summary === "string" || typeof summary === "number" || typeof summary === "boolean") {
     return <p className="v2r-summary-text">{String(summary)}</p>;
   }
@@ -43,7 +43,7 @@ export function SummaryList({ summary }: { summary: unknown }): ReactNode {
     );
   }
   const entries = Object.entries(summary as Record<string, unknown>);
-  if (entries.length === 0) return <p className="v2r-sheet-empty">Без подробностей.</p>;
+  if (entries.length === 0) return <p className="v2r-sheet-empty">No details.</p>;
   return (
     <dl className="v2r-kv">
       {entries.map(([key, value]) => (
@@ -74,24 +74,24 @@ export function ProfilePanel({ bookId, onClose }: ProfilePanelProps) {
 
   const afterAction = async (label: string, result: ProfileActionResponse) => {
     if (!result.ok) {
-      pushToast({ tone: "error", title: `${label}: не выполнено`, detail: result.error || "Сервер ответил без подробностей." });
+      pushToast({ tone: "error", title: `${label}: failed`, detail: result.error || "The server returned no details." });
       return;
     }
     setLastResult({ label, summary: result.summary });
-    pushToast({ tone: "success", title: `${label}: готово`, detail: summaryToText(result.summary) });
+    pushToast({ tone: "success", title: `${label}: done`, detail: summaryToText(result.summary) });
     await invalidateReader(queryClient, bookId, ["profile", "chapters", "cast", "queue"]);
   };
 
   const sync = useMutation({
     mutationFn: () => apiPostJson<ProfileActionResponse>(`${base}/sync`, {}),
-    onSuccess: (result) => afterAction("Профиль автора обновлён", result),
-    onError: (error) => pushToast({ tone: "error", title: "Не удалось обновить профиль автора", detail: describeApiError(error, "Ошибка синхронизации.") }),
+    onSuccess: (result) => afterAction("Author profile updated", result),
+    onError: (error) => pushToast({ tone: "error", title: "Could not update author profile", detail: describeApiError(error, "Synchronization failed.") }),
   });
 
   const apply = useMutation({
     mutationFn: () => apiPostJson<ProfileActionResponse>(`${base}/apply`, { overwrite }),
-    onSuccess: (result) => afterAction("Профиль применён к книге", result),
-    onError: (error) => pushToast({ tone: "error", title: "Не удалось применить профиль", detail: describeApiError(error, "Ошибка применения профиля.") }),
+    onSuccess: (result) => afterAction("Profile applied to book", result),
+    onError: (error) => pushToast({ tone: "error", title: "Could not apply profile", detail: describeApiError(error, "Profile application failed.") }),
   });
 
   const data = profile.data;
@@ -99,46 +99,46 @@ export function ProfilePanel({ bookId, onClose }: ProfilePanelProps) {
 
   return (
     <Sheet
-      title="Профиль книги"
-      subtitle={data ? data.book.title : profile.isLoading ? "Загружаю…" : null}
+      title="Book profile"
+      subtitle={data ? data.book.title : profile.isLoading ? "Loading…" : null}
       onClose={onClose}
       footer={
         <div className="v2r-profile-actions">
           <button type="button" className="btn btn-sm v2r-btn" disabled={busy || !data} onClick={() => sync.mutate()}>
-            {sync.isPending ? "Обновляю…" : "Обновить профиль автора из книги"}
+            {sync.isPending ? "Updating…" : "Update author profile from book"}
           </button>
           <button type="button" className="btn btn-sm btn-primary v2r-btn" disabled={busy || !data} onClick={() => apply.mutate()}>
-            {apply.isPending ? "Применяю…" : "Применить профиль к книге"}
+            {apply.isPending ? "Applying…" : "Apply profile to book"}
           </button>
           <label className="v2r-check">
             <input type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} disabled={busy} />
-            <span>перезаписать ручные цвета/актёров</span>
+            <span>overwrite manual colors and voice actors</span>
           </label>
         </div>
       }
     >
-      {profile.isError ? <p className="v2r-sheet-error">{describeApiError(profile.error, "Не удалось загрузить профиль.")}</p> : null}
+      {profile.isError ? <p className="v2r-sheet-error">{describeApiError(profile.error, "Could not load profile.")}</p> : null}
       {data ? (
         <>
           <section className="v2r-sheet-section">
             <dl className="v2r-kv">
               <div className="v2r-kv-row">
-                <dt>Автор</dt>
-                <dd>{data.author ? data.author.name : <span className="v2r-sheet-empty">автор не определён</span>}</dd>
+                <dt>Author</dt>
+                <dd>{data.author ? data.author.name : <span className="v2r-sheet-empty">author unassigned</span>}</dd>
               </div>
               <div className="v2r-kv-row">
-                <dt>Режим пайплайна</dt>
+                <dt>Pipeline mode</dt>
                 <dd><span className="v2r-tag">{data.book.pipeline_mode || "—"}</span></dd>
               </div>
               <div className="v2r-kv-row">
-                <dt>Профиль валидации</dt>
+                <dt>Validation profile</dt>
                 <dd><span className="v2r-tag">{data.book.validation_profile || "—"}</span></dd>
               </div>
             </dl>
           </section>
 
           <section className="v2r-sheet-section">
-            <h3 className="v2r-sheet-h">Счётчики</h3>
+            <h3 className="v2r-sheet-h">Counts</h3>
             <dl className="v2r-kv">
               {COUNT_LABELS.map(([key, label]) => (
                 <div key={key} className="v2r-kv-row">
@@ -150,14 +150,14 @@ export function ProfilePanel({ bookId, onClose }: ProfilePanelProps) {
           </section>
 
           <section className="v2r-sheet-section">
-            <h3 className="v2r-sheet-h">Последняя синхронизация</h3>
+            <h3 className="v2r-sheet-h">Last synchronization</h3>
             {data.last_sync ? (
               <>
                 <p className="v2r-sheet-note">{formatWhen(data.last_sync.at)}</p>
                 <SummaryList summary={data.last_sync.summary} />
               </>
             ) : (
-              <p className="v2r-sheet-empty">Профиль ещё не синхронизировали.</p>
+              <p className="v2r-sheet-empty">Profile has not been synchronized yet.</p>
             )}
           </section>
 

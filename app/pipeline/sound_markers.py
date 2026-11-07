@@ -27,6 +27,14 @@ SYSTEM = """Ты — звукорежиссёр аудиокниги. Тебе �
 Описания — по-русски, коротко. Запросы — по-английски, как их вводят в Epidemic Sound
 или freesound. Если место из списка — верни его id, не заводи двойника."""
 
+SYSTEM_EN = """You are the sound director for an English audiobook. Annotate the numbered chapter paragraphs for mixing, using the supplied list of known locations.
+
+1. SCENES: spans with one location and one acoustic environment. Start a scene when the location, time or environment changes. Return the first paragraph number; a known location id, or a new location with its name, a short description and 2–3 English ambience search queries; time of day, weather, background sounds, mood and 1–3 English music search queries.
+2. TRANSITIONS: changes or pauses in background sound, such as a flashback, dream, vision, abrupt relocation or sudden silence. Return the paragraph number and what happens.
+3. SIGNIFICANT SOUNDS: audible events or accents such as thunder, an explosion, a bell, a door slamming in silence or a scream behind a wall. Do not mark ordinary footsteps, rustling, dishes, breathing or other routine background noise. Usually a chapter has 5–15, sometimes fewer. For each, return its paragraph number, a VERBATIM quote of 2–6 words from the original text, a short description and 1–3 sound-library search queries.
+
+Write descriptions and search queries in English. Preserve source quotes and names exactly. Reuse an existing location id when it is the same location; do not create duplicates. Return the supplied JSON schema without extra prose."""
+
 _QUERIES = {"type": "array", "items": {"type": "string"}}
 SCHEMA = {
     "type": "object",
@@ -54,6 +62,8 @@ MERGE_SYSTEM = """Тебе дают список мест одной книги.
 одно и то же место, названное по-разному («таверна у Ворот» и «кабак у ворот»). Не
 склеивай просто похожие места (две разные таверны). Верни только такие пары и причину."""
 
+MERGE_SYSTEM_EN = """Find pairs of locations in one book that almost certainly refer to the same place under different names. Do not merge merely similar places, such as two different taverns. Return only those pairs with their original ids and a short reason in English, using the supplied schema."""
+
 MERGE_SCHEMA = {
     "type": "object",
     "properties": {"pairs": {"type": "array", "items": {"type": "object", "properties": {
@@ -71,9 +81,11 @@ def _queries(value) -> list[str]:
     return [str(q).strip() for q in (value or []) if str(q).strip()][:3]
 
 
-def chapter_prompt(paragraphs: list[tuple[int, str]], places: list[dict]) -> str:
-    known = "\n".join(f"{p['id']} — {p['name']}: {p['description']}" for p in places) or "(пока нет)"
+def chapter_prompt(paragraphs: list[tuple[int, str]], places: list[dict], *, language: str = "ru") -> str:
+    known = "\n".join(f"{p['id']} — {p['name']}: {p['description']}" for p in places) or ("(none yet)" if language == "en" else "(пока нет)")
     body = "\n".join(f"[{n}] {text}" for n, text in paragraphs)
+    if language == "en":
+        return f"BOOK LOCATIONS:\n{known}\n\nCHAPTER:\n{body}"
     return f"Места книги:\n{known}\n\nГлава:\n{body}"
 
 

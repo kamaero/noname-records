@@ -22,7 +22,7 @@ async def api_seat_enter(request: Request):
     given = str(request.query_params.get("token") or "")
     expected = str(settings.seat_token or "")
     if not expected or not hmac.compare_digest(given.encode(), expected.encode()):
-        return JSONResponse({"error": "Откройте Noname Records заново."}, status_code=401)
+        return JSONResponse({"error": "Reopen Noname Records."}, status_code=401)
     with SessionLocal() as db:
         user = local_owner(db)
         payload = {"uid": user.id, "sub": user.login, "roles": ["admin", "author"],

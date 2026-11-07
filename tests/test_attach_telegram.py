@@ -39,7 +39,7 @@ class TestGivingSomebodyATelegram:
         assert row.display_name == "Литвиненко Константин"
 
     def test_the_role_comes_from_the_account_not_from_a_guess(self, db):
-        made = create_user(db, display_name="Александр Примеродин", roles=["author"])["user"]
+        made = create_user(db, display_name="Алексей Примеров", roles=["author"])["user"]
 
         attach_telegram(db, user_id=made["id"], telegram_user_id="900000106")
 

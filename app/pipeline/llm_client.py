@@ -79,7 +79,7 @@ def _resolve_provider(provider_name: str) -> tuple[str, str, str]:
         "routerai": ("routerai", settings.routerai_base_url, "openai"),
     }
     if provider_name not in providers:
-        raise RuntimeError(f"Неподдерживаемый провайдер: {provider_name}")
+        raise RuntimeError(f'Unsupported provider: {provider_name}')
     key_name, base_url, mode = providers[provider_name]
     return provider_key(key_name), base_url.rstrip("/"), mode
 

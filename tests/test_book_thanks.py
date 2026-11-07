@@ -62,11 +62,11 @@ def test_people_without_a_chat_are_listed_separately(db):
     assert out["no_chat"] == [{"actor": "Без Чата", "roles": ["Страж"]}]
 
 
-def test_render_joins_roles_in_russian():
+def test_render_joins_roles_in_english_without_changing_names():
     t = "{name}, вы озвучили {roles}."
     assert book_thanks.render(t, name="Ольга", roles=["Хдыбдяр"]) == "Ольга, вы озвучили Хдыбдяр."
-    assert "Хдыбдяр и Тот-Кто" in book_thanks.render(t, name="О", roles=["Хдыбдяр", "Тот-Кто"])
-    assert "А, Б и В" in book_thanks.render(t, name="О", roles=["А", "Б", "В"])
+    assert 'Хдыбдяр and Тот-Кто' in book_thanks.render(t, name="О", roles=["Хдыбдяр", "Тот-Кто"])
+    assert 'А, Б and В' in book_thanks.render(t, name="О", roles=["А", "Б", "В"])
     assert "Ольга" in book_thanks.render(book_thanks.DEFAULT_TEXT, name="Ольга", roles=["Хдыбдяр"])
 
 

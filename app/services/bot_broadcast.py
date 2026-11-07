@@ -23,9 +23,7 @@ UNFINISHED = ("choose", "audience", "text", "confirm")
 
 def people(n: int) -> str:
     """«1 человек», «2 человека», «5 человек», «22 человека»."""
-    mod10, mod100 = n % 10, n % 100
-    few = 2 <= mod10 <= 4 and not 12 <= mod100 <= 14
-    return f"{n} {'человека' if few else 'человек'}"
+    return f"{n} {'person' if n == 1 else 'people'}"
 
 
 def start(db, admin_tid: str, *, now: datetime) -> BotBroadcast:
@@ -71,7 +69,7 @@ def header(db, bc: BotBroadcast) -> str:
     if bc.scope == "book":
         book = db.get(ScriptBook, bc.book_id)
         return f"📢 {getattr(book, 'display_title', '') or getattr(book, 'title', '') or studio.name()}"
-    return f"📢 {studio.name()} — всем дикторам"
+    return f"📢 {studio.name()} — all voice actors"
 
 
 def recipients(db, bc: BotBroadcast) -> list[tuple[str, str]]:
@@ -109,7 +107,7 @@ def deliver(db, bc_id: str, *, send, now: datetime | None = None) -> str:
     now = now or utcnow_naive()
     bc = db.get(BotBroadcast, str(bc_id or ""))
     if bc is None:
-        return "Рассылка не найдена."
+        return "Broadcast not found."
     text = f"{header(db, bc)}\n\n{bc.text}"
     found = recipients(db, bc)
     progress = {"delivered": [], "failed": [], "no_telegram": [name for name, chat in found if not chat]}
@@ -131,9 +129,9 @@ def deliver(db, bc_id: str, *, send, now: datetime | None = None) -> str:
         bc.sent_count = len(progress["delivered"])
         bc.failed_json = json.dumps(progress, ensure_ascii=False)
         db.commit()
-    lines = [f"Рассылка «{header(db, bc)[2:]}» — Ушло: {len(progress['delivered'])}."]
+    lines = [f"Broadcast «{header(db, bc)[2:]}» — sent: {len(progress['delivered'])}."]
     if progress["failed"]:
-        lines.append(f"Не дошло: {', '.join(progress['failed'])}")
+        lines.append(f"Not delivered: {', '.join(progress['failed'])}")
     if progress["no_telegram"]:
-        lines.append(f"Без Telegram: {', '.join(progress['no_telegram'])}")
+        lines.append(f"Without Telegram: {', '.join(progress['no_telegram'])}")
     return "\n".join(lines)

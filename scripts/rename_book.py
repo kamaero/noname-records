@@ -5,7 +5,7 @@
 как автор получил свою графу. Показывает код книги до и после: код выводится из
 названия, и записи актёров подписаны именно им.
 
-    python scripts/rename_book.py --book-id <id> --author Примеродины --title "Карта Переправы"
+    python scripts/rename_book.py --book-id <id> --author Примеровы --title "Карта Переправы"
     python scripts/rename_book.py --list
 """
 from __future__ import annotations

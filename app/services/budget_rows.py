@@ -25,7 +25,9 @@ def _canonical_budget_character_name(value: str) -> str:
 def collapse_budget_character_rows(
     characters: list[Character],
     snapshots: list[CharacterBudgetSnapshot],
+    *, identities=None,
 ) -> tuple[list[dict], dict[str, CharacterBudgetSnapshot]]:
+    is_narrator = identities.is_narrator if identities else is_narrator_name
     if not characters:
         return [], {}
     snapshot_by_character_id = {str(item.character_id): item for item in snapshots}
@@ -34,12 +36,12 @@ def collapse_budget_character_rows(
     for character in characters:
         char_map_id = str(getattr(character, "char_map_id", "") or "").strip()
         primary_name = str(character.name or "").strip()
-        if is_narrator_name(primary_name):
+        if is_narrator(primary_name):
             canonical = NARRATOR_DISPLAY_NAME
             primary_name = NARRATOR_DISPLAY_NAME
             aggregate_key = NARRATOR_CANONICAL_KEY
         else:
-            canonical = _canonical_budget_character_name(primary_name)
+            canonical = normalize_character_key(primary_name) if identities and identities.typed else _canonical_budget_character_name(primary_name)
             if not canonical:
                 continue
             aggregate_key = f"map:{char_map_id}" if char_map_id else f"name:{canonical}"
@@ -50,6 +52,7 @@ def collapse_budget_character_rows(
                 "id": character.id,
                 "char_map_id": char_map_id,
                 "name": str(primary_name or canonical).strip(),
+                **({"role_kind": identities.kind(primary_name), "role_ref": identities.ref(primary_name)} if identities and identities.typed else {}),
                 "aliases": character.aliases or "",
                 "appears_in": getattr(character, "appears_in", "") or "",
                 "actor_name": character.actor_name or "",

@@ -50,6 +50,8 @@ def narrator_audit_session_markers(db, chapter_id: str, tracks) -> tuple[list[Se
     Счётчик включает подтверждённые находки, которые не удалось разместить.
     Он попадает в обычное предупреждение о пропущенных маркерах главы.
     """
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter_id)
     from app.services.asr_audit import narrator_lines
     from app.services.asr_audit_lifecycle import current_audit
     from app.services.asr_run import chapter_replicas
@@ -69,8 +71,8 @@ def narrator_audit_session_markers(db, chapter_id: str, tracks) -> tuple[list[Se
     if not confirmed:
         return [], 0
     current = {line["index"]: line for line in narrator_lines(db, chapter_id)["required"]}
-    replicas = [replica for replica in chapter_replicas(db, chapter_id) if is_narrator_name(replica["role"])]
-    narrator_clips = [(clip, clip.role or track.name) for track in tracks if is_narrator_name(track.name)
+    replicas = [replica for replica in chapter_replicas(db, chapter_id) if identities.is_narrator(replica["role"])]
+    narrator_clips = [(clip, clip.role or track.name) for track in tracks if identities.is_narrator(track.name)
                       for clip in track.clips]
     markers: list[SessionMarker] = []
     skipped = 0

@@ -294,7 +294,7 @@ async def api_v2_sound_run(request: Request, book_id: str):
             credits = sound_engine.read_credits()
             blocked = _sound_blocked(db, book, credits=credits, estimate_rub=plan["estimate_rub"][mode])
             gate = None if blocked else limit_gate(db, request, estimate_rub=plan["estimate_rub"][mode],
-                                                   unknown_price=spend.unknown_for(db, ("sound",)), what="звуковая разметка")
+                                                   unknown_price=spend.unknown_for(db, ("sound",)), what='sound planning')
             db.commit()
             return book.id, plan, blocked or gate
 
@@ -335,7 +335,7 @@ async def api_v2_sound_chapter_run(request: Request, chapter_id: str):
             credits = sound_engine.read_credits()
             blocked = _sound_blocked(db, book, credits=credits, estimate_rub=plan["estimate_rub"]["all"])
             gate = None if blocked else limit_gate(db, request, estimate_rub=plan["estimate_rub"]["all"],
-                                                   unknown_price=spend.unknown_for(db, ("sound",)), what="звуковая разметка главы")
+                                                   unknown_price=spend.unknown_for(db, ("sound",)), what='chapter sound planning')
             db.commit()
             return book.id, chapter.id, plan, blocked or gate
 

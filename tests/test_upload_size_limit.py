@@ -59,9 +59,10 @@ def test_ordinary_refusal_still_reports_the_general_ceiling():
     assert body["max_body_bytes"] == middleware.max_body_bytes
 
 
-def test_refusal_message_is_russian_and_names_the_ceiling():
+def test_refusal_message_is_english_and_names_the_ceiling():
     """Спека обещает, что отказ формулирует приложение понятным диктору текстом,
     а не голым кодом — фронт должен получить готовую фразу."""
     response = _dispatch(_middleware(), _request("/api/recording/batch", 5 * 1024**3))
     body = json.loads(response.body)
-    assert "2 ГБ" in body["message"]
+    assert "2 GB" in body["message"]
+    assert "upload limit" in body["message"]

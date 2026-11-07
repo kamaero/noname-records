@@ -38,7 +38,7 @@ def _broadcast(payload: dict) -> None:
             db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Бот: рассылка %s не прошла: %s", payload.get("id"), type(exc).__name__)
-        summary = "Рассылка прервалась — посмотрите журнал сервера."
+        summary = "The broadcast was interrupted. Check the server log."
     call_bot_api("sendMessage", {"chat_id": payload["admin_chat"], "text": summary})
 
 
@@ -53,7 +53,7 @@ def _remind(payload: dict) -> None:
             db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Бот: напоминание %s не прошло: %s", payload.get("id"), type(exc).__name__)
-        summary = "Напоминание прервалось — посмотрите журнал сервера."
+        summary = "The reminder was interrupted. Check the server log."
     call_bot_api("sendMessage", {"chat_id": payload["admin_chat"], "text": summary})
 
 
@@ -69,8 +69,8 @@ def _upload_not_queued(upload_id: str) -> None:
         row.state = "failed"
         db.commit()
         call_bot_api("sendMessage", {"chat_id": row.telegram_user_id,
-                                     "text": "Не получилось сохранить пробу — попробуйте ещё раз или загрузите на "
-                                             f"сайте: {_site_link()}"})
+                                     "text": "Could not save the audition. Try again or upload it on the "
+                                             f"website: {_site_link()}"})
 
 
 def _demo_not_queued(item_id: str) -> None:
@@ -84,7 +84,7 @@ def _demo_not_queued(item_id: str) -> None:
         row.state = "failed"
         db.commit()
     call_bot_api("sendMessage", {"chat_id": str(settings.owner_telegram_id),
-                                 "text": "Не получилось поставить демо в работу — перешлите его ещё раз."})
+                                 "text": "Could not queue the demo. Please forward it again."})
 
 
 def _take_not_queued(upload_id: str) -> None:
@@ -99,7 +99,7 @@ def _take_not_queued(upload_id: str) -> None:
         row.state = "failed"
         db.commit()
         call_bot_api("sendMessage", {"chat_id": row.telegram_user_id,
-                                     "text": "Не получилось взять файл в работу — пришлите его ещё раз."})
+                                     "text": "Could not queue the file. Please send it again."})
 
 
 def process_update(update: dict) -> None:
@@ -159,7 +159,7 @@ def process_update(update: dict) -> None:
                 logger.warning("Бот: шаблон сессии не поставлен: %s", type(exc).__name__)
             if not job_id:
                 call_bot_api("sendMessage", {"chat_id": str(chat_id),
-                                             "text": "Не получилось взять шаблон в работу — пришлите его ещё раз."})
+                                             "text": "Could not queue the session template. Please send it again."})
             continue
         if item.method == "enqueue_intro":
             tid = item.payload["telegram_user_id"]

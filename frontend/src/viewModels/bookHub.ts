@@ -10,19 +10,19 @@ export type HubStepKey = "segment" | "cast" | "attribute" | "stress" | "review" 
 
 export const HUB_STEP_KEYS: HubStepKey[] = ["segment", "cast", "attribute", "stress", "review", "publish"];
 export const HUB_STEP_LABELS: Record<HubStepKey, string> = {
-  segment: "Сегментация",
-  cast: "Персонажи",
-  attribute: "Роли",
-  stress: "Ударения",
-  review: "Проверка",
-  publish: "Публикация",
+  segment: "Segmentation",
+  cast: "Characters",
+  attribute: "Attribution",
+  stress: "Stress marks",
+  review: "Review",
+  publish: "Publish",
 };
 export const STEP_STATE_WORD: Record<HubStepState, string> = {
-  done: "готово",
-  running: "идёт",
-  pending: "ждёт",
-  failed: "ошибка",
-  skipped: "пропущено",
+  done: "done",
+  running: "running",
+  pending: "pending",
+  failed: "failed",
+  skipped: "skipped",
 };
 
 export type HubStep = { key: string; label: string; state: HubStepState; detail?: string };
@@ -119,17 +119,17 @@ export function emptyProgress(mode = "standard"): HubProgress {
 }
 
 const REVIEW_WORDS: Record<string, string> = {
-  author_review: "передана автору на проверку",
-  approved: "утверждена",
-  published_to_dictor: "утверждена и опубликована",
-  partially_approved: "утверждена частично",
+  author_review: "sent to the author for review",
+  approved: "approved",
+  published_to_dictor: "approved and published",
+  partially_approved: "partially approved",
 };
 
 /** The last two steps come from the backend as «статус <code>»; people read words, not codes. */
 function humanStepDetail(key: HubStepKey, detail: string | undefined, status: string): string | undefined {
-  if (!detail || !/^статус /.test(detail)) return detail;
-  if (key === "review") return REVIEW_WORDS[status] || "ждёт конца разметки";
-  if (key === "publish") return status === "published_to_dictor" ? "дикторы получили сценарий" : "после проверки";
+  if (!detail || !/^(?:статус|status) /i.test(detail)) return detail;
+  if (key === "review") return REVIEW_WORDS[status] || "waiting for analysis";
+  if (key === "publish") return status === "published_to_dictor" ? "script available to voice actors" : "after review";
   return detail;
 }
 
@@ -167,8 +167,8 @@ export function tokenTotal(tokens: HubTokens | undefined): number {
 
 export function formatTokens(tokens: HubTokens | undefined): string {
   if (!tokens) return "—";
-  if (typeof tokens === "number") return tokens.toLocaleString("ru-RU");
-  return `${Number(tokens.prompt || 0).toLocaleString("ru-RU")} + ${Number(tokens.completion || 0).toLocaleString("ru-RU")}`;
+  if (typeof tokens === "number") return tokens.toLocaleString("en-US");
+  return `${Number(tokens.prompt || 0).toLocaleString("en-US")} + ${Number(tokens.completion || 0).toLocaleString("en-US")}`;
 }
 
 export function runFraction(run: HubRun | null | undefined): number {
@@ -190,13 +190,13 @@ export type PrimaryAction = { kind: PrimaryKind; label: string };
 /** One primary action per screen, chosen by state. `hasReader` = at least one chapter has v2 segments. */
 export function choosePrimaryAction(status: string, progress: HubProgress, hasReader: boolean): PrimaryAction {
   const run = progress.run;
-  if (isRunActive(run)) return { kind: "stop", label: "Остановить" };
-  if (run?.status === "failed") return { kind: "retry", label: "Повторить" };
-  if (status === "approved") return { kind: "publish", label: "Опубликовать дикторам" };
-  if (hasReader && (REVIEW_STATUSES.has(status) || run?.status === "done")) return { kind: "reader", label: "Открыть читалку" };
-  if (run?.status === "stopped") return { kind: "resume", label: "Продолжить разметку" };
-  if (!run && hasReader) return { kind: "reader", label: "Открыть читалку" };
-  return { kind: "run", label: "Запустить разметку" };
+  if (isRunActive(run)) return { kind: "stop", label: "Stop" };
+  if (run?.status === "failed") return { kind: "retry", label: "Retry" };
+  if (status === "approved") return { kind: "publish", label: "Publish to voice actors" };
+  if (hasReader && (REVIEW_STATUSES.has(status) || run?.status === "done")) return { kind: "reader", label: "Open reader" };
+  if (run?.status === "stopped") return { kind: "resume", label: "Resume analysis" };
+  if (!run && hasReader) return { kind: "reader", label: "Open reader" };
+  return { kind: "run", label: "Start analysis" };
 }
 
 export type StepActionKind = "stress" | "reader" | "publish";
@@ -210,11 +210,11 @@ export type StepAction = { kind: StepActionKind; label: string };
 export function stepAction(key: string): StepAction | null {
   switch (key) {
     case "stress":
-      return { kind: "stress", label: "Ударения" };
+      return { kind: "stress", label: "Stress marks" };
     case "review":
-      return { kind: "reader", label: "Открыть читалку" };
+      return { kind: "reader", label: "Open reader" };
     case "publish":
-      return { kind: "publish", label: "Опубликовать" };
+      return { kind: "publish", label: "Publish" };
     default:
       return null;
   }
@@ -227,20 +227,16 @@ export function topCast(rows: BookCastCharacter[], limit = 12): BookCastCharacte
     .slice(0, limit);
 }
 
-export function plural(n: number, one: string, few: string, many: string): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
+export function plural(n: number, one: string, _few: string, many: string): string {
+  return n === 1 ? one : many;
 }
 
 /** «автор · 60 глав · 24 роли» for the header subtitle; empty parts are dropped. */
 export function hubSubtitle(author: string, chapters: number, roles: number): string {
   const parts: string[] = [];
   if (author) parts.push(author);
-  if (chapters) parts.push(`${chapters} ${plural(chapters, "глава", "главы", "глав")}`);
-  if (roles) parts.push(`${roles} ${plural(roles, "роль", "роли", "ролей")}`);
+  if (chapters) parts.push(`${chapters} ${plural(chapters, "chapter", "chapters", "chapters")}`);
+  if (roles) parts.push(`${roles} ${plural(roles, "role", "roles", "roles")}`);
   return parts.join(" · ");
 }
 

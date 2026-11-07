@@ -30,17 +30,25 @@ def test_build_canon_roster_missing_file_is_empty(tmp_path):
     assert canon_seed.build_canon_roster(str(tmp_path / "nope.sqlite")) == ""
 
 
-def test_suffix_only_for_canon_author(tmp_path):
+def test_suffix_only_for_explicitly_configured_canon_author(tmp_path, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "canon_author_slug", "")
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     SessionLocal = sessionmaker(bind=engine); Base.metadata.create_all(engine)
     cf = _canon_file(tmp_path)
     with SessionLocal() as db:
-        db.add(Author(id="rud", name="Александр Примеродин", slug="primerodin"))
+        db.add(Author(id="rud", name="Алексей Примеров", slug="primerov"))
         db.add(Author(id="oth", name="Лев Толстой", slug="tolstoy"))
         db.commit()
         rud = ScriptBook(id="b1", title="X", source_filename="x.fb2", source_format="fb2", author_id="rud")
         oth = ScriptBook(id="b2", title="Y", source_filename="y.fb2", source_format="fb2", author_id="oth")
         none = ScriptBook(id="b3", title="Z", source_filename="z.fb2", source_format="fb2")
+        assert canon_seed.canon_roster_system_suffix(db, rud, db_path=cf) == ""
+        monkeypatch.setattr(settings, "canon_author_slug", "  PRIMEROV  ")
         assert "Дгарнин" in canon_seed.canon_roster_system_suffix(db, rud, db_path=cf)
+        assert "ВЫВЕРЕННЫЙ КАНОН" in canon_seed.canon_roster_system_suffix(db, rud, db_path=cf)
+        rud.language = "en"
+        assert "VERIFIED UNIVERSE CANON" in canon_seed.canon_roster_system_suffix(db, rud, db_path=cf)
         assert canon_seed.canon_roster_system_suffix(db, oth, db_path=cf) == ""
         assert canon_seed.canon_roster_system_suffix(db, none, db_path=cf) == ""

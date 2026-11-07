@@ -166,7 +166,7 @@ def test_a_dead_run_does_not_block_the_buttons_forever(api_db):
     body = client.get(f"/api/v2/books/{BOOK}/consilium/estimate").json()
     assert body["blocked"] == {"recheck": "", "reread": ""}
     run = client.get(f"/api/v2/books/{BOOK}/consilium").json()["run"]
-    assert run["status"] == "failed" and run["error"] == "воркер остановился — прогон можно продолжить"
+    assert run["status"] == "failed" and run["error"] == "The worker stopped; you can resume the run"
     with factory() as db:
         assert db.get(BackgroundRun, "r1").status == "failed"  # отметка записана, а не только показана
     assert client.post(f"/api/v2/books/{BOOK}/consilium/run", json={"mode": "recheck"}).status_code == 200
@@ -204,7 +204,7 @@ def test_stop_on_a_queued_run_stops_it_at_once(api_db):
     client = _client(["author"])
     assert client.post(f"/api/v2/books/{BOOK}/consilium/stop").json() == {"ok": True, "stopped": True}
     run = client.get(f"/api/v2/books/{BOOK}/consilium").json()["run"]
-    assert run["status"] == "stopped" and run["error"] == "остановлен вручную"
+    assert run["status"] == "stopped" and run["error"] == "stopped by the user"
 
 
 def test_an_exhausted_month_refuses_the_run_with_the_numbers(api_db):

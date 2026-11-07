@@ -70,12 +70,14 @@ def chapter_files(db, chapter_id: str) -> list[AudioFile]:
         return []
     from app.services.chapter_delivery import _chapter_label
 
-    return (
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter.id)
+    return [item for item in (
         db.query(AudioFile)
         .filter(AudioFile.kind == TAKE, AudioFile.chapter == _chapter_label(chapter))
         .order_by(AudioFile.role.asc(), AudioFile.uploaded_at.asc())
         .all()
-    )
+    ) if identities.owns_audio(item)]
 
 
 def chapter_ambient(db, chapter_id: str) -> list[AudioFile]:

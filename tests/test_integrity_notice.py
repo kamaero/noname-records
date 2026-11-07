@@ -10,8 +10,8 @@ def test_the_notice_names_the_role_and_the_person():
     assert "Глава 1" in text
     assert "Дгарнин" in text and "Сергей Зотов" in text
     assert "Оснива" in text and "Наташа Уткина" in text
-    assert "не сходится" in text
-    assert "нет на месте" in text
+    assert "checksum mismatch" in text
+    assert 'file missing' in text
 
 
 def test_no_problems_means_no_notice():

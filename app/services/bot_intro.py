@@ -22,8 +22,8 @@ INTRO_TTL = timedelta(days=1)
 VOICES_JSON = "/tmp/noname-voices.json"
 VOICES_WORKDIR = "/tmp/noname-voices-import"
 NAME_MAX = 60
-ASK_FIRST = (f"Здравствуйте! Это бот студии {studio.name()}. Чтобы открыть вам доступ к сайту, напишите, "
-             "пожалуйста, фамилию и имя — например: Ветрова Ольга.")
+ASK_FIRST = (f"Hello. This is the {studio.name()} bot. To open website access, please enter your surname "
+             "followed by your given name, for example: Smith Alex.")
 
 # Слово — буквы любого алфавита, внутри можно дефис или апостроф: «Римский-Корсаков», «O'Brien».
 _WORD = re.compile(r"^[^\W\d_]+(?:[-'’][^\W\d_]+)*$")

@@ -31,7 +31,7 @@ export function sameActor(a: string, b: string): boolean {
 
 export function chapterLabel(chapter: PanelChapter | undefined): string {
   if (!chapter) return "";
-  return chapter.title.trim() || `Глава ${chapter.index}`;
+  return chapter.title.trim() || `Chapter ${chapter.index}`;
 }
 
 export function useRecordingSelection() {
@@ -217,7 +217,7 @@ export function useRecordingSelection() {
     "";
   const bookLink = meQuery.data?.full_access && bookId ? `/books/${encodeURIComponent(bookId)}` : "/";
   const panelBooks: PanelBook[] =
-    publishedBooks.length > 1 ? publishedBooks : bookId ? [{ id: bookId, title: bookTitle || "Книга" }] : [];
+    publishedBooks.length > 1 ? publishedBooks : bookId ? [{ id: bookId, title: bookTitle || "Book" }] : [];
 
   return {
     searchParams,

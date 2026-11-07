@@ -115,36 +115,36 @@ def test_silent_groups_by_person_with_last_bot_visit(db):
     silent = bot_studio.Studio(db, now=NOW).silent()
     petr = next(s for s in silent if s.actor == "Иванов Пётр")
     assert petr.chat == "42" and petr.last_seen == NOW - timedelta(days=2)
-    assert petr.items == ["роль «Хоркон» («Карта Приозерья») — не начата",
-                          "проба «Сталин» («Карта Приозерья») — не загружена"]
+    assert petr.items == ["role «Хоркон» («Карта Приозерья») — not started",
+                          "audition «Сталин» («Карта Приозерья») — not uploaded"]
     # Ольга: Убув начата, Ге'Коон без открытого срока, Ныкфо — в СВ-2, где запись не начата
     assert all(s.actor != "Ветрова Ольга" for s in silent)
 
 
 def test_overview_counts_and_buttons(db):
     text, markup = bot_studio.overview(db, now=NOW)
-    assert "Пробы ждут решения: 2 (самая старая — 9 дн.)" in text
-    assert "Сроки: просрочено 1 · скоро 1" in text
-    assert "Карта Приозерья — записано: 0/5" in text
-    assert "Молчат: 1" in text
+    assert "Auditions awaiting a decision: 2 (oldest: 9 days)" in text
+    assert "Deadlines: overdue 1 · upcoming 1" in text
+    assert "Карта Приозерья — recorded: 0/5" in text
+    assert "Inactive: 1" in text
     data = [b["callback_data"] for row in markup["inline_keyboard"] for b in row]
     assert data == ["ss:p", "ss:d", "ss:b", "ss:q"]
 
 
 def test_sections_read_like_lists(db):
-    assert "• «Дракон» — Иванов Пётр, 9 дн." in bot_studio.section(db, "p", now=NOW)
-    assert "• «Дракон» — без имени, 1 дн." in bot_studio.section(db, "p", now=NOW)
+    assert "• «Дракон» — Иванов Пётр, 9 days" in bot_studio.section(db, "p", now=NOW)
+    assert "• «Дракон» — unnamed, 1 days" in bot_studio.section(db, "p", now=NOW)
     deadlines = bot_studio.section(db, "d", now=NOW)
-    assert "Просрочено" in deadlines and "• Иванов Пётр — роль «Хоркон» («Карта Приозерья»)" in deadlines
-    assert "• Иванов Пётр — проба «Сталин» («Карта Приозерья»), до 6 октября, 12:00 МСК" in deadlines
+    assert "Overdue" in deadlines and "• Иванов Пётр — role «Хоркон» («Карта Приозерья»)" in deadlines
+    assert "• Иванов Пётр — audition «Сталин» («Карта Приозерья»), due 6 October, 12:00 MSK" in deadlines
     books = bot_studio.section(db, "b", now=NOW)
-    assert "• «Карта Приозерья» — записано: 0/5 · утверждено: 3 · свободно: 2" in books
+    assert "• «Карта Приозерья» — recorded: 0/5 · approved: 3 · available: 2" in books
     quiet = bot_studio.section(db, "q", now=NOW)
-    assert "Иванов Пётр (@petr) — в боте 2 дн. назад" in quiet
+    assert "Иванов Пётр (@petr) — last bot visit 2 days ago" in quiet
     studio = bot_studio.Studio(db, now=NOW)
     # без слов, выдающих род: не «не заходил(а)»
-    assert bot_studio._seen(bot_studio.Silent("Ветрова Ольга", "41", None), studio) == "визитов в бот нет"
-    assert bot_studio._seen(bot_studio.Silent("Без Телеграма", "", None), studio) == "Telegram не найден"
+    assert bot_studio._seen(bot_studio.Silent("Ветрова Ольга", "41", None), studio) == "no bot visits"
+    assert bot_studio._seen(bot_studio.Silent("Без Телеграма", "", None), studio) == "Telegram not found"
     assert bot_studio.section(db, "zz", now=NOW) == ""
 
 
@@ -155,7 +155,7 @@ def test_a_long_section_fits_one_message(db):
                          actor_name="Иванов Пётр", kind="audition", uploaded_at=NOW))
     db.commit()
     text = bot_studio.section(db, "p", now=NOW)
-    assert len(text) <= 4096 and "полностью — на сайте" in text
+    assert len(text) <= 4096 and "the full list is on the website" in text
 
 
 
@@ -176,9 +176,9 @@ def test_one_match_gives_the_card(db, monkeypatch):
     text, markup = bot_studio.dictor_reply(db, "Иванов", now=NOW)
     assert markup is None
     assert "Иванов Пётр" in text and "<code>tg_42</code>" in text and "@petr" in text
-    assert "«Хоркон» — «Карта Приозерья»: сдано 0 из 1 главы" in text
-    assert "ждём пробу" in text and "ждём вашу пробу" not in text
-    assert "Пароль" not in text
+    assert "«Хоркон» — «Карта Приозерья»: completed 0 of 1 chapter" in text
+    assert "awaiting audition" in text and "awaiting your audition" not in text
+    assert "Password" not in text
 
 
 def test_an_account_and_its_cast_name_are_one_person(db, monkeypatch):
@@ -193,20 +193,20 @@ def test_several_matches_give_buttons(db, monkeypatch):
     text, markup = bot_studio.dictor_reply(db, "Ольга", now=NOW)
     data = [b["callback_data"] for row in markup["inline_keyboard"] for b in row]
     assert sorted(data) == ["dc:t:41", "dc:t:43"]
-    assert "Кого показать" in text
+    assert "Who would you like to view" in text
     assert "Петрова Ольга" in bot_studio.card_by_pick(db, "dc:t:43", now=NOW)
 
 
 def test_a_cast_only_actor_gets_a_card_without_telegram(db, monkeypatch):
     _accounts(db, monkeypatch)
     text, markup = bot_studio.dictor_reply(db, "Без Телеграма", now=NOW)
-    assert markup is None and "Telegram не привязан" in text and "«Химес»" in text
+    assert markup is None and "No Telegram account linked" in text and "«Химес»" in text
 
 
 def test_nobody_and_empty_query(db, monkeypatch):
     _accounts(db, monkeypatch)
-    assert bot_studio.dictor_reply(db, "Нетакого", now=NOW)[0] == "Не нашёл «Нетакого»."
-    assert bot_studio.dictor_reply(db, "  ", now=NOW)[0] == "Напишите: /dictor Фамилия"
+    assert bot_studio.dictor_reply(db, "Нетакого", now=NOW)[0] == "No match for «Нетакого»."
+    assert bot_studio.dictor_reply(db, "  ", now=NOW)[0] == "Enter: /dictor Surname"
 
 
 def test_studio_chat_index_agrees_with_chat_for():
@@ -256,11 +256,11 @@ def test_silent_skips_roles_in_books_where_recording_has_not_started(db):
     db.commit()
     silent = {s.actor: s.items for s in bot_studio.Studio(db, now=NOW).silent()}
     assert "Ветрова Ольга" not in silent          # Ныкфо в СВ-2, где дублей нет
-    assert "проба «Нина» («Сезон ветров. Книга 2») — не загружена" in silent["Иванов Пётр"]
+    assert "audition «Нина» («Сезон ветров. Книга 2») — not uploaded" in silent["Иванов Пётр"]
 
 
 def test_silent_says_taken_but_not_uploaded(db):
     db.query(RoleDeadline).filter_by(character_id="c3").update({"accepted_at": NOW})
     db.commit()
     petr = next(s for s in bot_studio.Studio(db, now=NOW).silent() if s.actor == "Иванов Пётр")
-    assert "проба «Сталин» («Карта Приозерья») — взята, не загружена" in petr.items
+    assert "audition «Сталин» («Карта Приозерья») — accepted, not uploaded" in petr.items

@@ -57,7 +57,7 @@ def test_failed_check_keeps_the_key_step_open(factory):
         provider_keys.set_key(db, "deepseek", "sk-site-123456", actor="admin")
         provider_keys.record_check(db, "deepseek", "bad_key", "Ключ не подходит — проверьте, что скопирован целиком.")
         step = _steps(db)["key"]
-        assert step["done"] is False and "не подходит" in step["detail"]
+        assert step["done"] is False and "invalid" in step["detail"]
 
 
 def test_models_step_names_the_provider_without_a_key(factory):
@@ -84,7 +84,8 @@ def test_import_is_idempotent_and_reimports_after_delete(factory):
         again = first_steps.import_sample(db, user_id="admin", user_name="Админ")
         assert first.id == again.id
         assert db.query(ScriptBook).count() == 1
-        assert first.title == "Номер двенадцатый" and first.author_label == "Noname Records"
+        assert first.title == "The Missing Key" and first.author_label == "Noname Records"
+        assert first.language == "en"
         assert first.chapter_count == 2
         assert _steps(db)["sample"]["done"] is True
         assert first_steps.mark_seen(db, first.id) is True

@@ -269,7 +269,7 @@ def test_a_dictor_only_on_an_author_profile_still_has_roles(db):
     db.commit()
     with pytest.raises(DictorError) as busy:
         dictors.delete_dictor(db, "u1", actor_user_id="admin")
-    assert busy.value.code == "has_roles" and busy.value.detail == [{"book": "профиль автора", "role": "Куйбу"}]
+    assert busy.value.code == "has_roles" and busy.value.detail == [{"book": "Author profile", "role": "Куйбу"}]
 
 
 def test_an_id_from_the_env_whitelist_cannot_be_deleted_here(db, monkeypatch):
@@ -310,3 +310,19 @@ def test_namesake_gets_next_number(db):
     third = dictors.create_dictor(db, "Иванова Ольга", namesake=True)
     assert db.get(User, second["user_id"]).display_name == "Иванова Ольга 2"
     assert db.get(User, third["user_id"]).display_name == "Иванова Ольга 3"
+
+
+def test_blank_new_demo_title_is_english_and_keeps_existing_saved_names(db, monkeypatch):
+    _user(db, "u1", "Sample Actor")
+    old_key = _demo(db, "u1", "old-demo", title="Сохранённое демо")
+    def convert(source, target):
+        with open(target, "wb") as handle:
+            handle.write(b"new-demo")
+        return {"duration_seconds": 10, "size_bytes": 8, "md5": "new-md5", "trimmed": False}
+    monkeypatch.setattr("app.services.demo_audio.to_demo_mp3", convert)
+    created = dictors.add_demo(db, "u1", "source.wav", "   ")
+    db.commit()
+    row = db.get(DictorDemo, created["id"])
+    assert row.title == "Demo" and row.stored_key == f"demos/u1/{created['id']}.mp3"
+    old = db.get(DictorDemo, "old-demo")
+    assert old.title == "Сохранённое демо" and old.stored_key == old_key

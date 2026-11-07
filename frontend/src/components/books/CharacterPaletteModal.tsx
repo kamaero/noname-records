@@ -36,23 +36,23 @@ export function CharacterPaletteModal({
 }: CharacterPaletteModalProps) {
   return (
     <div className="books-palette-modal-backdrop" role="presentation" onClick={onClose}>
-      <div className="books-palette-modal" role="dialog" aria-modal="true" aria-label={`Палитра персонажа ${row.name}`} onClick={(event) => event.stopPropagation()}>
+      <div className="books-palette-modal" role="dialog" aria-modal="true" aria-label={`Character palette ${row.name}`} onClick={(event) => event.stopPropagation()}>
         <div className="books-palette-modal-header">
           <div>
-            <h3>Палитра персонажа</h3>
-            <p>{row.name}. Тут уже можно играть в художника, но без масляных красок на мониторе.</p>
+            <h3>Character palette</h3>
+            <p>{row.name}. Choose colors and typography for this role.</p>
           </div>
           <button type="button" className="books-palette-close" onClick={onClose}>×</button>
         </div>
 
         <div className="books-palette-preview" style={characterSwatchStyleFromPalette(draft)}>
-          <span>Превью</span>
-          <strong>[{row.name}] — Вот так будет выглядеть роль в сценарии.</strong>
+          <span>Preview</span>
+          <strong>[{row.name}] — This is how the role will appear in the script.</strong>
         </div>
 
         <div className="books-palette-grid">
           <label className="books-palette-field">
-            <span>Фон</span>
+            <span>Background</span>
             <div className="books-palette-color-row">
               <input
                 type="color"
@@ -69,7 +69,7 @@ export function CharacterPaletteModal({
           </label>
 
           <label className="books-palette-field">
-            <span>Шрифт</span>
+            <span>Text color</span>
             <div className="books-palette-color-row">
               <input
                 type="color"
@@ -86,14 +86,14 @@ export function CharacterPaletteModal({
           </label>
 
           <label className="books-palette-field">
-            <span>Насыщенность</span>
+            <span>Font weight</span>
             <select value={draft.weight} onChange={(event) => onChange({ ...draft, weight: event.target.value as FontWeightOption })}>
               {FONT_WEIGHT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
 
           <label className="books-palette-field">
-            <span>Стиль</span>
+            <span>Style</span>
             <select value={draft.style} onChange={(event) => onChange({ ...draft, style: event.target.value as FontStyleOption })}>
               {FONT_STYLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
@@ -103,9 +103,9 @@ export function CharacterPaletteModal({
         {warning ? <div className="books-palette-warning">{warning}</div> : null}
 
         <div className="books-palette-actions">
-          <button type="button" className="books-palette-secondary" onClick={onClose}>Отмена</button>
+          <button type="button" className="books-palette-secondary" onClick={onClose}>Cancel</button>
           <button type="button" className="books-palette-primary" disabled={isSaving} onClick={onSave}>
-            {isSaving ? "Сохраняю..." : saveLabel || "OK, сохранить"}
+            {isSaving ? "Saving..." : saveLabel || "Save"}
           </button>
         </div>
       </div>

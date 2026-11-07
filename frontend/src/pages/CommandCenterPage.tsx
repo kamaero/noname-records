@@ -66,12 +66,12 @@ function useSeen<T extends Element>(): [RefObject<T>, boolean] {
 /* ---------- words ---------- */
 
 const STEP_LABEL: Record<string, string> = {
-  segment: "сегментация",
-  cast: "персонажи",
-  attribute: "роли",
-  stress: "ударения",
-  review: "проверка",
-  publish: "публикация",
+  segment: "segmentation",
+  cast: "characters",
+  attribute: "roles",
+  stress: "word stress",
+  review: "review",
+  publish: "publication",
 };
 
 function shortError(text: string): string {
@@ -88,42 +88,42 @@ export function describeNextStep(book: BookListItem, progress: V2ProgressRespons
 
   if (run && (run.status === "running" || run.status === "processing" || run.status === "starting")) {
     const step = progress?.steps.find((s) => s.key === run.step)?.label || STEP_LABEL[run.step] || run.step;
-    const chapters = run.chapters_total ? ` · ${run.chapters_done}/${run.chapters_total} глав` : "";
-    return { text: `Идёт: ${step.toLowerCase()}${chapters}`, tone: "blue" };
+    const chapters = run.chapters_total ? ` · ${run.chapters_done}/${run.chapters_total} chapters` : "";
+    return { text: `Running: ${step.toLowerCase()}${chapters}`, tone: "blue" };
   }
-  if (run?.status === "queued") return { text: "В очереди на разметку", tone: "blue" };
+  if (run?.status === "queued") return { text: "Queued for annotation", tone: "blue" };
   // The flag only means anything while something is running: left raised by a finished
   // run it used to make the book say «останавливается» for ever.
   const stopping = run?.status === "stopping" || status === "stopping" || (book.stop_requested && run?.status === "running");
-  if (stopping) return { text: "Останавливается", tone: "amber" };
+  if (stopping) return { text: "Stopping", tone: "amber" };
   if (run?.status === "failed" || status === "failed" || status.includes("error")) {
-    return { text: run?.error ? `Ошибка: ${shortError(run.error)}` : "Разобрать ошибку", tone: "danger" };
+    return { text: run?.error ? `Error: ${shortError(run.error)}` : "Review error", tone: "danger" };
   }
-  if (status === "stalled") return { text: "Перезапустить разметку", tone: "amber" };
-  if (status === "stopped") return { text: "Продолжить разметку", tone: "amber" };
+  if (status === "stalled") return { text: "Restart annotation", tone: "amber" };
+  if (status === "stopped") return { text: "Resume annotation", tone: "amber" };
 
   switch (status) {
     case "uploaded":
     case "queued":
-      return { text: "Запустить разметку v2" };
+      return { text: "Start annotation" };
     case "processing":
     case "char_extracting":
     case "waiting":
-      return { text: book.progress?.action_hint || "Идёт подготовка", tone: "blue" };
+      return { text: book.progress?.action_hint || "Preparing", tone: "blue" };
     case "author_review":
     case "needs_review":
     case "pending_review":
-      return { text: "Проверить роли и ударения" };
+      return { text: "Review roles and word stress" };
     case "partially_approved":
-      return { text: "Утвердить оставшиеся главы", tone: "amber" };
+      return { text: "Approve remaining chapters", tone: "amber" };
     case "approved":
     case "done":
-      return { text: "Опубликовать дикторам" };
+      return { text: "Publish to voice actors" };
     case "published":
     case "published_to_dictor":
-      return { text: "Записывать" };
+      return { text: "Record" };
     case "ready_for_mix":
-      return { text: "Сводить" };
+      return { text: "Mix" };
   }
   return { text: book.progress?.action_hint || "—" };
 }
@@ -141,19 +141,19 @@ function relativeTime(iso: string, now: number): { text: string; title: string }
   const hours = Math.floor(min / 60);
   const days = Math.floor(hours / 24);
   let text: string;
-  if (min < 1) text = "только что";
-  else if (min < 60) text = `${min} мин назад`;
-  else if (hours < 24) text = `${hours} ч назад`;
-  else if (days === 1) text = "вчера";
-  else if (days < 7) text = `${days} дн назад`;
-  else text = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", year: days > 300 ? "numeric" : undefined }).format(date);
+  if (min < 1) text = "just now";
+  else if (min < 60) text = `${min} min ago`;
+  else if (hours < 24) text = `${hours} hr ago`;
+  else if (days === 1) text = "yesterday";
+  else if (days < 7) text = `${days} days ago`;
+  else text = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: days > 300 ? "numeric" : undefined }).format(date);
   return { text, title: formatServerDateTime(iso) };
 }
 
 function bookMeta(book: BookListItem): string {
   const parts: string[] = [];
-  if (book.chapter_count) parts.push(`${book.chapter_count} гл.`);
-  if (book.total_chars) parts.push(`${Math.round(book.total_chars / 1000)} тыс. зн.`);
+  if (book.chapter_count) parts.push(`${book.chapter_count} ch.`);
+  if (book.total_chars) parts.push(`${Math.round(book.total_chars / 1000)} k characters`);
   return parts.join(" · ");
 }
 
@@ -223,7 +223,7 @@ export function CommandCenterPage() {
     () => [
       {
         key: "book",
-        header: "Книга",
+        header: "Book",
         render: (b) => (
           <span className="lib-book">
             <strong className="lib-title">{b.display_title || b.title}</strong>
@@ -233,12 +233,12 @@ export function CommandCenterPage() {
           </span>
         ),
       },
-      { key: "status", header: "Статус", nowrap: true, render: (b) => <StatusCell book={b} /> },
-      { key: "next", header: "Следующий шаг", render: (b) => <NextStepCell book={b} />, className: "lib-col-next" },
-      { key: "steps", header: "Шаги", nowrap: true, render: (b) => <StepsCell book={b} />, className: "lib-col-steps" },
+      { key: "status", header: "Status", nowrap: true, render: (b) => <StatusCell book={b} /> },
+      { key: "next", header: "Next step", render: (b) => <NextStepCell book={b} />, className: "lib-col-next" },
+      { key: "steps", header: "Steps", nowrap: true, render: (b) => <StepsCell book={b} />, className: "lib-col-steps" },
       {
         key: "updated",
-        header: "Обновлена",
+        header: "Updated",
         align: "right",
         nowrap: true,
         className: "lib-col-updated",
@@ -260,8 +260,8 @@ export function CommandCenterPage() {
   return (
     <div className="lib">
       <PageHeader
-        title="Библиотека"
-        subtitle={books.length ? `${books.length} ${plural(books.length, "книга", "книги", "книг")}` : undefined}
+        title="Library"
+        subtitle={books.length ? `${books.length} ${plural(books.length, "book", "books", "books")}` : undefined}
         actions={
           !isEmpty ? (
             <Button
@@ -271,7 +271,7 @@ export function CommandCenterPage() {
               aria-controls="lib-upload"
               onClick={() => setUploadOpen((v) => !v)}
             >
-              {uploadOpen ? "Закрыть форму" : "Загрузить книгу"}
+              {uploadOpen ? "Close form" : "Upload book"}
             </Button>
           ) : null
         }
@@ -280,8 +280,8 @@ export function CommandCenterPage() {
       <FirstStepsCard />
 
       {uploadOpen ? (
-        <section id="lib-upload" className="ui-card ui-card--accent ui-card-pad lib-upload" aria-label="Загрузка книги">
-          <h2 className="lib-upload-title">Новая книга</h2>
+        <section id="lib-upload" className="ui-card ui-card--accent ui-card-pad lib-upload" aria-label="Loading book">
+          <h2 className="lib-upload-title">New book</h2>
           <UploadPanel autoFocus onCancel={() => setUploadOpen(false)} />
         </section>
       ) : null}
@@ -289,42 +289,42 @@ export function CommandCenterPage() {
       {q ? (
         <div className="lib-filter">
           <span>
-            Поиск: <strong>{params.get("q")}</strong> · {visible.length} {plural(visible.length, "книга", "книги", "книг")}
+            Search: <strong>{params.get("q")}</strong> · {visible.length} {plural(visible.length, "book", "books", "books")}
           </span>
           <Button size="sm" variant="ghost" onClick={clearSearch}>
-            Сбросить
+            Clear
           </Button>
         </div>
       ) : null}
 
       {booksQuery.isError ? (
         <div className="ui-note ui-note--error lib-error" role="alert">
-          <span>Не удалось загрузить список книг: {describeApiError(booksQuery.error, "сервер не ответил")}.</span>
+          <span>Could not load books: {describeApiError(booksQuery.error, "the server did not respond")}.</span>
           <Button size="sm" variant="secondary" onClick={() => booksQuery.refetch()} loading={booksQuery.isFetching}>
-            Повторить
+            Retry
           </Button>
         </div>
       ) : (
         <DataTable
-          aria-label="Книги"
+          aria-label="Books"
           columns={columns}
           rows={visible}
           rowKey={(b) => b.id}
           loading={booksQuery.isLoading}
           skeletonRows={4}
           onRowClick={(b) => navigate(`/books/${encodeURIComponent(b.id)}`)}
-          rowLabel={(b) => `Открыть книгу «${b.display_title || b.title}»`}
+          rowLabel={(b) => `Open book «${b.display_title || b.title}»`}
           empty={
             q ? (
-              <EmptyState icon="search" text="По этому запросу книг нет." action={<Button variant="secondary" onClick={clearSearch}>Показать все книги</Button>} />
+              <EmptyState icon="search" text="No books match your search." action={<Button variant="secondary" onClick={clearSearch}>Show all books</Button>} />
             ) : (
               <EmptyState
                 icon="books"
-                text="Пока ни одной книги. Загрузите текст, и разметка начнётся сама."
+                text="No books yet. Upload a text to start preparing it."
                 action={
                   !uploadOpen ? (
                     <Button variant="primary" icon={<Icon name="upload" />} onClick={() => setUploadOpen(true)}>
-                      Загрузить книгу
+                      Upload book
                     </Button>
                   ) : null
                 }
@@ -337,10 +337,6 @@ export function CommandCenterPage() {
   );
 }
 
-function plural(n: number, one: string, few: string, many: string): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
+function plural(n: number, one: string, _few: string, many: string): string {
+  return n === 1 ? one : many;
 }

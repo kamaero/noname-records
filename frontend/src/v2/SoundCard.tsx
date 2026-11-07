@@ -49,7 +49,7 @@ type SoundCardProps = {
   onClose: () => void;
 };
 
-const KIND_TITLE: Record<SoundMarker["kind"], string> = { scene: "Сцена", transition: "Переход", sound: "Звук" };
+const KIND_TITLE: Record<SoundMarker["kind"], string> = { scene: "Scene", transition: "Transition", sound: "Sound" };
 
 /** `c1:00012` → 13: люди считают абзацы с единицы. */
 export function paragraphNumber(segmentId: string): number {
@@ -59,9 +59,9 @@ export function paragraphNumber(segmentId: string): number {
 
 /** Короткая подпись маркера для списков. */
 export function markerCaption(marker: SoundMarker, place?: SoundPlace): string {
-  if (marker.kind === "scene") return place?.name || marker.payload.ambience || "сцена";
-  if (marker.kind === "transition") return marker.payload.what || "переход";
-  return marker.payload.description || marker.quote || "звук";
+  if (marker.kind === "scene") return place?.name || marker.payload.ambience || "scene";
+  if (marker.kind === "transition") return marker.payload.what || "transition";
+  return marker.payload.description || marker.quote || "sound";
 }
 
 type Draft = {
@@ -109,15 +109,15 @@ const AMBIENT_WAIT_MS = 10 * 60_000;
 
 /** Подпись состояния трека сцены. */
 function ambientStatus(ambient: SoundAmbient | null | undefined, waiting: boolean, timedOut: boolean): { text: string; tone: "" | "is-bad" } {
-  if (timedOut) return { text: "Нет ответа — обновите карточку", tone: "is-bad" };
-  if (waiting) return { text: "Новый трек сочиняется — минуты; появится здесь сам", tone: "" };
-  if (!ambient) return { text: "Трека ещё нет", tone: "" };
+  if (timedOut) return { text: "No response; refresh this card", tone: "is-bad" };
+  if (waiting) return { text: "A new track is being generated. It will appear here in a few minutes", tone: "" };
+  if (!ambient) return { text: "No track yet", tone: "" };
   if (ambient.status === "failed") {
-    const kept = ambient.audio_file_id ? " В проекте остался прежний трек." : "";
-    return { text: `Не вышло${ambient.error ? `: ${ambient.error}` : ""}.${kept}`, tone: "is-bad" };
+    const kept = ambient.audio_file_id ? " The project still uses the previous track." : "";
+    return { text: `Could not complete the action${ambient.error ? `: ${ambient.error}` : ""}.${kept}`, tone: "is-bad" };
   }
-  if (ambient.status === "done") return { text: ambient.file_name ? `Готов · ${ambient.file_name}` : "Готов", tone: "" };
-  return { text: "Сочиняется…", tone: "" };
+  if (ambient.status === "done") return { text: ambient.file_name ? `Ready · ${ambient.file_name}` : "Ready", tone: "" };
+  return { text: "Generating…", tone: "" };
 }
 
 /** Блок «Эмбиент» сцены: состояние, плеер, промпт и перегенерация одного трека.
@@ -168,32 +168,32 @@ function AmbientBlock({ chapterId, bookId, marker }: { chapterId: string; bookId
       setWaitingFrom(snapshot);
       setTimedOut(false);
       setWaitingSince(Date.now());
-      pushToast({ tone: "success", title: "Эмбиент в очереди", detail: "Трек сочиняется минутами — появится в карточке и в проекте главы сам." });
+      pushToast({ tone: "success", title: "Ambience queued", detail: "The track takes a few minutes to generate and will appear in this card and the chapter project automatically." });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: soundKeys.chapter(chapterId) }),
         queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] }),
       ]);
     },
-    onError: (error) => pushToast({ tone: "error", title: "Эмбиент не запущен", detail: describeAmbientError(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Ambience not started", detail: describeAmbientError(error) }),
   });
 
   const status = ambientStatus(ambient, waiting, pending && timedOut);
-  const label = ambient ? "Перегенерировать эмбиент" : "Сгенерировать эмбиент";
+  const label = ambient ? "Regenerate ambience" : "Generate ambience";
   return (
     <section className="v2r-sheet-section snd-ambient">
-      <h3 className="v2r-sheet-h">Эмбиент</h3>
+      <h3 className="v2r-sheet-h">Ambience</h3>
       <p className={`snd-ambient-status ${status.tone}`}>{status.text}</p>
       {ambient?.audio_file_id ? (
         // ключ — трек: новый файл сцены — новый плеер, а не старый звук под новой подписью
         <audio key={ambient.audio_file_id} className="snd-ambient-player" controls preload="none" src={ambientAudioUrl(ambient.audio_file_id)} />
       ) : null}
-      <Row label="Промпт" hint="Идёт в ElevenLabs как есть, если правили; нетронутый — новый промпт напишет Opus.">
+      <Row label="Prompt" hint="Edited prompts are sent to ElevenLabs as entered; otherwise Opus writes a fresh prompt.">
         <textarea
           className="ui-input snd-card-text"
           rows={4}
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
-          placeholder="Промпта ещё нет — его напишет Opus"
+          placeholder="No prompt yet; Opus will write it"
           maxLength={2000}
           disabled={regenerate.isPending}
         />
@@ -204,14 +204,14 @@ function AmbientBlock({ chapterId, bookId, marker }: { chapterId: string; bookId
           className="btn btn-sm v2r-btn"
           disabled={regenerate.isPending || waiting}
           onClick={() => {
-            if (window.confirm("Сгенерировать новый трек?\n\nСпишется 1 трек из квоты ElevenLabs; прежний останется в папке главы.")) {
+            if (window.confirm("Generate a new track? This uses one track from your ElevenLabs quota. The previous track stays in the chapter folder.")) {
               regenerate.mutate();
             }
           }}
         >
-          {regenerate.isPending ? "Ставлю в очередь…" : `${label}…`}
+          {regenerate.isPending ? "Queuing…" : `${label}…`}
         </button>
-        {edited ? <span className="snd-card-hint">с правленым промптом</span> : null}
+        {edited ? <span className="snd-card-hint">with edited prompt</span> : null}
       </div>
     </section>
   );
@@ -259,41 +259,41 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
     onSuccess: async (result) => {
       // черновик — из сохранённого маркера: «Сохранить» снова неактивна до новой правки
       setDraft(draftOf(result.marker));
-      pushToast({ tone: "success", title: "Сохранено", detail: "Повторный прогон эту правку не тронет." });
+      pushToast({ tone: "success", title: "Saved", detail: "Future runs will preserve this edit." });
       await refresh();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не сохранилось", detail: describeSoundError(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Not saved", detail: describeSoundError(error) }),
   });
 
   const remove = useMutation({
     mutationFn: () => dismissSoundMarker(marker.id),
     onSuccess: async () => {
-      pushToast({ tone: "success", title: `${KIND_TITLE[marker.kind]}: удалено`, detail: "Повторный прогон его не вернёт." });
+      pushToast({ tone: "success", title: `${KIND_TITLE[marker.kind]}: deleted`, detail: "Future runs will not restore it." });
       onClose();
       await refresh();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не удалилось", detail: describeSoundError(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Not deleted", detail: describeSoundError(error) }),
   });
 
   const rerun = useMutation({
     mutationFn: () => rerunSoundChapter(chapterId),
     onSuccess: async () => {
-      pushToast({ tone: "success", title: "В очереди; результат появится сам" });
+      pushToast({ tone: "success", title: "Queued; results will appear automatically" });
       await refresh();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Переразметка не запущена", detail: describeSoundError(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Reannotation not started", detail: describeSoundError(error) }),
   });
 
   const addHere = useMutation({
     mutationFn: (segmentId: string) => addSoundMarker(chapterId, "sound", segmentId, addFields()),
     onSuccess: async (result) => {
-      pushToast({ tone: "success", title: "Звук добавлен", detail: `абз. ${paragraphNumber(result.marker.segment_id)}` });
+      pushToast({ tone: "success", title: "Sound added", detail: `paragraph ${paragraphNumber(result.marker.segment_id)}` });
       setAdding(false);
       setAdded({ quote: "", description: "", queries: "" });
       await refresh();
       onOpenMarker(result.marker);
     },
-    onError: (error) => pushToast({ tone: "error", title: "Звук не добавлен", detail: describeSoundError(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Sound not added", detail: describeSoundError(error) }),
   });
 
   function addFields() {
@@ -304,7 +304,7 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
   const moveTo = (target: SoundMarker, quote: string) => async (segmentId: string) => {
     const fields = target.kind === "sound" ? { segment_id: segmentId, quote } : { segment_id: segmentId };
     await editSoundMarker(target.id, fields);
-    pushToast({ tone: "success", title: `${KIND_TITLE[target.kind]}: теперь с абз. ${paragraphNumber(segmentId)}` });
+    pushToast({ tone: "success", title: `${KIND_TITLE[target.kind]}: now starts at paragraph ${paragraphNumber(segmentId)}` });
     await refresh();
     return target.id;
   };
@@ -312,23 +312,23 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
   const startMove = (target: SoundMarker, quote: string) => {
     const hint =
       target.kind === "scene"
-        ? "Нажмите на абзац, с которого начинается сцена"
+        ? "Click the paragraph where this scene begins"
         : target.kind === "transition"
-          ? "Нажмите на абзац, перед которым стоит переход"
-          : `Нажмите на абзац, где есть цитата «${quote.length > 40 ? `${quote.slice(0, 39)}…` : quote}»`;
+          ? "Click the paragraph following the transition"
+          : `Click the paragraph containing «${quote.length > 40 ? `${quote.slice(0, 39)}…` : quote}»`;
     pickSegment({ hint, onPick: moveTo(target, quote) });
   };
 
   const busy = save.isPending || remove.isPending || rerun.isPending || addHere.isPending;
-  const where = `абз. ${paragraphNumber(marker.segment_id)}`;
-  const title = marker.kind === "scene" && sceneNumber ? `Сцена ${sceneNumber}` : KIND_TITLE[marker.kind];
+  const where = `paragraph ${paragraphNumber(marker.segment_id)}`;
+  const title = marker.kind === "scene" && sceneNumber ? `Scene ${sceneNumber}` : KIND_TITLE[marker.kind];
   const placeKnown = places.some((item) => item.id === draft.place_id);
   const otherLost = lost.filter((item) => item.id !== marker.id);
 
   return (
     <Sheet
       title={title}
-      subtitle={`${lostHere ? "потерялся" : where} · ${marker.source === "human" ? "правлено вручную" : "разметка ИИ"}`}
+      subtitle={`${lostHere ? "unplaced" : where} · ${marker.source === "human" ? "manually edited" : "AI annotation"}`}
       onClose={onClose}
       footer={
         <div className="snd-card-foot">
@@ -339,15 +339,15 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
             onClick={() => {
               if (
                 window.confirm(
-                  "Переразметить главу заново?\n\nЭто платный запрос к ИИ — деньги спишутся с баланса RouterAI. " +
-                    "Заменятся только маркеры ИИ этой главы: ваши правки и удалённое останутся как есть.",
+                  "Annotate this chapter again? This is a paid AI request charged to your RouterAI balance. " +
+                    "Only this chapter's AI markers will be replaced. Your edits and deletions will be preserved.",
                 )
               ) {
                 rerun.mutate();
               }
             }}
           >
-            {rerun.isPending ? "Ставлю в очередь…" : "Переразметить главу…"}
+            {rerun.isPending ? "Queuing…" : "Annotate chapter again…"}
           </button>
         </div>
       }
@@ -355,11 +355,11 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
       {lostHere ? (
         <section className="snd-card-lost" role="note">
           <p>
-            Текст главы поменялся, и маркер не нашёл свой абзац
-            {marker.kind === "sound" && marker.quote ? <> по цитате «{marker.quote}»</> : null}. Поставьте его руками.
+            The chapter text changed and this marker could not find its paragraph
+            {marker.kind === "sound" && marker.quote ? <> using the quote «{marker.quote}»</> : null}. Place it manually.
           </p>
           <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => startMove(marker, draft.quote.trim())}>
-            Поставить на абзац
+            Place on paragraph
           </button>
         </section>
       ) : null}
@@ -367,9 +367,9 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
       <section className="v2r-sheet-section snd-card-form">
         {marker.kind === "scene" ? (
           <>
-            <Row label="Место">
+            <Row label="Location">
               <select className="ui-input" value={draft.place_id} onChange={set("place_id")} disabled={busy}>
-                {!placeKnown ? <option value={draft.place_id}>{place?.name || "— без места —"}</option> : null}
+                {!placeKnown ? <option value={draft.place_id}>{place?.name || "— no location —"}</option> : null}
                 {places.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
@@ -378,49 +378,49 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
               </select>
             </Row>
             <div className="snd-card-pair">
-              <Row label="Время суток">
-                <input className="ui-input" value={draft.time_of_day} onChange={set("time_of_day")} placeholder="ночь" disabled={busy} />
+              <Row label="Time of day">
+                <input className="ui-input" value={draft.time_of_day} onChange={set("time_of_day")} placeholder="night" disabled={busy} />
               </Row>
-              <Row label="Погода">
-                <input className="ui-input" value={draft.weather} onChange={set("weather")} placeholder="дождь" disabled={busy} />
+              <Row label="Weather">
+                <input className="ui-input" value={draft.weather} onChange={set("weather")} placeholder="rain" disabled={busy} />
               </Row>
             </div>
-            <Row label="Фон">
+            <Row label="Ambience">
               <textarea className="ui-input snd-card-text" rows={2} value={draft.ambience} onChange={set("ambience")} disabled={busy} />
             </Row>
-            <Row label="Настроение">
+            <Row label="Mood">
               <input className="ui-input" value={draft.mood} onChange={set("mood")} disabled={busy} />
             </Row>
-            <Row label="Музыка — запросы" hint="До трёх, через запятую, по-английски. Запросы фона — у места, в «Местах книги».">
+            <Row label="Music queries" hint="Up to three comma-separated queries in English. Edit environmental ambience queries in Book locations.">
               <input className="ui-input" value={draft.music} onChange={set("music")} placeholder="dark tavern ambient" disabled={busy} />
             </Row>
           </>
         ) : null}
         {marker.kind === "transition" ? (
-          <Row label="Что происходит">
-            <input className="ui-input" value={draft.what} onChange={set("what")} placeholder="флешбэк, сон, фон уходит в тишину…" disabled={busy} />
+          <Row label="What happens">
+            <input className="ui-input" value={draft.what} onChange={set("what")} placeholder="flashback, dream, ambience fades to silence…" disabled={busy} />
           </Row>
         ) : null}
         {marker.kind === "sound" ? (
           <>
-            <Row label="Описание">
+            <Row label="Description">
               <input className="ui-input" value={draft.description} onChange={set("description")} disabled={busy} />
             </Row>
-            <Row label="Запросы" hint="До трёх, через запятую, по-английски.">
+            <Row label="Queries" hint="Up to three comma-separated queries in English.">
               <input className="ui-input" value={draft.queries} onChange={set("queries")} placeholder="door slam wooden" disabled={busy} />
             </Row>
-            <Row label="Цитата" hint="Дословно из абзаца. При переносе она должна быть в новом абзаце.">
+            <Row label="Quote" hint="Copy exactly from the paragraph. To move this marker, the quote must exist in the new paragraph.">
               <textarea className="ui-input snd-card-text" rows={2} value={draft.quote} onChange={set("quote")} disabled={busy} />
             </Row>
           </>
         ) : null}
         <div className="snd-card-actions">
           <button type="button" className="btn btn-sm btn-primary" disabled={busy || !dirty} onClick={() => save.mutate()}>
-            {save.isPending ? "Сохраняю…" : "Сохранить"}
+            {save.isPending ? "Saving…" : "Save"}
           </button>
           {!lostHere ? (
             <button type="button" className="btn btn-sm v2r-btn" disabled={busy} onClick={() => startMove(marker, draft.quote.trim())}>
-              {marker.kind === "scene" ? "Начало сцены — другой абзац" : "Перенести на другой абзац"}
+              {marker.kind === "scene" ? "Move scene start to another paragraph" : "Move to another paragraph"}
             </button>
           ) : null}
           <button
@@ -428,12 +428,12 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
             className="btn btn-sm btn-ghost snd-card-danger"
             disabled={busy}
             onClick={() => {
-              if (window.confirm(`Удалить ${KIND_TITLE[marker.kind].toLowerCase()} «${markerCaption(marker, place)}»? Повторный прогон его не вернёт.`)) {
+              if (window.confirm(`Delete ${KIND_TITLE[marker.kind].toLowerCase()} «${markerCaption(marker, place)}»? Future runs will not restore it.`)) {
                 remove.mutate();
               }
             }}
           >
-            Удалить
+            Delete
           </button>
         </div>
       </section>
@@ -444,12 +444,12 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
         <section className="v2r-sheet-section">
           {!adding ? (
             <button type="button" className="btn btn-sm v2r-btn snd-card-add" disabled={busy} onClick={() => setAdding(true)}>
-              + Добавить звук к этому абзацу
+              + Add sound to this paragraph
             </button>
           ) : (
             <div className="snd-card-subform">
-              <h3 className="v2r-sheet-h">Новый звук · {where}</h3>
-              <Row label="Цитата" hint="Дословно из абзаца — по ней звук найдёт себя, если текст поменяется. Можно оставить пустой.">
+              <h3 className="v2r-sheet-h">New sound · {where}</h3>
+              <Row label="Quote" hint="An exact quote helps locate the sound after text edits. Optional.">
                 <textarea
                   className="ui-input snd-card-text"
                   rows={2}
@@ -459,10 +459,10 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
                   autoFocus
                 />
               </Row>
-              <Row label="Описание">
+              <Row label="Description">
                 <input className="ui-input" value={added.description} onChange={(event) => setAdded((a) => ({ ...a, description: event.target.value }))} disabled={busy} />
               </Row>
-              <Row label="Запросы" hint="До трёх, через запятую, по-английски.">
+              <Row label="Queries" hint="Up to three comma-separated queries in English.">
                 <input className="ui-input" value={added.queries} onChange={(event) => setAdded((a) => ({ ...a, queries: event.target.value }))} disabled={busy} />
               </Row>
               <div className="snd-card-actions">
@@ -472,7 +472,7 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
                   disabled={busy || !added.description.trim()}
                   onClick={() => addHere.mutate(marker.segment_id)}
                 >
-                  {addHere.isPending ? "Добавляю…" : `Добавить к абз. ${paragraphNumber(marker.segment_id)}`}
+                  {addHere.isPending ? "Adding…" : `Add to paragraph ${paragraphNumber(marker.segment_id)}`}
                 </button>
                 <button
                   type="button"
@@ -481,20 +481,20 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
                   onClick={() => {
                     const fields = addFields();
                     pickSegment({
-                      hint: "Нажмите на абзац, к которому добавить звук",
+                      hint: "Click a paragraph to add sound",
                       onPick: async (segmentId) => {
                         const result = await addSoundMarker(chapterId, "sound", segmentId, fields);
-                        pushToast({ tone: "success", title: "Звук добавлен", detail: `абз. ${paragraphNumber(segmentId)}` });
+                        pushToast({ tone: "success", title: "Sound added", detail: `paragraph ${paragraphNumber(segmentId)}` });
                         await refresh();
                         return result.marker.id;
                       },
                     });
                   }}
                 >
-                  к другому абзацу…
+                  to another paragraph…
                 </button>
                 <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => setAdding(false)}>
-                  Отмена
+                  Cancel
                 </button>
               </div>
             </div>
@@ -505,17 +505,17 @@ export function SoundCard({ chapterId, bookId, marker, place, places, sceneNumbe
       {otherLost.length > 0 ? (
         <section className="v2r-sheet-section">
           <h3 className="v2r-sheet-h">
-            Потерялись в главе <span className="v2r-legend-count num">{otherLost.length}</span>
+            Unplaced in chapter <span className="v2r-legend-count num">{otherLost.length}</span>
           </h3>
-          <p className="v2r-sheet-note">Текст главы поменялся, и эти маркеры не нашли свой абзац.</p>
+          <p className="v2r-sheet-note">The chapter text changed and these markers could not find their paragraphs.</p>
           <ul className="snd-lost-list">
             {otherLost.map((item) => (
               <li key={item.id} className="snd-lost">
-                <button type="button" className="snd-lost-open" onClick={() => onOpenMarker(item)} title="Открыть карточку">
+                <button type="button" className="snd-lost-open" onClick={() => onOpenMarker(item)} title="Open card">
                   <span className="snd-lost-kind">{KIND_TITLE[item.kind]}</span> {markerCaption(item, places.find((p) => p.id === item.place_id))}
                 </button>
                 <button type="button" className="btn btn-sm v2r-btn" disabled={busy} onClick={() => startMove(item, item.quote)}>
-                  поставить на абзац
+                  place on paragraph
                 </button>
               </li>
             ))}

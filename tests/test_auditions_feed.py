@@ -38,7 +38,7 @@ def factory(monkeypatch):
                              kind="audition", canonical_filename=f"{aid}.wav", uploaded_at=when))
         for lane, uid, score in (("author", "author", 8), ("studio", "owner", 7)):
             db.add(AuditionScore(book_id="b1", role="Саяху", actor_name="Кравченко Алёна", lane=lane,
-                                 voter_uid=uid, voter_name="Примеродин Александр", score=score))
+                                 voter_uid=uid, voter_name="Примеров Алексей", score=score))
         db.commit()
     return factory
 
@@ -58,7 +58,7 @@ def test_the_feed_holds_every_book_newest_first_with_the_role_state(factory):
     assert (first["book_title"], first["character_id"], first["role_actor"], first["role_auditions"]) == \
         ("Сад великанов. Книга 3", "c2", "", 1)
     assert (maura["role_actor"], maura["role_auditions"], maura["approved"]) == ("Кравченко Алёна", 2, True)
-    assert maura["scores"]["author"] == {"score": 8, "name": "Примеродин Александр", "reason": "", "comment": ""}
+    assert maura["scores"]["author"] == {"score": 8, "name": "Примеров Алексей", "reason": "", "comment": ""}
     assert [a["id"] for a in maura["auditions"]] == ["a1"]
     assert body["can_approve"] is True and body["can_score"] == ["studio"]
 

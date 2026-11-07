@@ -100,7 +100,7 @@ def _stem_matches(known_norm: str, word_norm: str) -> bool:
     return len(stem) >= 4 and word_norm.startswith(stem)
 
 
-def find_name_hits(text: str, names: dict[str, str]) -> list[NameHit]:
+def find_name_hits(text: str, names: dict[str, str], *, language: str = "ru") -> list[NameHit]:
     """Все имена каста, названные в тексте, с позицией и признаком словарной формы.
 
     `exact` значит, что слово совпало с именем или алиасом БЕЗ склонения, то есть
@@ -112,6 +112,21 @@ def find_name_hits(text: str, names: dict[str, str]) -> list[NameHit]:
     «Гамукар» для формы «Гамука»), не возвращается вовсе: гадать тут не о чем.
     """
     hits: list[NameHit] = []
+    if language == "en":
+        # У английского имени нет русского склонения; обрезание основы путает Alice и Alicia.
+        folded, offsets = [], []
+        for position, char in enumerate(str(text or "")):
+            value = char if char.isspace() else normalize_label(char)
+            folded.extend(value)
+            offsets.extend([position] * len(value))
+        body = "".join(folded)
+        for known, canonical in names.items():
+            if not known or canonical == "<AMBIGUOUS>":
+                continue
+            pattern = r"(?<![\w’'])" + re.escape(normalize_label(known)).replace(r"\ ", r"\s+") + r"(?![\w’'])"
+            for match in re.finditer(pattern, body, flags=re.IGNORECASE):
+                hits.append(NameHit(canonical, offsets[match.start()], offsets[match.end() - 1] + 1, True))
+        return sorted(hits, key=lambda hit: (hit.start, hit.end))
     for match in _WORD.finditer(str(text or "")):
         norm = normalize_label(match.group(0))
         if not norm:
@@ -127,7 +142,7 @@ def find_name_hits(text: str, names: dict[str, str]) -> list[NameHit]:
     return hits
 
 
-def find_name_in_narration(narration_parts: list[str], names: dict[str, str]) -> str:
+def find_name_in_narration(narration_parts: list[str], names: dict[str, str], *, language: str = "ru") -> str:
     """Каноничное имя, названное в авторских словах, — и только если оно там одно.
 
     Ремарка, называющая двоих («— ответил Дгарнину Гамук»), не доказывает ничего:
@@ -135,7 +150,7 @@ def find_name_in_narration(narration_parts: list[str], names: dict[str, str]) ->
     попавшееся имя, и такая ремарка подпирала обоих.
     """
     found = {hit.canonical for part in narration_parts or []
-             for hit in find_name_hits(str(part or ""), names)}
+             for hit in find_name_hits(str(part or ""), names, language=language)}
     return found.pop() if len(found) == 1 else ""
 
 
@@ -148,8 +163,42 @@ def _names_this_speaker(hit: NameHit, speaker: str, names: dict[str, str]) -> bo
     return normalize_label(hit.canonical) == normalize_label(canonical_speaker(speaker, names))
 
 
+_EN_SPEECH_VERB = re.compile(
+    r"\b(?:said|says|say|asked|asks|replied|replies|answered|answers|whispered|whispers|"
+    r"shouted|shouts|murmured|murmurs|added|adds|exclaimed|exclaims|muttered|mutters|"
+    r"cried|cries|called|calls|remarked|remarks|told|tells)\b", re.I)
+
+
+def _english_speech_cue(body: str, speaker: str, names: dict[str, str]) -> str:
+    # Имя должно быть подлежащим ремарки: «Alice said to Bob» не доказывает голос Bob.
+    subjects = set()
+    hits = find_name_hits(body, names, language="en")
+    for verb in _EN_SPEECH_VERB.finditer(body):
+        named_subject_before = any(
+            hit.end <= verb.start() and re.fullmatch(r"\s+(?:[A-Za-z]+ly\s+)?", body[hit.end:verb.start()])
+            for hit in hits
+        )
+        for hit in hits:
+            if hit.end <= verb.start():
+                gap = body[hit.end:verb.start()]
+                connected = bool(re.fullmatch(r"\s+(?:[A-Za-z]+ly\s+)?", gap))
+                if re.search(r"\band\s*$", body[:hit.start], re.I):
+                    connected = False
+            elif hit.start >= verb.end():
+                # told/tells требуют адресата, а не инвертированного подлежащего.
+                connected = (not named_subject_before and verb.group().lower() not in {"told", "tells"}
+                             and body[verb.end():hit.start].isspace()
+                             and not re.match(r"\s+and\b", body[hit.end:], re.I))
+            else:
+                connected = False
+            if connected:
+                subjects.add(hit.canonical)
+    expected = canonical_speaker(speaker, names)
+    return body.strip()[:200] if subjects == {expected} else ""
+
+
 def speech_cue(text: str, speaker: str, names: dict[str, str], *,
-               remark: bool = False) -> str:
+               remark: bool = False, language: str = "ru") -> str:
     """Цитата авторских слов, называющих ЭТОГО говорящего, или `""`.
 
     Спека требует двух вещей сразу: глагол речи и имя. Ни того, ни другого по
@@ -166,6 +215,8 @@ def speech_cue(text: str, speaker: str, names: dict[str, str], *,
     ремарки как раз и неизвестна, и держит её только глагол речи.
     """
     body = str(text or "")
+    if language == "en":
+        return _english_speech_cue(body, speaker, names)
     verbs = _speech_verb_spans(body)
     if not verbs and remark and len(body) <= REMARK_MAX_CHARS:
         verbs = _verb_spans(body)
@@ -199,7 +250,7 @@ def _window(text: str, start: int, end: int, width: int = 200) -> str:
     return body[left:right].strip()
 
 
-def address_quote(said: str, speaker: str, names: dict[str, str]) -> str:
+def address_quote(said: str, speaker: str, names: dict[str, str], *, language: str = "ru") -> str:
     """Цитата реплики, в которой этого персонажа ОКЛИКАЮТ по имени, или `""`.
 
     Обращение — это имя, отделённое от остальной речи знаками: в начале реплики,
@@ -212,8 +263,8 @@ def address_quote(said: str, speaker: str, names: dict[str, str]) -> str:
     кусков через ремарку, и такой склейки в тексте абзаца нет.
     """
     body = str(said or "")
-    speech, _ = speech_and_narration(body)
-    for hit in find_name_hits(speech, names):
+    speech, _ = speech_and_narration(body, language=language)
+    for hit in find_name_hits(speech, names, language=language):
         if not hit.exact or not _names_this_speaker(hit, speaker, names):
             continue
         left = speech[:hit.start].rstrip()
@@ -251,7 +302,7 @@ class Evidence:
 
 
 def classify_span(*, speaker: str, span_text: str, narration: list[str], paragraph: int,
-                  names: dict[str, str]) -> Evidence:
+                  names: dict[str, str], language: str = "ru") -> Evidence:
     """Доказательство в пределах одного абзаца. Соседи — забота `classify_chapter`.
 
     `narration` — авторские слова этого абзаца, лежащие ОТДЕЛЬНЫМИ отрезками рассказчика:
@@ -259,7 +310,7 @@ def classify_span(*, speaker: str, span_text: str, narration: list[str], paragra
     снаружи отрезка-реплики. Авторские части внутри самого отрезка тоже учитываются — у
     абзацев, разделения не переживших.
     """
-    _, own_narration = speech_and_narration(span_text)
+    _, own_narration = speech_and_narration(span_text, language=language)
     # Ремаркой считается то, что отделено от речи тире: куски внутри самого отрезка
     # (там тире съедено разбором) и отрезки рассказчика, которые с тире начинаются.
     # Отрезок рассказчика без тире — проза в одном абзаце с репликой, и поблажки на
@@ -268,13 +319,13 @@ def classify_span(*, speaker: str, span_text: str, narration: list[str], paragra
     pieces += [(part, True) for part in own_narration]
     narration = [part for part, _ in pieces]
     for part, is_remark in pieces:
-        quote = speech_cue(part, speaker, names, remark=is_remark)
+        quote = speech_cue(part, speaker, names, remark=is_remark, language=language)
         if quote:
             return Evidence(kind="cue_named", speaker=canonical_speaker(speaker, names),
                             quote=quote, paragraph=paragraph)
     for part in narration:
         for word in _WORD.findall(str(part or "").lower()):
-            if word in UNNAMED_MARKERS:
+            if word in (EN_UNNAMED_MARKERS if language == "en" else UNNAMED_MARKERS):
                 return Evidence(kind="unnamed_speaker", speaker=str(speaker or ""),
                                 quote=str(part).strip()[:200], paragraph=paragraph)
     return Evidence(kind="unsupported", speaker=str(speaker or ""), paragraph=paragraph)
@@ -325,7 +376,10 @@ def _chains(paragraphs: list[dict]) -> list[list[int]]:
     return chains
 
 
-def classify_chapter(paragraphs: list[dict], *, names: dict[str, str]) -> dict:
+EN_UNNAMED_MARKERS = frozenset({"stranger", "voice", "someone", "man", "woman", "shadow", "figure"})
+
+
+def classify_chapter(paragraphs: list[dict], *, names: dict[str, str], language: str = "ru") -> dict:
     """Доказательство по каждому отрезку-реплике главы.
 
     Порядок разбора — от сильного к слабому: своё доказательство в абзаце, потом
@@ -348,9 +402,10 @@ def classify_chapter(paragraphs: list[dict], *, names: dict[str, str]) -> dict:
                 narration=narration,
                 paragraph=number,
                 names=names,
+                language=language,
             )
             if found.kind == "unsupported":
-                found = _neighbour_evidence(paragraphs, index, speaker, names) or found
+                found = _neighbour_evidence(paragraphs, index, speaker, names, language=language) or found
             out[key] = found
     _apply_alternation(paragraphs, out, names)
     # Доказательство без цитаты проверить нечем, а значит, оно и не доказательство:
@@ -366,7 +421,11 @@ def _starts_with_dash(text: str) -> bool:
     return bool(re.match(r"^\s*[—–-]\s", str(text or "")))
 
 
-def _neighbour_evidence(paragraphs, index, speaker, names):
+def _starts_with_speech(text: str, language: str) -> bool:
+    return _starts_with_dash(text) or (language == "en" and str(text or "").lstrip().startswith(('"', '“', "'", '‘')))
+
+
+def _neighbour_evidence(paragraphs, index, speaker, names, *, language: str = "ru"):
     """Доказательство в соседнем абзаце: ремарка с именем или обращение по имени.
 
     Спека допускает соседа только при условии «между репликой и ремаркой нет чужой
@@ -386,7 +445,7 @@ def _neighbour_evidence(paragraphs, index, speaker, names):
     if _paragraph_speakers(own) - {str(speaker or "").strip()}:
         return None
     text = str(own.get("text") or "")
-    if not any(_starts_with_dash(text[int(s["start"]):int(s["end"])])
+    if not any(_starts_with_speech(text[int(s["start"]):int(s["end"])], language)
                for s in _replica_spans(own)):
         return None
     canonical = canonical_speaker(speaker, names)
@@ -402,9 +461,9 @@ def _neighbour_evidence(paragraphs, index, speaker, names):
                 if str(span.get("speaker") or "").strip() == str(speaker or "").strip():
                     continue        # своя же реплика обращением к себе не бывает
                 said = str(neighbour.get("text") or "")[int(span["start"]):int(span["end"])]
-                if not _starts_with_dash(said):
+                if not _starts_with_speech(said, language):
                     continue        # без тире это проза, ошибочно приписанная персонажу
-                quote = address_quote(said, speaker, names)
+                quote = address_quote(said, speaker, names, language=language)
                 if quote:
                     return Evidence(kind="address_by_name", speaker=canonical,
                                     quote=quote, paragraph=number)
@@ -412,10 +471,10 @@ def _neighbour_evidence(paragraphs, index, speaker, names):
         narration = _narration_parts(neighbour)
         if not narration or len(" ".join(narration)) > REMARK_MAX_CHARS:
             continue                # целый абзац прозы — не авторская ремарка
-        if find_name_in_narration(narration, names) != canonical:
+        if find_name_in_narration(narration, names, language=language) != canonical:
             continue                # ремарка называет кого-то ещё или сразу двоих
         for part in narration:
-            quote = speech_cue(part, speaker, names)
+            quote = speech_cue(part, speaker, names, language=language)
             if quote:
                 return Evidence(kind="cue_adjacent", speaker=canonical,
                                 quote=quote, paragraph=number)

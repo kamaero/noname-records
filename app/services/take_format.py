@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-REQUIRED = "Дубли принимаются только в WAV или FLAC. MP3 и голосовые можно присылать для проб. Пришлите исходную запись в WAV или FLAC."
+REQUIRED = "Takes must be WAV or FLAC. MP3 and voice messages are accepted for auditions. Please send the original recording as WAV or FLAC."
 
 
 def allowed_filename(filename: str, *, kind: str = "") -> bool:

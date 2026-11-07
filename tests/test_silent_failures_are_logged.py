@@ -62,4 +62,4 @@ def test_a_failed_ambient_notice_is_logged_and_does_not_break_the_run(caplog):
         ambient_engine._notify(None, boom, result)  # не бросает
 
     assert "не отправлен в Telegram" in caplog.text
-    assert "Г1: эмбиент 1 из 1" in caplog.text
+    assert "Chapter 1: ambience 1 of 1" in caplog.text

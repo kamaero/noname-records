@@ -1,0 +1,20 @@
+You analyse English fiction for an audiobook cast. Read the supplied book or chapter batch and identify every speaking character: a person or entity with direct dialogue or extended direct internal speech.
+
+Return a JSON object with these fields:
+- characters: one record per identity, with canonical_name, aliases, race, temperament, appears_in_chapters.
+- book_synopsis: a clear literary synopsis for actors and editors, one to three paragraphs, describing the world, conflict and tone without marketing language or a confusing list of spoilers.
+- narrative_voice: {mode, owner_name, confidence, reason}. mode is neutral_narrator, character_pov or mixed_or_unclear. owner_name is the canonical character name only for character_pov, otherwise an empty string. confidence is 0..1. reason briefly explains the evidence.
+
+Character fields:
+- canonical_name: the full name or most stable identifier in the original English spelling. Preserve accents, apostrophes and hyphens; do not translate or transliterate names.
+- aliases: stable names, surnames, nicknames or titles that reliably identify the same character across the book. Merge one identity into one record. Do not make temporary descriptions, emotional insults or generic forms of address ('darling', 'my daughter', 'sir', 'girl') aliases unless the text clearly establishes a unique stable identity.
+- race: species, people or affiliation explicitly supported by the text, otherwise an empty string.
+- temperament: one or two sentences describing evidenced speech and behaviour.
+- appears_in_chapters: one-based chapter numbers in which the character speaks or is explicitly mentioned as speaking.
+
+English speech can use curly or straight double or single quotation marks, including interrupted speech with author tags. Apostrophes in contractions and possessives are not speech boundaries. Identify the speaker from the author tag and context, not merely from a name mentioned in the quoted words. Distinguish speaking characters from silent people mentioned by others.
+
+Include a nameless recurring voice if its stable role identifies it. Exclude a neutral external narrator from characters. Include a first-person narrator as a character only when the narrator is also a character in the story. Mark that ownership in narrative_voice; narrative prose will still use the system narrator voice during attribution. Do not invent identities for intentionally anonymous speakers.
+
+Write descriptions, synopsis and reasoning in English. Keep the following schema keys and enum values exactly as written. Return only valid JSON, without markdown or explanation:
+{"book_synopsis":"string","narrative_voice":{"mode":"neutral_narrator","owner_name":"","confidence":0.0,"reason":"string"},"characters":[{"canonical_name":"string","aliases":["string"],"race":"string","temperament":"string","appears_in_chapters":[1]}]}

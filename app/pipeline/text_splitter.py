@@ -142,7 +142,7 @@ def _coalesce_tiny_first_part(parts: list[str], max_chars: int) -> list[str]:
     return merged
 
 
-def _explode_large_chapters(chapters: list[tuple[str, str]], max_chars: int) -> list[tuple[str, str]]:
+def _explode_large_chapters(chapters: list[tuple[str, str]], max_chars: int, *, language: str = "ru") -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     for title, text in chapters:
         parts = _coalesce_tiny_first_part(_split_text_parts(text, max_chars=max_chars), max_chars=max_chars)
@@ -150,5 +150,5 @@ def _explode_large_chapters(chapters: list[tuple[str, str]], max_chars: int) -> 
             out.append((title, parts[0]))
             continue
         for idx, part in enumerate(parts, start=1):
-            out.append((f"{title} / часть {idx}", part))
+            out.append((f"{title} / {'part' if language == 'en' else 'часть'} {idx}", part))
     return out

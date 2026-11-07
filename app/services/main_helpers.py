@@ -19,12 +19,12 @@ def build_main_helpers(deps: dict[str, Any]) -> dict[str, Callable[..., Any]]:
     def spa_build_missing_frontend_response() -> HTMLResponse:
         return HTMLResponse(
             (
-                "<!doctype html><html lang='ru'><head><meta charset='utf-8'>"
+                "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
                 "<meta name='viewport' content='width=device-width, initial-scale=1'>"
                 "<title>NONAME Frontend</title></head><body style='font-family:sans-serif;padding:32px'>"
                 "<h1>Frontend scaffold is ready</h1>"
-                "<p>Собери Vite-приложение командой <code>npm install && npm run build</code> в каталоге <code>frontend/</code>.</p>"
-                "<p><a href='/app/login'>Открыть SPA</a></p>"
+                "<p>Build the Vite app with <code>npm install && npm run build</code> in the <code>frontend/</code> folder.</p>"
+                "<p><a href='/app/login'>Open app</a></p>"
                 "</body></html>"
             ),
             status_code=200,

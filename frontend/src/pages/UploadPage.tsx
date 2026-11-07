@@ -5,8 +5,8 @@ import { UploadPanel } from "../components/upload/UploadPanel";
 export function UploadPage() {
   return (
     <div className="lib">
-      <PageHeader title="Загрузить книгу" subtitle="Текст книги станет размеченным сценарием." back={{ to: "/", label: "Библиотека" }} />
-      <section className="ui-card ui-card-pad" aria-label="Загрузка книги">
+      <PageHeader title="Upload book" subtitle="Turn a book text into an annotated script." back={{ to: "/", label: "Library" }} />
+      <section className="ui-card ui-card-pad" aria-label="Book upload">
         <UploadPanel autoFocus />
       </section>
     </div>

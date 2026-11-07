@@ -11,9 +11,9 @@ import type { ReaderStress } from "./types";
 type Mode = "off" | "rare" | "all";
 
 const MODES: Array<{ key: Mode; label: string; title: string }> = [
-  { key: "off", label: "нет", title: "Не показывать ударения" },
-  { key: "rare", label: "ре́дкие", title: "Только в редких словах — где легко ошибиться в потоке — и всё, что поставили люди" },
-  { key: "all", label: "все", title: "Все ударения, включая «и́ли» и «да́же»" },
+  { key: "off", label: "none", title: "Hide stress marks" },
+  { key: "rare", label: "rare", title: "Rare words that are easy to mispronounce, plus all manually added stress marks" },
+  { key: "all", label: "all", title: "All available stress marks, including common words" },
 ];
 
 /** Marks a person set are shown in every mode but «нет»: they are the decisions, not the noise. */
@@ -38,8 +38,8 @@ export function StressToggle({ prefs, onPrefs, hint }: {
 }) {
   const mode = stressMode(prefs);
   return (
-    <div className="v2r-seg v2r-stress-seg" role="group" aria-label="Ударения" title={hint}>
-      <span className="v2r-seg-label">Ударе́ния</span>
+    <div className="v2r-seg v2r-stress-seg" role="group" aria-label="Word stress" title={hint}>
+      <span className="v2r-seg-label">Word stress</span>
       {MODES.map((option) => (
         <button
           key={option.key}

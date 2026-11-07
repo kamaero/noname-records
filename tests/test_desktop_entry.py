@@ -77,7 +77,7 @@ def test_a_second_instance_on_the_same_folder_is_refused(tmp_path):
         second = subprocess.run([sys.executable, "-m", "app.desktop", "--data-dir", str(tmp_path), "--port", "0",
                                  "--token", "y" * 48], cwd=ROOT, env=_env(), capture_output=True, text=True,
                                 timeout=60)
-        assert second.returncode == 3 and "уже запущен" in second.stderr
+        assert second.returncode == 3 and "already running" in second.stderr
     finally:
         _stop(proc)
 

@@ -1,3 +1,4 @@
+import { roleLabel } from "../../../v2/types";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -70,12 +71,12 @@ export function CastCard({ bookId }: CastCardProps) {
     onSuccess: async (changed) => {
       pushToast({
         tone: "success",
-        title: "Палитра разведена",
-        detail: changed > 0 ? `Обновлено ролей: ${changed}.` : "Подходящих изменений не нашлось: палитра уже разнесена по доступным вариантам.",
+        title: "Palette updated",
+        detail: changed > 0 ? `Roles updated: ${changed}.` : "No suitable changes found; the palette already uses the available options.",
       });
       await invalidateReader(queryClient, bookId, ["chapters", "cast"]);
     },
-    onError: (error) => pushToast({ tone: "error", title: "Палитра не исправлена", detail: describeApiError(error, "Не удалось развести палитру.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Palette not adjusted", detail: describeApiError(error, "Could not adjust palette.") }),
   });
 
   const total = summary.roles;
@@ -94,50 +95,50 @@ export function CastCard({ bookId }: CastCardProps) {
   return (
     <section className="panel hub-card hub-cast" aria-labelledby="hub-cast-title">
       <header className="hub-card-head">
-        <h2 id="hub-cast-title" className="hub-card-title">Каст</h2>
+        <h2 id="hub-cast-title" className="hub-card-title">Cast</h2>
       </header>
       {cast.isError ? (
-        <p className="ui-note ui-note--error">Не удалось загрузить каст: {describeApiError(cast.error, "сервер не ответил")}.</p>
+        <p className="ui-note ui-note--error">Could not load cast: {describeApiError(cast.error, "the server did not respond")}.</p>
       ) : cast.isLoading ? (
-        <p className="hub-dim">Считаю состав…</p>
+        <p className="hub-dim">Loading cast…</p>
       ) : noRolesYet ? (
-        <p className="hub-dim">Ролей пока нет — появятся после шага «Персонажи».</p>
+        <p className="hub-dim">No roles yet. They will appear after character extraction.</p>
       ) : nothingToDo ? (
-        <p className="hub-dim">По касту всё назначено.</p>
+        <p className="hub-dim">All cast roles are assigned.</p>
       ) : (
         <div className="hub-cast-todo">
           {todo.freeRoles.length ? (
             <div className="hub-cast-section">
-              <h3 className="hub-cast-section-title">Роли без актёра</h3>
+              <h3 className="hub-cast-section-title">Unassigned roles</h3>
               <ul className="hub-cast-list">
                 {todo.freeRoles.map((role) => (
                   <li key={role.character_id}>
                     <Link to={castTo} className="hub-cast-row">
-                      <span className="hub-cast-row-name">{role.name}</span>
-                      <span className="hub-dim">{role.lines_count} {plural(role.lines_count, "реплика", "реплики", "реплик")}</span>
-                      <span className="ui-chip ui-chip--amber">нет актёра</span>
+                      <span className="hub-cast-row-name">{roleLabel(role.name)}</span>
+                      <span className="hub-dim">{role.lines_count} {plural(role.lines_count, "line", "lines", "lines")}</span>
+                      <span className="ui-chip ui-chip--amber">unassigned</span>
                     </Link>
                   </li>
                 ))}
               </ul>
               {todo.freeMore ? (
                 <Link to={castTo} className="hub-cast-more">
-                  ещё {todo.freeMore} {plural(todo.freeMore, "роль", "роли", "ролей")} без актёра
+                  more {todo.freeMore} {plural(todo.freeMore, "role", "roles", "roles")} unassigned
                 </Link>
               ) : null}
             </div>
           ) : null}
           {todo.crossings.length ? (
             <div className="hub-cast-section">
-              <h3 className="hub-cast-section-title">Пересечения</h3>
+              <h3 className="hub-cast-section-title">Overlaps</h3>
               <ul className="hub-cast-list">
                 {todo.crossings.map((item, index) => (
                   <li key={`${item.actor}-${item.role_a}-${item.role_b}-${index}`} className="hub-cast-crossing">
-                    <b>{item.actor}</b>: {item.role_a} ↔ {item.role_b} · гл. {item.chapter}
+                    <b>{item.actor}</b>: {item.role_a} ↔ {item.role_b} · ch. {item.chapter}
                   </li>
                 ))}
               </ul>
-              {todo.crossingsMore ? <Link to={castTo} className="hub-cast-more">ещё {todo.crossingsMore}</Link> : null}
+              {todo.crossingsMore ? <Link to={castTo} className="hub-cast-more">more {todo.crossingsMore}</Link> : null}
             </div>
           ) : null}
           {hasConflictsLine ? (
@@ -145,16 +146,16 @@ export function CastCard({ bookId }: CastCardProps) {
               <span className={conflicts.length ? "hub-conflicts is-bad" : "hub-conflicts"}>
                 {conflicts.length ? (
                   <>
-                    Конфликты палитры: <strong className="num">{conflicts.length}</strong> ·{" "}
+                    Palette conflicts: <strong className="num">{conflicts.length}</strong> ·{" "}
                     {conflicts.slice(0, 2).map((c) => `${c.leftName} ↔ ${c.rightName}`).join(" · ")}
-                    {conflicts.length > 2 ? ` · ещё ${conflicts.length - 2}` : ""}
+                    {conflicts.length > 2 ? ` · more ${conflicts.length - 2}` : ""}
                   </>
                 ) : (
-                  "Конфликтов палитры нет"
+                  "No palette conflicts"
                 )}
               </span>
               {conflicts.length ? (
-                <Button size="sm" variant="secondary" loading={fix.isPending} onClick={() => fix.mutate()}>Исправить</Button>
+                <Button size="sm" variant="secondary" loading={fix.isPending} onClick={() => fix.mutate()}>Fix</Button>
               ) : null}
             </div>
           ) : null}
@@ -163,13 +164,13 @@ export function CastCard({ bookId }: CastCardProps) {
       {pictures && pictures.total > 0 ? (
         <div className="hub-cast-section hub-cast-portraits">
           <span>
-            Портреты героев: привязано <b className="num">{pictures.bound}</b> из <b className="num">{pictures.total}</b>
+            Character portraits linked: <b className="num">{pictures.bound}</b> of <b className="num">{pictures.total}</b>
             {pictures.total - pictures.bound - pictures.skipped > 0
-              ? `, не разобрано ${pictures.total - pictures.bound - pictures.skipped}`
+              ? `, unresolved ${pictures.total - pictures.bound - pictures.skipped}`
               : ""}
           </span>
           <LinkButton to={`/books/${encodeURIComponent(bookId)}/illustrations`} size="sm" variant="secondary">
-            Разметить
+            Annotate
           </LinkButton>
         </div>
       ) : null}
@@ -177,12 +178,12 @@ export function CastCard({ bookId }: CastCardProps) {
         <span className="hub-cast-summary">
           {cast.data ? (
             <>
-              <span><b className="num">{total}</b> {plural(total, "роль", "роли", "ролей")}</span>
-              <span><b className="num">{free}</b> {plural(free, "свободна", "свободны", "свободны")}</span>
+              <span><b className="num">{total}</b> {plural(total, "role", "roles", "roles")}</span>
+              <span><b className="num">{free}</b> {plural(free, "unassigned", "unassigned", "unassigned")}</span>
             </>
           ) : null}
         </span>
-        <LinkButton to={castTo} size="sm" variant="ghost">Весь каст</LinkButton>
+        <LinkButton to={castTo} size="sm" variant="ghost">Full cast</LinkButton>
       </footer>
     </section>
   );

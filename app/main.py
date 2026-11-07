@@ -28,6 +28,7 @@ from app.api.payouts import register_payouts_routes
 from app.v2.lifecycle_api import register_lifecycle_routes
 from app.api.telegram_webhook import api_telegram_webhook
 from app.route_bootstrap import register_application_routes
+from app.api.studio_calendar import api_studio_calendar
 from app.routers.auth import register_auth_routes
 from app.services.audit import write_audit as _audit
 from app.services.passwords import verify_password
@@ -91,6 +92,7 @@ from app.v2.api import (
     api_v2_book_auditions,
     api_v2_audition_score,
     api_v2_book_recording,
+    api_v2_book_language,
     api_v2_chapter_archive,
     api_v2_chapter_asr,
     api_v2_chapter_audit,
@@ -202,8 +204,8 @@ def _format_bytes_for_dictor(num_bytes: int) -> str:
     if gigabytes >= 1:
         rounded = round(gigabytes)
         text = str(rounded) if abs(gigabytes - rounded) < 0.05 else f"{gigabytes:.1f}"
-        return f"{text} ГБ"
-    return f"{num_bytes / (1024**2):.0f} МБ"
+        return f"{text} GB"
+    return f"{num_bytes / (1024**2):.0f} MB"
 
 
 def _refusal_message(request, limit: int) -> str:
@@ -212,11 +214,11 @@ def _refusal_message(request, limit: int) -> str:
     size_text = _format_bytes_for_dictor(limit)
     if request.url.path in UPLOAD_PATHS:
         return (
-            f"Файл больше {size_text} — такой не принимаем. Обычный дубль на час в моно "
-            "24 бит весит около 520 МБ; проверьте, не сохранился ли файл в несжатом "
-            "стерео или не склеились ли несколько дублей в один."
+            f"The file exceeds the {size_text} upload limit. A one-hour mono 24-bit recording "
+            "is about 520 MB. Check whether the file was saved as uncompressed stereo "
+            "or several takes were combined into one."
         )
-    return f"Тело запроса больше {size_text} — такой размер не поддерживается."
+    return f"The request body exceeds the {size_text} limit."
 
 
 class RequestBodyLimitMiddleware(BaseHTTPMiddleware):
@@ -261,6 +263,17 @@ class RequestBodyLimitMiddleware(BaseHTTPMiddleware):
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+from app.services.role_identity import RoleIdentityError
+
+
+@app.exception_handler(RoleIdentityError)
+async def role_identity_error_handler(request: Request, exc: RoleIdentityError):
+    return JSONResponse(status_code=409, content={
+        "ok": False, "error": exc.code,
+        "message": "The role identity is ambiguous. Resolve the cast conflict before continuing.",
+    })
+
 
 if settings.api_rate_limit_enabled:
     app.add_middleware(SlowAPIMiddleware)
@@ -362,6 +375,8 @@ app.add_api_route("/api/v2/auditions/{audio_id}/audio", api_v2_audition_audio, m
 app.add_api_route("/api/v2/auditions/score", api_v2_audition_score, methods=["POST"])
 app.add_api_route("/api/v2/takes/{audio_id}/audio", api_v2_take_audio, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/recording", api_v2_book_recording, methods=["GET"])
+app.add_api_route("/api/studio/calendar", api_studio_calendar, methods=["GET"])
+app.add_api_route("/api/v2/books/{book_id}/language", api_v2_book_language, methods=["GET", "POST"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/recording", api_v2_chapter_recording, methods=["GET"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/archive.zip", api_v2_chapter_archive, methods=["GET"])
 register_lifecycle_routes(app)

@@ -11,14 +11,14 @@ import { Button, Field } from "../ui";
 
 /** Причины отказа во входе — коды шлёт сервер (`app/auth_routes.py`, LOGIN_ERROR_CODES). */
 const LOGIN_ERRORS: Record<string, string> = {
-  setup: "Вход по паролю ещё не настроен на сервере.",
-  credentials: "Неверный логин или пароль.",
-  disabled: "Учётная запись отключена.",
-  no_roles: "У учётной записи пока нет доступа. Напишите администратору студии.",
-  telegram: "Вход через Telegram не удался. Попробуйте ещё раз.",
-  not_whitelisted: "Этот Telegram-аккаунт не допущен в студию. Напишите администратору.",
+  setup: "Password sign-in has not been configured on the server.",
+  credentials: "Incorrect username or password.",
+  disabled: "This account is disabled.",
+  no_roles: "This account does not have access yet. Contact your studio administrator.",
+  telegram: "Telegram sign-in failed. Please try again.",
+  not_whitelisted: "This Telegram account does not have studio access. Contact your administrator.",
 };
-const LOGIN_ERROR_FALLBACK = "Не удалось войти. Попробуйте ещё раз.";
+const LOGIN_ERROR_FALLBACK = "Sign-in failed. Please try again.";
 
 export function LoginPage() {
   const [params] = useSearchParams();
@@ -66,6 +66,7 @@ export function LoginPage() {
     script.src = "https://telegram.org/js/telegram-widget.js?22";
     script.setAttribute("data-telegram-login", telegramBotUsername);
     script.setAttribute("data-size", "large");
+    script.setAttribute("data-lang", "en");
     script.setAttribute("data-userpic", "false");
     script.setAttribute("data-request-access", "write");
     script.setAttribute("data-onauth", "onTelegramAuth(user)");
@@ -122,18 +123,18 @@ export function LoginPage() {
     return (
       <div className="lg">
         <main className="lg-col">
-          <div className="panel panel-pad">Сессия закончилась. Закройте Noname Records и откройте снова.</div>
+          <div className="panel panel-pad">Your session has expired. Close Noname Records and open it again.</div>
         </main>
       </div>
     );
   }
 
   const telegramNote = configQuery.isLoading
-    ? "Загружаю вход через Telegram…"
+    ? "Loading Telegram sign-in…"
     : configQuery.isError
-      ? "Не удалось получить настройки входа через Telegram."
+      ? "Could not load Telegram sign-in settings."
       : !telegramBotUsername
-        ? "Вход через Telegram не настроен на сервере."
+        ? "Telegram sign-in is not configured on the server."
         : "";
 
   return (
@@ -148,15 +149,15 @@ export function LoginPage() {
           </div>
           <div className="lg-brand-text">
             <span className="brand-name">NONAME RECORDS</span>
-            <span className="brand-sub">студия озвучки книг</span>
+            <span className="brand-sub">audiobook production studio</span>
           </div>
         </div>
 
-        <h1 className="lg-title">Вход</h1>
+        <h1 className="lg-title">Sign in</h1>
 
         {setupMissing ? (
           <p className="ui-note ui-note--error" role="alert">
-            На сервере не задан ADMIN_PASSWORD_HASH в .env.
+            ADMIN_PASSWORD_HASH is not set in the server’s .env file.
           </p>
         ) : null}
         {error ? (
@@ -166,39 +167,39 @@ export function LoginPage() {
         ) : null}
 
         <form method="post" action="/login" className="lg-form">
-          <Field label="Логин">
+          <Field label="Username">
             {(props) => <input {...props} className="ui-input" type="text" name="login" autoComplete="username" required autoFocus />}
           </Field>
-          <Field label="Пароль">
+          <Field label="Password">
             {(props) => <input {...props} className="ui-input" type="password" name="password" autoComplete="current-password" required />}
           </Field>
           <Button type="submit" variant="primary" block>
-            Войти
+            Sign in
           </Button>
         </form>
 
         <div className="lg-or" aria-hidden="true">
-          <span>или</span>
+          <span>or</span>
         </div>
 
-        <section className="lg-tg" aria-label="Вход через Telegram">
+        <section className="lg-tg" aria-label="Sign in with Telegram">
           <div id="telegramWidgetWrap" className="lg-tg-widget" />
           {widgetMissing && telegramBotUsername ? (
             <p className="ui-note" role="status">
-              Кнопка Telegram не загрузилась — так бывает, если telegram.org у вас не открывается. Войдите
-              по логину и паролю: их пришлёт наш бот —{" "}
+              The Telegram button did not load. This can happen if telegram.org is unavailable. Sign in
+              with a username and password instead. To get them from the bot,{" "}
               <a href={`https://t.me/${telegramBotUsername}?start=dictor`} target="_blank" rel="noreferrer">
-                откройте @{telegramBotUsername}
+                open @{telegramBotUsername}
               </a>{" "}
-              и нажмите «🔑 Логин и пароль».
+              and select “🔑 Login and password”.
             </p>
           ) : null}
-          <p className="lg-tg-note">{telegramNote || "Вход через Telegram открыт только для добавленных пользователей."}</p>
+          <p className="lg-tg-note">{telegramNote || "Telegram sign-in is available to invited users only."}</p>
           {telegramBotUsername && !widgetMissing ? (
             <p className="lg-tg-note">
-              Нет кнопки Telegram или вход не срабатывает? Логин и пароль пришлёт бот:{" "}
+              Telegram button missing or sign-in not working? Get your username and password from the bot:{" "}
               <a href={`https://t.me/${telegramBotUsername}?start=dictor`} target="_blank" rel="noreferrer">@{telegramBotUsername}</a>{" "}
-              → «🔑 Логин и пароль».
+              → “🔑 Login and password”.
             </p>
           ) : null}
           <form method="post" action="/auth/telegram" id="telegramHiddenForm" hidden>

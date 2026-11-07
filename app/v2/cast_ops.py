@@ -145,6 +145,8 @@ def chapter_role_counts(db, chapter_id: str) -> dict[str, int]:
     a v2 book its role list came out empty and an actor had nothing to pick. The
     narrator is counted like anybody else here: somebody records the narration too.
     """
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter_id)
     from app.v2.reader import effective_attributions
 
     segments = load_chapter_segments(db, chapter_id=str(chapter_id or "").strip())
@@ -153,7 +155,7 @@ def chapter_role_counts(db, chapter_id: str) -> dict[str, int]:
     counts: collections.Counter = collections.Counter()
     for rows in effective_attributions(db, [segment.id for segment in segments]).values():
         # a replica is a paragraph the role speaks in, however the author's words tear it
-        speakers = {str(row.speaker or "").strip() for row in rows}
+        speakers = {identities.name(getattr(row, "role_ref", ""), row.speaker) for row in rows}
         for name in speakers:
             if name and not is_placeholder_name(name):
                 counts[name] += 1
@@ -184,7 +186,8 @@ def create_role(db, *, book_id: str, name: str, actor_uid: str, actor_name: str 
         raise CreateRoleError("name_required")
     if is_placeholder_name(wanted):
         raise CreateRoleError("placeholder_name")
-    if is_narrator_name(wanted):
+    from app.services.role_identity import book_roles
+    if book_roles(db, book_id).is_narrator(wanted):
         raise CreateRoleError("narrator_is_not_a_role")
 
     key = normalize_name(wanted)
@@ -199,7 +202,7 @@ def create_role(db, *, book_id: str, name: str, actor_uid: str, actor_name: str 
     db.flush()
     record_operator_intervention(
         db, book=book, action_type="v2_create_role", actor_uid=actor_uid, actor_name=actor_name,
-        reason="v2: новая роль из читалки",
+        reason='v2: new role from the reader',
         payload={"character_id": str(character.id), "name": wanted},
     )
     return {"created": True, "character_id": str(character.id), "name": wanted}
@@ -232,7 +235,7 @@ def move_auditions_to_role(db, *, book_id: str, character_id: str, role: str, au
     if moved:
         record_operator_intervention(
             db, book=book, action_type="audition_role_rename", actor_uid=actor_uid, actor_name=actor_name,
-            reason="роль пробы записана диктором иначе, чем в книге",
+            reason='the actor entered a different audition role name from the book',
             payload={"character_id": str(character.id), "role_was": was, "role": now,
                      "actor_name": actor, "files": moved},
         )
@@ -254,6 +257,8 @@ def _speaker_tally(db, book_id: str, characters: list[Character],
     свёрткой профиля (ударения и регистр не важны). Неизвестный касту говорящий сюда
     не попадает: это забота разметки, видимая в легенде Читалки как UNSURE.
     """
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
     by_key: dict[str, str] = {}
     for row in characters:
         by_key.setdefault(normalize_name(row.name), str(row.id))
@@ -275,7 +280,10 @@ def _speaker_tally(db, book_id: str, characters: list[Character],
     def resolve(name: str) -> str | None:
         if not name or is_placeholder_name(name):
             return None
-        return narrator_key if is_narrator_name(name) else by_key.get(normalize_name(name))
+        if identities.typed:
+            ref = identities.ref(name)
+            return narrator_key if identities.is_narrator(name, ref) else ref.removeprefix("character:") or None
+        return narrator_key if identities.is_narrator(name) else by_key.get(normalize_name(name))
 
     # A book has a dozen distinct speakers and 13k spans; fold each name once.
     resolved: dict[str, str | None] = {}
@@ -320,6 +328,8 @@ def role_chapter_map(db, book_id: str) -> "dict[str, set[int]] | None":
     /status спрашивают про каждую роль подряд. Сессия, которая правит разметку и тут же
     спрашивает главы, увидела бы старую карту — таких путей нет, а запросы короткие.
     """
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
     book_id = str(book_id or "").strip()
     cache = db.info.setdefault(_ROLE_CHAPTERS_CACHE, {})
     if book_id in cache:
@@ -329,7 +339,7 @@ def role_chapter_map(db, book_id: str) -> "dict[str, set[int]] | None":
         cache[book_id] = None
         return None
     characters = _cast_rows(db, book_id)
-    narrator_row = next((row for row in characters if is_narrator_name(row.name)), None)
+    narrator_row = next((row for row in characters if identities.is_narrator(row.name)), None)
     narrator_key = str(narrator_row.id) if narrator_row is not None else ""
     _lines, chapters = _speaker_tally(db, book_id, characters, narrator_key)
     cache[book_id] = {key: set(value) for key, value in chapters.items()}
@@ -349,9 +359,11 @@ def book_cast(db, book_id: str, *, only_speaking: bool = False, actor_name: str 
     know are not rows here — the cast editor edits `Character` rows, and an unknown
     speaker is the attribution's problem, visible in the reader's UNSURE legend.
     """
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
     reader = str(actor_name or "").strip()
     characters = _cast_rows(db, book_id)
-    narrator_row = next((row for row in characters if is_narrator_name(row.name)), None)
+    narrator_row = next((row for row in characters if identities.is_narrator(row.name)), None)
     narrator_key = str(narrator_row.id) if narrator_row is not None else ""
     lines, chapters = _speaker_tally(db, book_id, characters, narrator_key)
 
@@ -383,6 +395,8 @@ def book_cast(db, book_id: str, *, only_speaking: bool = False, actor_name: str 
             "char_map_id": str(row.char_map_id or "") if row is not None else "",
             "name": name,
             "is_narrator": is_narrator,
+            "role_kind": "system_narrator" if is_narrator else "character",
+            "role_ref": identities.ref(name),
             "actor_name": actor,
             "appears_in_chapters": sorted(chapters.get(key, set())),
             "lines_count": int(lines.get(key, 0)),

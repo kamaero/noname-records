@@ -1,3 +1,4 @@
+import { roleLabel } from "./types";
 import { useState } from "react";
 import { Icon } from "../components/Icon";
 import { StressToggle } from "./StressToggle";
@@ -106,19 +107,19 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
           className="btn btn-sm v2r-btn v2r-rail-toggle"
           onClick={onToggleRail}
           aria-pressed={railOpen}
-          aria-label="Список глав"
+          aria-label="Chapter list"
         >
           <Icon name="prep" />
-          Главы
+          Chapters
         </button>
         <div className="v2r-title">
-          <span className="v2r-title-book">{bookTitle || "Книга"}</span>
+          <span className="v2r-title-book">{bookTitle || "Book"}</span>
           <h1 className="v2r-title-chapter">
-            <span className="v2r-title-index num">{chapterIndex}</span> {chapterTitle || "Без названия"}
+            <span className="v2r-title-index num">{chapterIndex}</span> {chapterTitle || "Untitled"}
           </h1>
           {remarkCount > 0 ? (
-            <span className="v2r-title-remarks" title="Абзацы, где автоматический проход не распознал слова автора внутри реплики">
-              слов автора к проверке: <span className="num">{remarkCount}</span>
+            <span className="v2r-title-remarks" title="Paragraphs where automated processing may have missed narration inside dialogue">
+              narration passages to review: <span className="num">{remarkCount}</span>
             </span>
           ) : null}
         </div>
@@ -131,19 +132,19 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
             aria-pressed={approval.approved}
             title={
               approval.approved
-                ? "Глава проверена автором. Нажмите, чтобы снять отметку"
-                : "Отметить, что глава прочитана и разметка верна: публикуются только проверенные главы"
+                ? "Chapter reviewed by author. Click to remove mark"
+                : "Mark this chapter as read and accurately annotated. Only reviewed chapters can be published"
             }
           >
-            {approval.approved ? "✓ Проверена" : "Отметить проверенной"}
+            {approval.approved ? "✓ Reviewed" : "Mark as reviewed"}
           </button>
         ) : null}
-        <nav className="v2r-nav v2r-nav--top" aria-label="Соседние главы">
+        <nav className="v2r-nav v2r-nav--top" aria-label="Adjacent chapters">
           <button type="button" className="btn btn-sm v2r-btn" onClick={onPrev ?? undefined} disabled={!onPrev}>
-            <Icon name="back" /> <span className="v2r-nav-label">Пред.</span>
+            <Icon name="back" /> <span className="v2r-nav-label">Prev.</span>
           </button>
           <button type="button" className="btn btn-sm v2r-btn" onClick={onNext ?? undefined} disabled={!onNext}>
-            <span className="v2r-nav-label">След.</span> <Icon name="arrow" />
+            <span className="v2r-nav-label">Next</span> <Icon name="arrow" />
           </button>
         </nav>
       </div>
@@ -155,29 +156,29 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
           onClick={cast.onToggle}
           aria-pressed={cast.open}
           aria-expanded={cast.open}
-          title="Каст главы: цвета ролей и фильтр «моя роль»"
+          title="Chapter cast: role colors and My role filter"
         >
           <Icon name="users" />
-          {filtering ? `Моя роль: ${cast.selected.join(", ")}` : `Каст главы`}
+          {filtering ? `My role: ${cast.selected.map(roleLabel).join(", ")}` : `Chapter cast`}
           <span className="v2r-legend-count num">{filtering ? cast.selected.length : cast.count}</span>
         </button>
         <button
           type="button"
           className="btn btn-sm v2r-btn v2r-mine"
           onClick={onFindRole}
-          title="Все реплики роли по всей книге, в порядке чтения, с контекстом"
+          title="All lines for this role throughout the book, in reading order, with context"
         >
           <Icon name="doc" />
-          {myRoleCount > 0 ? "Мои реплики" : "Все реплики роли"}
+          {myRoleCount > 0 ? "My lines" : "All lines for role"}
         </button>
         {filtering && cast.cursor ? (
-          <span className="v2r-cursor" role="group" aria-label="Переход по репликам роли">
+          <span className="v2r-cursor" role="group" aria-label="Role line navigation">
             <button
               type="button"
               className="btn btn-sm v2r-btn"
               onClick={() => cast.cursor?.onStep(-1)}
-              title="Предыдущая реплика роли (стрелка вверх)"
-              aria-label="Предыдущая реплика роли"
+              title="Previous role line (up arrow)"
+              aria-label="Previous role line"
             >
               ↑
             </button>
@@ -185,19 +186,19 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
               type="button"
               className="btn btn-sm v2r-btn"
               onClick={() => cast.cursor?.onStep(1)}
-              title="Следующая реплика роли (стрелка вниз)"
-              aria-label="Следующая реплика роли"
+              title="Next role line (down arrow)"
+              aria-label="Next role line"
             >
               ↓
             </button>
-            <span className="v2r-cursor-count num" title="Реплики роли в этой главе">
+            <span className="v2r-cursor-count num" title="Role lines in this chapter">
               {cast.cursor.position || "—"} / {cast.cursor.total}
             </span>
           </span>
         ) : null}
         {filtering ? (
-          <button type="button" className="btn btn-sm btn-ghost v2r-btn" onClick={cast.onClear} title="Снять фильтр по роли">
-            Показать всё
+          <button type="button" className="btn btn-sm btn-ghost v2r-btn" onClick={cast.onClear} title="Clear role filter">
+            Show all
           </button>
         ) : null}
         {compact ? (
@@ -206,9 +207,9 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
             className={more ? "btn btn-sm v2r-btn v2r-more is-on" : "btn btn-sm v2r-btn v2r-more"}
             onClick={() => setMore((open) => !open)}
             aria-expanded={more}
-            title="Поиск, ударения, размер шрифта, печать"
+            title="Search, word stress, font size, print"
           >
-            {more ? "Свернуть" : "Ещё"}
+            {more ? "Collapse" : "More"}
           </button>
         ) : null}
 
@@ -220,8 +221,8 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
               type="search"
               value={query}
               onChange={(event) => onQuery(event.target.value)}
-              placeholder="Найти в главе…"
-              aria-label="Поиск по абзацам"
+              placeholder="Find in chapter…"
+              aria-label="Search paragraphs"
             />
           </label>
 
@@ -233,9 +234,9 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
               className={sound.on ? "btn btn-sm v2r-btn is-on" : "btn btn-sm v2r-btn"}
               onClick={sound.onToggle}
               aria-pressed={sound.on}
-              title={sound.on ? "Звуковой слой на полях: сцены, переходы, звуки — скрыть" : "Показать звуковой слой: сцены, переходы, звуки"}
+              title={sound.on ? "Hide sound annotations: scenes, transitions and sounds" : "Show sound annotations: scenes, transitions and sounds"}
             >
-              Звук
+              Sound
             </button>
           ) : null}
 
@@ -244,22 +245,22 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
               type="button"
               className="btn btn-sm v2r-btn"
               onClick={lore.onOpen}
-              title="Мир книги: расы, титулы, кто есть кто — шпаргалка от автора"
+              title="Story world: species, titles and characters; the author's reference guide"
             >
-              Лор
+              Lore
             </button>
           ) : null}
 
           {compare ? (
-            <div className="v2r-compare-btns" role="group" aria-label="Сверка с оригиналом">
+            <div className="v2r-compare-btns" role="group" aria-label="Compare with original">
               <button
                 type="button"
                 className={compare.on ? "btn btn-sm v2r-btn is-on" : "btn btn-sm v2r-btn"}
                 onClick={compare.onToggle}
                 aria-pressed={compare.on}
-                title="Показать оригинал автора рядом со сценарием"
+                title="Show the original text beside the script"
               >
-                <Icon name="doc" /> Оригинал
+                <Icon name="doc" /> Original
               </button>
               {compare.on ? (
                 <button
@@ -267,21 +268,21 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
                   className={compare.linked ? "btn btn-sm v2r-btn is-on" : "btn btn-sm v2r-btn"}
                   onClick={compare.onToggleLinked}
                   aria-pressed={compare.linked}
-                  title={compare.linked ? "Панели прокручиваются вместе — расцепить" : "Панели прокручиваются отдельно — сцепить"}
+                  title={compare.linked ? "Panels scroll together; unlink" : "Panels scroll separately; link"}
                 >
-                  {compare.linked ? "Сцеплено" : "Расцеплено"}
+                  {compare.linked ? "Linked" : "Unlinked"}
                 </button>
               ) : null}
             </div>
           ) : null}
 
-          <label className="v2r-radius" title="Сколько абзацев вокруг своих реплик оставлять видимыми в режиме «моя роль»">
-            <span className="v2r-radius-label">± абзацев</span>
+          <label className="v2r-radius" title="Paragraphs of context around your lines in My role mode">
+            <span className="v2r-radius-label">± paragraphs</span>
             <select
               className="v2r-select"
               value={prefs.radius}
               onChange={(event) => onPrefs({ radius: Number(event.target.value) })}
-              aria-label="Контекст вокруг реплик"
+              aria-label="Context around lines"
             >
               {RADII.map((value) => (
                 <option key={value} value={value}>
@@ -291,7 +292,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
             </select>
           </label>
 
-          <div className="v2r-seg" role="group" aria-label="Размер шрифта">
+          <div className="v2r-seg" role="group" aria-label="Font size">
             {FONTS.map(([key, label]) => (
               <button
                 key={key}
@@ -306,13 +307,13 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
           </div>
 
           {editor ? (
-            <div className="v2r-editor-btns" role="group" aria-label="Инструменты редактора">
+            <div className="v2r-editor-btns" role="group" aria-label="Editor tools">
               <button
                 type="button"
                 className={editor.queueOpen ? "btn btn-sm v2r-btn v2r-editor-btn is-on" : "btn btn-sm v2r-btn v2r-editor-btn"}
                 onClick={editor.onQueue}
                 aria-pressed={editor.queueOpen}
-                title="Очередь ударений: слова без решения и омографы"
+                title="Word stress queue: unresolved words and homographs"
               >
                 {editor.queueLabel}
               </button>
@@ -323,7 +324,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
                     className={editor.markup.disputedOpen ? "btn btn-sm v2r-btn v2r-editor-btn is-on" : "btn btn-sm v2r-btn v2r-editor-btn"}
                     onClick={editor.markup.onDisputed}
                     aria-pressed={editor.markup.disputedOpen}
-                    title="Реплики, для которых модель не назвала роль или засомневалась"
+                    title="Lines where the model could not assign a role or was uncertain"
                   >
                     {editor.markup.disputedLabel}
                   </button>
@@ -333,7 +334,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
                       className={editor.markup.consilium.open ? "btn btn-sm v2r-btn v2r-editor-btn is-on" : "btn btn-sm v2r-btn v2r-editor-btn"}
                       onClick={editor.markup.consilium.onToggle}
                       aria-pressed={editor.markup.consilium.open}
-                      title="Находки консилиума ИИ: места, где два чтеца не согласились со сценарием"
+                      title="AI review findings: passages where independent reviewers disagreed with the script"
                     >
                       {editor.markup.consilium.label}
                     </button>
@@ -344,9 +345,9 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
                       className={editor.markup.places.open ? "btn btn-sm v2r-btn v2r-editor-btn is-on" : "btn btn-sm v2r-btn v2r-editor-btn"}
                       onClick={editor.markup.places.onToggle}
                       aria-pressed={editor.markup.places.open}
-                      title="Места книги для звука: где встречаются, спорные склейки, запросы подложки"
+                      title="Sound locations: appearances, potential duplicates and ambience queries"
                     >
-                      Места
+                      Locations
                     </button>
                   ) : null}
                   <button
@@ -354,9 +355,9 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
                     className={editor.markup.profileOpen ? "btn btn-sm v2r-btn v2r-editor-btn is-on" : "btn btn-sm v2r-btn v2r-editor-btn"}
                     onClick={editor.markup.onProfile}
                     aria-pressed={editor.markup.profileOpen}
-                    title="Профиль книги и автора"
+                    title="Book and author profile"
                   >
-                    <Icon name="users" /> Профиль
+                    <Icon name="users" /> Profile
                   </button>
                 </>
               ) : null}
@@ -364,7 +365,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
           ) : null}
 
           <button type="button" className="btn btn-sm v2r-btn v2r-print" onClick={onPrint}>
-            <Icon name="doc" /> PDF / печать
+            <Icon name="doc" /> PDF / print
           </button>
         </div>
       </div>

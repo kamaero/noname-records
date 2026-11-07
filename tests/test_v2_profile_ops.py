@@ -20,7 +20,7 @@ def _session():
 
 
 def _seed(db, *, author_id=AUTHOR):
-    db.add(Author(id=AUTHOR, name="Александр Примеродин", slug="primerodin"))
+    db.add(Author(id=AUTHOR, name="Алексей Примеров", slug="primerov"))
     db.add(ScriptBook(id=BOOK, title="Карта", display_title="Карта переправы", source_filename="k.txt", source_format="txt",
                       author_id=author_id, pipeline_mode="standard", validation_profile="author_review",
                       pronunciation_notes="дгарнин=дгарни́н\nпупип=пупи́п\nмусор\n"))
@@ -52,8 +52,8 @@ def test_book_profile_counts():
         profile = book_profile(db, BOOK)
 
     assert profile["book"] == {"id": BOOK, "title": "Карта переправы", "pipeline_mode": "standard",
-                               "validation_profile": "author_review", "author_id": AUTHOR}
-    assert profile["author"] == {"id": AUTHOR, "name": "Александр Примеродин", "slug": "primerodin"}
+                               "validation_profile": "author_review", "author_id": AUTHOR, "language": "ru"}
+    assert profile["author"] == {"id": AUTHOR, "name": "Алексей Примеров", "slug": "primerov"}
     assert profile["counts"] == {
         "author_characters": 2,
         "author_characters_confirmed": 1,

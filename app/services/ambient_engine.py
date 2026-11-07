@@ -37,12 +37,12 @@ EXCERPT_CHARS = 1500
 ROLE = "Эмбиент"
 MIME = "audio/mpeg"
 MAX_NAME_ATTEMPTS = 100
-QUOTA_TEXT = "квота исчерпана"
-BAD_KEY_TEXT = "Ключ ElevenLabs отклонён"
-INTERRUPTED_TEXT = "ответ ElevenLabs оборвался — трек мог быть оплачен; проверьте историю в ElevenLabs"
-DISK_TEXT = "не хватило места на диске"
-STORE_FAILED_TEXT = f"{DISK_TEXT} — трек оплачен, но не сохранён"
-NOT_FOUND_TEXT = "сцена не найдена среди активных сцен главы"
+QUOTA_TEXT = "quota exhausted"
+BAD_KEY_TEXT = "ElevenLabs key rejected"
+INTERRUPTED_TEXT = "The ElevenLabs response was interrupted. The track may have been billed; check your ElevenLabs history"
+DISK_TEXT = "insufficient disk space"
+STORE_FAILED_TEXT = f"{DISK_TEXT} — the track was billed but could not be saved"
+NOT_FOUND_TEXT = "scene not found among the active scenes in this chapter"
 #: mp3 192 кбит/с — верхняя граница размера трека до его оплаты
 MP3_BYTES_PER_SECOND = 192000 // 8
 
@@ -111,11 +111,19 @@ def done_tracks(db, *columns):
             .filter(AmbientTrack.status == "done", AudioFile.kind == KIND))
 
 
-def _done_markers(db, chapter_id: str) -> set[str]:
+def _profile_language(db, chapter_id: str) -> str:
+    from app.models import ScriptBook, ScriptChapter
+
+    return (db.query(ScriptBook.language).join(ScriptChapter, ScriptChapter.book_id == ScriptBook.id)
+            .filter(ScriptChapter.id == chapter_id).scalar()) or "ru"
+
+
+def _done_markers(db, chapter_id: str, *, language: str | None = None) -> set[str]:
     from app.models import AmbientTrack
 
+    language = language or _profile_language(db, chapter_id)
     return {mid for (mid,) in done_tracks(db, AmbientTrack.marker_id)
-            .filter(AmbientTrack.chapter_id == chapter_id)}
+            .filter(AmbientTrack.chapter_id == chapter_id, AmbientTrack.language_snapshot == language)}
 
 
 def _public(item: dict) -> dict:
@@ -125,9 +133,20 @@ def _public(item: dict) -> dict:
 def ambient_plan(db, chapter_id: str) -> list[dict]:
     """Сцены главы, которым ещё нужен трек: на таймлайне есть место, готового (`done`) трека
     нет. `{marker_id, seconds, file_name, scene}` — для строки ASR и сметы."""
-    done = _done_markers(db, chapter_id)
-    return [_public(item) for item in _chapter_scenes(db, chapter_id)
-            if item["span"] is not None and item["marker_id"] not in done]
+    from app.models import AmbientTrack
+
+    language = _profile_language(db, chapter_id)
+    done = _done_markers(db, chapter_id, language=language)
+    stale = {mid for (mid,) in done_tracks(db, AmbientTrack.marker_id)
+             .filter(AmbientTrack.chapter_id == chapter_id, AmbientTrack.language_snapshot != language)}
+    pending = []
+    for item in _chapter_scenes(db, chapter_id):
+        if item["span"] is not None and item["marker_id"] not in done:
+            public = _public(item)
+            if item["marker_id"] in stale:
+                public["profile_stale"] = True
+            pending.append(public)
+    return pending
 
 
 def _previous_summaries(db, book_id: str) -> list[str]:
@@ -254,6 +273,7 @@ def enqueue_ambient(chapter_id: str, marker_id: str = "", prompt_override: str =
         chapter_id=chapter_id,
         marker_id=marker_id,
         prompt_override=prompt_override,
+        profile_chapter_id=chapter_id,
     )
 
 
@@ -263,9 +283,9 @@ def _short(exc: BaseException) -> str:
 
 def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str = "",
                 prompt_override: str = "", ask=None, compose=None,
-                notify: Callable[[str], None] | None = None) -> dict:
+                notify: Callable[[str], None] | None = None, language: str | None = None) -> dict:
     from app.models import AmbientTrack, ScriptBook, ScriptChapter
-    from app.pipeline.ambient import PROMPT_SCHEMA, PROMPT_SYSTEM, parse_prompt, prompt_user
+    from app.pipeline.ambient import PROMPT_SCHEMA, PROMPT_SYSTEM, PROMPT_SYSTEM_EN, parse_prompt, prompt_user
     from app.pipeline.consilium_run import StopRun
     from app.services.sound_store import touch_sessions
     from app.time_utils import utcnow_naive
@@ -282,7 +302,7 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
         try:
             with session_factory() as db:
                 now = utcnow_naive()
-                db.add(AmbientTrack(book_id=scene["book_id"], chapter_id=chapter_id, marker_id=marker_id,
+                db.add(AmbientTrack(language_snapshot=language or "ru", book_id=scene["book_id"], chapter_id=chapter_id, marker_id=marker_id,
                                     prompt=scene["prompt"], duration_seconds=scene["seconds"],
                                     status="failed", error=text, created_at=now, updated_at=now))
                 db.commit()
@@ -329,8 +349,10 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
         with session_factory() as db:
             chapter = db.get(ScriptChapter, str(chapter_id or ""))
             if chapter is None:
-                raise LookupError(f"глава {chapter_id} не найдена")
+                raise LookupError(f"Chapter {chapter_id} was not found")
             book_id = str(chapter.book_id)
+            language = language or getattr(db.get(ScriptBook, book_id), "language", "ru")
+            meta["language"] = language
             scene["book_id"] = book_id
             result["chapter_index"] = int(chapter.chapter_index or 0)
             all_scenes = _chapter_scenes(db, chapter.id)
@@ -340,7 +362,7 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
                 if not scenes:
                     raise SceneNotFound(NOT_FOUND_TEXT)
             else:
-                done = _done_markers(db, chapter.id)
+                done = _done_markers(db, chapter.id, language=language)
                 scenes = [item for item in scenes if item["marker_id"] not in done]
         # Сцена без места на таймлайне в проект не ляжет — генерировать её не за что платить.
         todo = [item for item in scenes if item["span"] is not None]
@@ -381,8 +403,8 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
                 try:
                     if not prompt:
                         with spend.context("ambient_text", book_id=book_id, chapter_id=chapter_id, run_id=run_id):
-                            answer = ask(text_model, PROMPT_SYSTEM,
-                                         prompt_user(item["scene"], excerpt, item["seconds"], previous), PROMPT_SCHEMA)
+                            answer = ask(text_model, PROMPT_SYSTEM_EN if language == "en" else PROMPT_SYSTEM,
+                                         prompt_user(item["scene"], excerpt, item["seconds"], previous, language=language), PROMPT_SCHEMA)
                         prompt, summary = parse_prompt(answer)
                         scene["prompt"] = prompt
                     data, song_id = compose(prompt, item["seconds"])
@@ -410,7 +432,7 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
                 book = db.get(ScriptBook, book_id)
                 now = utcnow_naive()
                 if data is None:
-                    db.add(AmbientTrack(book_id=book_id, chapter_id=chapter_id, marker_id=item["marker_id"],
+                    db.add(AmbientTrack(language_snapshot=language or "ru", book_id=book_id, chapter_id=chapter_id, marker_id=item["marker_id"],
                                         prompt=prompt, summary=summary, duration_seconds=item["seconds"],
                                         status="failed", error=error, created_at=now, updated_at=now))
                     db.commit()
@@ -423,10 +445,10 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
                     except Exception as exc:  # noqa: BLE001 — трек оплачен: сбой записи не валит главу
                         db.rollback()
                         reason = STORE_FAILED_TEXT if isinstance(exc, (LocalDiskFull, OSError)) \
-                            else f"трек оплачен, но не сохранён: {_short(exc)}"
+                            else f"the track was billed but could not be saved: {_short(exc)}"
                         logger.error("ambient: %s (сцена %s, song_id %s)", reason, item["marker_id"], song_id,
                                      exc_info=True)
-                        db.add(AmbientTrack(book_id=book_id, chapter_id=chapter_id, marker_id=item["marker_id"],
+                        db.add(AmbientTrack(language_snapshot=language or "ru", book_id=book_id, chapter_id=chapter_id, marker_id=item["marker_id"],
                                             prompt=prompt, summary=summary, duration_seconds=item["seconds"],
                                             song_id=song_id, status="failed", error=reason,
                                             created_at=now, updated_at=now))
@@ -440,7 +462,7 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
                                 .filter(AmbientTrack.chapter_id == chapter_id,
                                         AmbientTrack.marker_id == item["marker_id"], AmbientTrack.status == "done")):
                         old.status, old.updated_at = "replaced", now
-                    db.add(AmbientTrack(book_id=book_id, chapter_id=chapter_id, marker_id=item["marker_id"],
+                    db.add(AmbientTrack(language_snapshot=language or "ru", book_id=book_id, chapter_id=chapter_id, marker_id=item["marker_id"],
                                         audio_file_id=audio.id, prompt=prompt, summary=summary,
                                         duration_seconds=item["seconds"], song_id=song_id, status="done",
                                         created_at=now, updated_at=now))
@@ -486,7 +508,7 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
         _finish(session_factory, run_id, "stopped", meta, STOP_TEXT.get(stop.reason, stop.reason))
     except Exception as exc:  # noqa: BLE001
         sync()
-        settle_scene(f"прогон упал: {_short(exc)}")
+        settle_scene(f"run failed: {_short(exc)}")
         result.update(status="failed", reason=_short(exc))
         meta.update(phase="failed", result=result)
         _finish(session_factory, run_id, "failed", meta, result["reason"])
@@ -497,14 +519,14 @@ def run_ambient(*, session_factory, chapter_id: str, run_id: str, marker_id: str
 
 
 def notify_text(result: dict) -> str:
-    head = f"Г{result.get('chapter_index', 0)}: эмбиент"
+    head = f"Chapter {result.get('chapter_index', 0)}: ambience"
     if result["status"] == "failed":
-        return f"{head} упал: {result['reason']}"
+        return f"{head} failed: {result['reason']}"
     if result["status"] == "not_found":
         return f"{head}: {NOT_FOUND_TEXT}"
-    text = f"{head} {result['tracks_done']} из {result['tracks_total']}"
+    text = f"{head} {result['tracks_done']} of {result['tracks_total']}"
     if result["tracks_failed"]:
-        text += f", ошибок {result['tracks_failed']}"
+        text += f", failed tracks {result['tracks_failed']}"
     if result["status"] == "quota":
         text += f", {QUOTA_TEXT}"
     elif result["status"] == "bad_key":
@@ -514,7 +536,7 @@ def notify_text(result: dict) -> str:
     elif result["status"] == "stopped":
         text += f", {STOP_TEXT.get(result['reason'], result['reason'])}"
     if result["tracks_skipped"]:
-        text += f", сцен без места на таймлайне {result['tracks_skipped']}"
+        text += f", scenes without timeline placement {result['tracks_skipped']}"
     return text
 
 

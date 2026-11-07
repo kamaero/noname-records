@@ -87,25 +87,25 @@ def _as_float(value, default: float = 0.0) -> float:
 def _spans_of(item, unit, cast, problems) -> list[dict]:
     raw = item.get("spans") if isinstance(item, dict) else None
     if not isinstance(raw, list) or not raw:
-        problems.append(f"{unit.id}: ответ без спанов")
+        problems.append(f'{unit.id}: response has no spans')
         return [unit.as_record(span_start=0, span_end=len(unit.text), speaker=UNSURE)]
 
     records: list[dict] = []
     cursor = 0
     for entry in raw:
         if not isinstance(entry, dict):
-            problems.append(f"{unit.id}: спан не объект")
+            problems.append(f'{unit.id}: span is not an object')
             continue
 
         start = max(0, _as_int(entry.get("start")))
         end = _as_int(entry.get("end"), default=len(unit.text))
         if end > len(unit.text):
-            problems.append(f"{unit.id}: спан за концом текста, clipped {end}->{len(unit.text)}")
+            problems.append(f'{unit.id}: span exceeds the source text, clipped {end}->{len(unit.text)}')
             end = len(unit.text)
         # Spans arrive in reading order; one that starts inside the previous is a
         # contradiction about the same words, so the earlier claim stands.
         if start < cursor:
-            problems.append(f"{unit.id}: overlap {start}<{cursor}, начало сдвинуто")
+            problems.append(f'{unit.id}: overlap {start}<{cursor}, start adjusted')
             start = cursor
         if end <= start:
             continue
@@ -113,7 +113,7 @@ def _spans_of(item, unit, cast, problems) -> list[dict]:
         speaker = str(entry.get("speaker") or "").strip()
         confidence = _as_float(entry.get("confidence"))
         if speaker != NARRATOR and speaker != UNSURE and speaker not in cast:
-            problems.append(f"{unit.id}: каст не знает {speaker!r}")
+            problems.append(f'{unit.id}: unknown cast member {speaker!r}')
             speaker, confidence = UNSURE, 0.0
 
         records.append(unit.as_record(
@@ -133,18 +133,18 @@ def parse_response(payload, units, *, cast) -> tuple[list[dict], list[str]]:
 
     items = (payload or {}).get("items") if isinstance(payload, dict) else None
     if not isinstance(items, list):
-        problems.append("ответ без списка items")
+        problems.append('response has no items list')
         items = []
 
     answered: dict[str, list[dict]] = {}
     for item in items:
         if not isinstance(item, dict):
-            problems.append("элемент ответа не объект")
+            problems.append('response item is not an object')
             continue
         unit_id = str(item.get("id") or "")
         unit = by_id.get(unit_id)
         if unit is None:
-            problems.append(f"{unit_id or '<без id>'}: такого сегмента в порции не было")
+            problems.append(f'{unit_id or '<missing id>'}: segment was not included in the batch')
             continue
         answered[unit_id] = _spans_of(item, unit, cast, problems)
 
@@ -153,7 +153,7 @@ def parse_response(payload, units, *, cast) -> tuple[list[dict], list[str]]:
         if unit.id in answered:
             records.extend(answered[unit.id])
             continue
-        problems.append(f"{unit.id}: модель промолчала")
+        problems.append(f'{unit.id}: no model response')
         records.append(unit.as_record(span_start=0, span_end=len(unit.text), speaker=UNSURE))
     return records, problems
 
@@ -246,7 +246,7 @@ def parts_to_spans(item: dict, unit, problems: list[str]) -> dict:
     cursor = 0
     for part in parts:
         if not isinstance(part, dict):
-            problems.append(f"{unit.id}: часть не объект, абзац целиком отдан {speaker!r}")
+            problems.append(f'{unit.id}: part is not an object; the whole paragraph is assigned to {speaker!r}')
             return whole
         quote = str(part.get("quote") or "")
         needle, _ = _normalise(quote)
@@ -254,7 +254,7 @@ def parts_to_spans(item: dict, unit, problems: list[str]) -> dict:
             continue
         position = folded.find(needle, cursor)
         if position < 0:
-            problems.append(f"{unit.id}: цитата не найдена, абзац целиком отдан {speaker!r}: {quote[:60]!r}")
+            problems.append(f'{unit.id}: quote not found; the whole paragraph is assigned to {speaker!r}: {quote[:60]!r}')
             return whole
         start = offsets[position]
         end = offsets[position + len(needle) - 1] + 1
@@ -319,23 +319,23 @@ def _flat(text: str) -> str:
     return " ".join((text or "").split())
 
 
-def _cast_block(cast_lines: list[str]) -> list[str]:
-    lines = ["ПЕРСОНАЖИ:"]
-    lines.extend(cast_lines or ["- (список персонажей пуст)"])
+def _cast_block(cast_lines: list[str], language: str = "ru") -> list[str]:
+    lines = ["CAST:" if language == "en" else "ПЕРСОНАЖИ:"]
+    lines.extend(cast_lines or ["- (cast is empty)" if language == "en" else "- (список персонажей пуст)"])
     return lines
 
 
 CONTEXT_SIZE = 6
 
 
-def render_user_prompt(batch, *, cast_lines: list[str], context) -> str:
+def render_user_prompt(batch, *, cast_lines: list[str], context, language: str = "ru") -> str:
     """Cast, then the tail of what was already decided, then what to decide now."""
-    lines = _cast_block(cast_lines)
+    lines = _cast_block(cast_lines, language)
     shown = list(context)[-CONTEXT_SIZE:]
     if shown:
-        lines += ["", "КОНТЕКСТ (уже размечено, не отвечать):"]
+        lines += ["", "CONTEXT (already annotated; do not answer):" if language == "en" else "КОНТЕКСТ (уже размечено, не отвечать):"]
         lines += [f"{_token(unit)} [{speaker}] {_flat(unit.text)}" for unit, speaker in shown]
-    lines += ["", "РАЗМЕТИТЬ:"]
+    lines += ["", "ANNOTATE:" if language == "en" else "РАЗМЕТИТЬ:"]
     lines += [f"{_token(unit)} {_flat(unit.text)}" for unit in batch]
     return "\n".join(lines)
 
@@ -368,16 +368,20 @@ def _call(llm: Llm, system_prompt: str, user_prompt: str, stats: dict) -> dict:
         content = result
     payload = json.loads(content if isinstance(content, str) else json.dumps(content))
     if not isinstance(payload, dict):
-        raise ValueError("ответ не JSON-объект")
+        raise ValueError('response is not a JSON object')
     return payload
 
 
-def _ask_twice(llm: Llm, system_prompt: str, user_prompt: str, stats: dict) -> tuple[dict | None, str | None]:
+def _ask_twice(llm: Llm, system_prompt: str, user_prompt: str, stats: dict,
+               language: str = "ru") -> tuple[dict | None, str | None]:
     """The batch, once; on a bad answer once more with the error spelled out. Never raises."""
     try:
         return _call(llm, system_prompt, user_prompt, stats), None
     except Exception as first:  # noqa: BLE001 — anything the model or transport threw
         note = (
+            f"\n\nPrevious response ERROR: {type(first).__name__}: {str(first)[:300]}\n"
+            "Return strict JSON matching the schema, only for paragraphs in ANNOTATE."
+            if language == "en" else
             f"\n\nОШИБКА предыдущего ответа: {type(first).__name__}: {str(first)[:300]}\n"
             "Верни строго JSON по схеме, ровно за абзацы из блока РАЗМЕТИТЬ."
         )
@@ -413,12 +417,12 @@ def _accept(records: list[dict], cast, source: str) -> None:
         record["source"] = source
 
 
-def _system_prompt(given: str | None) -> str:
+def _system_prompt(given: str | None, language: str = "ru") -> str:
     if given:
         return given
     from app.v2.llm import load_system_prompt  # the only file-reading import, kept lazy
 
-    return load_system_prompt()
+    return load_system_prompt(language)
 
 
 def attribute_units(
@@ -431,6 +435,7 @@ def attribute_units(
     on_batch=None,
     max_units: int = 50,
     max_chars: int = 12000,
+    language: str = "ru",
 ) -> tuple[list[dict], list[str], dict]:
     """`(records, problems, stats)` for a chapter's units, batch by batch.
 
@@ -438,7 +443,7 @@ def attribute_units(
     for it, so a dialogue does not lose its thread at a batch boundary. A batch that
     fails twice becomes UNSURE and the next one is asked anyway.
     """
-    system = _system_prompt(system_prompt)
+    system = _system_prompt(system_prompt, language)
     records: list[dict] = []
     problems: list[str] = []
     stats = new_stats()
@@ -447,10 +452,10 @@ def attribute_units(
 
     for batch in build_batches(units, max_units=max_units, max_chars=max_chars):
         shown = context[-CONTEXT_SIZE:]
-        user = render_user_prompt(batch, cast_lines=cast_lines, context=shown)
-        payload, error = _ask_twice(llm, system, user, stats)
+        user = render_user_prompt(batch, cast_lines=cast_lines, context=shown, language=language)
+        payload, error = _ask_twice(llm, system, user, stats, language)
         if payload is None:
-            problems.append(f"{batch[0].id}..{batch[-1].id}: порция без ответа после повтора: {error}")
+            problems.append(f'{batch[0].id}..{batch[-1].id}: no batch response after retry: {error}')
             batch_records = [unit.as_record(span_start=0, span_end=len(unit.text), speaker=UNSURE) for unit in batch]
         else:
             payload = _translate(payload, batch, ignore={_token(u) for u, _ in shown}, problems=problems)
@@ -474,7 +479,8 @@ def attribute_units(
 # --- second look ------------------------------------------------------------------
 
 
-def render_review_prompt(targets, units, by_unit: dict, *, cast_lines: list[str], radius: int) -> str:
+def render_review_prompt(targets, units, by_unit: dict, *, cast_lines: list[str], radius: int,
+                         language: str = "ru") -> str:
     """Each target inside its neighbours, all shown with what the first pass decided."""
     index = {unit.id: position for position, unit in enumerate(units)}
     target_ids = {unit.id for unit in targets}
@@ -483,8 +489,8 @@ def render_review_prompt(targets, units, by_unit: dict, *, cast_lines: list[str]
         centre = index[unit.id]
         window.update(range(max(0, centre - radius), min(len(units), centre + radius + 1)))
 
-    lines = _cast_block(cast_lines)
-    lines += ["", "ОКНО (соседи с текущей разметкой; абзацы с пометкой → ПЕРЕСМОТРЕТЬ решить заново, за остальные не отвечать):"]
+    lines = _cast_block(cast_lines, language)
+    lines += ["", "WINDOW (current annotations; reconsider only paragraphs marked → REVIEW; do not answer for others):" if language == "en" else "ОКНО (соседи с текущей разметкой; абзацы с пометкой → ПЕРЕСМОТРЕТЬ решить заново, за остальные не отвечать):"]
     previous = None
     for position in sorted(window):
         if previous is not None and position != previous + 1:
@@ -493,10 +499,10 @@ def render_review_prompt(targets, units, by_unit: dict, *, cast_lines: list[str]
         speaker, _ = _dominant(by_unit.get(unit.id, []))
         line = f"{_token(unit)} [{speaker}] {_flat(unit.text)}"
         if unit.id in target_ids:
-            line += "   → ПЕРЕСМОТРЕТЬ"
+            line += "   → REVIEW" if language == "en" else "   → ПЕРЕСМОТРЕТЬ"
         lines.append(line)
         previous = position
-    lines += ["", "РАЗМЕТИТЬ (ответить только за эти абзацы):"]
+    lines += ["", "ANNOTATE (answer only for these paragraphs):" if language == "en" else "РАЗМЕТИТЬ (ответить только за эти абзацы):"]
     lines += [f"{_token(unit)} {_flat(unit.text)}" for unit in targets]
     return "\n".join(lines)
 
@@ -512,6 +518,7 @@ def review_low_confidence(
     llm: Llm,
     system_prompt: str | None = None,
     max_targets: int = 20,
+    language: str = "ru",
 ) -> tuple[list[dict], list[str], dict]:
     """Ask again about what came back weak, with more room around it.
 
@@ -536,15 +543,14 @@ def review_low_confidence(
     if not targets:
         return list(records), problems, stats
 
-    system = _system_prompt(system_prompt)
+    system = _system_prompt(system_prompt, language)
     replacements: dict[str, list[dict]] = {}
     for start in range(0, len(targets), max_targets):
         chunk = targets[start:start + max_targets]
-        user = render_review_prompt(chunk, units, by_unit, cast_lines=cast_lines, radius=radius)
-        payload, error = _ask_twice(llm, system, user, stats)
+        user = render_review_prompt(chunk, units, by_unit, cast_lines=cast_lines, radius=radius, language=language)
+        payload, error = _ask_twice(llm, system, user, stats, language)
         if payload is None:
-            problems.append(f"пересмотр {chunk[0].id}..{chunk[-1].id} без ответа после повтора, "
-                            f"оставлена прежняя разметка: {error}")
+            problems.append(f'review {chunk[0].id}..{chunk[-1].id} has no response after retry; previous attribution preserved: {error}')
             continue
 
         answered_tokens = {
@@ -553,7 +559,7 @@ def review_low_confidence(
         answered = [unit for unit in chunk if _token(unit) in answered_tokens]
         for unit in chunk:
             if _token(unit) not in answered_tokens:
-                problems.append(f"{unit.id}: пересмотр без ответа, оставлена прежняя разметка")
+                problems.append(f'{unit.id}: no review response; previous attribution preserved')
         window_tokens = {_token(unit) for unit in units}
         payload = _translate(payload, answered, ignore=window_tokens, problems=problems)
         new_records, new_problems = parse_response(payload, answered, cast=cast)

@@ -40,19 +40,19 @@ def _texts(out):
 
 def test_start_dictor_asks_the_name(db):
     out = handle_update(db, _msg("/start dictor"), now=NOW)
-    assert "Как вас зовут" in _texts(out)[0]
+    assert "What is your name" in _texts(out)[0]
     assert bot_intro.intro_state(db, "42", now=NOW) == "fresh"
 
 
 def test_plain_start_does_not_ask(db):
     out = handle_update(db, _msg("/start"), now=NOW)
-    assert "пока не открыт" in _texts(out)[0] and db.query(BotIntro).count() == 0
+    assert "not open yet" in _texts(out)[0] and db.query(BotIntro).count() == 0
 
 
 def test_a_good_answer_makes_the_account_and_queues_the_followup(db):
     handle_update(db, _msg("/start dictor"), now=NOW)
     out = handle_update(db, _msg("ветрова ольга"), now=NOW + timedelta(minutes=1))
-    assert "Готово, Ветрова Ольга" in _texts(out)[0]
+    assert "Ready, Ветрова Ольга" in _texts(out)[0]
     assert out[0].payload["reply_markup"]["keyboard"]
     assert [o.payload for o in out if o.method == "enqueue_intro"] == [{"telegram_user_id": "42"}]
     assert db.query(User).filter_by(login="tg_42").one().display_name == "Ветрова Ольга"
@@ -61,18 +61,18 @@ def test_a_good_answer_makes_the_account_and_queues_the_followup(db):
 def test_a_bad_answer_asks_again_and_makes_nothing(db):
     handle_update(db, _msg("/start dictor"), now=NOW)
     out = handle_update(db, _msg("Оля"), now=NOW)
-    assert "Не получилось разобрать" in _texts(out)[0] and db.query(User).count() == 0
+    assert "I could not read that name" in _texts(out)[0] and db.query(User).count() == 0
 
 
 def test_a_stale_question_sends_back_to_the_link(db):
     handle_update(db, _msg("/start dictor"), now=NOW - timedelta(days=2))
     out = handle_update(db, _msg("Ветрова Ольга"), now=NOW)
-    assert "ссылку из приглашения" in _texts(out)[0] and db.query(User).count() == 0
+    assert "invitation link" in _texts(out)[0] and db.query(User).count() == 0
 
 
 def test_text_without_a_question_makes_no_account(db):
     out = handle_update(db, _msg("Ветрова Ольга"), now=NOW)
-    assert "Я присылаю задания" in _texts(out)[0] and db.query(User).count() == 0
+    assert "I send assignments" in _texts(out)[0] and db.query(User).count() == 0
 
 
 def test_an_account_made_meanwhile_is_not_doubled(db):
@@ -87,7 +87,7 @@ def test_a_switched_off_row_is_not_asked(db):
     db.add(TelegramAuthAccount(telegram_user_id="42", role="dictor", access_scope="full", display_name="", is_active="false"))
     db.commit()
     out = handle_update(db, _msg("/start dictor"), now=NOW)
-    assert "пока не открыт" in _texts(out)[0] and db.query(BotIntro).count() == 0
+    assert "not open yet" in _texts(out)[0] and db.query(BotIntro).count() == 0
 
 
 def test_a_namesake_goes_to_the_owner(db):
@@ -96,7 +96,7 @@ def test_a_namesake_goes_to_the_owner(db):
     handle_update(db, _msg("/start dictor"), now=NOW)
     out = handle_update(db, _msg("Ветрова Ольга"), now=NOW)
     to_owner = [o.payload["text"] for o in out if o.method == "sendMessage" and o.payload["chat_id"] == "900000100"]
-    assert len(to_owner) == 1 and "похожие учётки" in to_owner[0] and "Ольга Ветрова" in to_owner[0]
+    assert len(to_owner) == 1 and "similar accounts" in to_owner[0] and "Ольга Ветрова" in to_owner[0]
 
 
 def _book_with_cast(db, actor="Ветрова Ольга", narrator=""):

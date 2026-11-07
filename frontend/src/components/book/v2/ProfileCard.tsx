@@ -17,16 +17,16 @@ export function ProfileCard({ bookId }: { bookId: string }) {
 
   const after = async (label: string, result: ProfileActionResponse) => {
     if (!result.ok) {
-      pushToast({ tone: "error", title: `${label}: не выполнено`, detail: result.error || "Сервер ответил без подробностей." });
+      pushToast({ tone: "error", title: `${label}: failed`, detail: result.error || "The server returned no details." });
       return;
     }
-    pushToast({ tone: "success", title: `${label}: готово` });
+    pushToast({ tone: "success", title: `${label}: done` });
     await invalidateReader(queryClient, bookId, ["profile", "chapters", "cast", "queue"]);
   };
   const sync = useMutation({
     mutationFn: () => apiPostJson<ProfileActionResponse>(`${base}/sync`, {}),
-    onSuccess: (r) => after("Профиль автора обновлён", r),
-    onError: (e) => pushToast({ tone: "error", title: "Не удалось обновить профиль автора", detail: describeApiError(e, "Ошибка синхронизации.") }),
+    onSuccess: (r) => after("Author profile updated", r),
+    onError: (e) => pushToast({ tone: "error", title: "Could not update author profile", detail: describeApiError(e, "Synchronization failed.") }),
   });
   // Binding is the step that makes «Применить профиль» mean anything: an unbound
   // book has no profile to apply, which is exactly how a cast ends up empty.
@@ -35,25 +35,25 @@ export function ProfileCard({ bookId }: { bookId: string }) {
       apiPostJson<BindAuthorResponse>(`/api/v2/books/${encodeURIComponent(bookId)}/author`, { author_id: authorId }),
     onSuccess: async (result) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Автор не привязан", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Author not linked", detail: result.error || "The server returned no details." });
         return;
       }
       const applied = result.applied;
       pushToast({
         tone: "success",
-        title: result.author_id ? `Автор: ${result.author_name}` : "Автор отвязан",
-        detail: applied ? `Актёров проставлено: ${applied.actors_applied}, цветов: ${applied.colours_applied}.` : undefined,
+        title: result.author_id ? `Author: ${result.author_name}` : "Author unlinked",
+        detail: applied ? `Voice actors assigned: ${applied.actors_applied}, colors: ${applied.colours_applied}.` : undefined,
       });
       await invalidateReader(queryClient, bookId, ["profile", "chapters", "cast", "queue"]);
       await queryClient.invalidateQueries({ queryKey: ["book-budget", bookId] });
     },
-    onError: (e) => pushToast({ tone: "error", title: "Не удалось привязать автора", detail: describeApiError(e, "Ошибка привязки.") }),
+    onError: (e) => pushToast({ tone: "error", title: "Could not link author", detail: describeApiError(e, "Linking failed.") }),
   });
 
   const apply = useMutation({
     mutationFn: () => apiPostJson<ProfileActionResponse>(`${base}/apply`, { overwrite }),
-    onSuccess: (r) => after("Профиль применён к книге", r),
-    onError: (e) => pushToast({ tone: "error", title: "Не удалось применить профиль", detail: describeApiError(e, "Ошибка применения профиля.") }),
+    onSuccess: (r) => after("Profile applied to book", r),
+    onError: (e) => pushToast({ tone: "error", title: "Could not apply profile", detail: describeApiError(e, "Profile application failed.") }),
   });
 
   const data = profile.data;
@@ -63,60 +63,60 @@ export function ProfileCard({ bookId }: { bookId: string }) {
   return (
     <section className="panel hub-card" aria-labelledby="hub-profile-title">
       <header className="hub-card-head">
-        <h2 id="hub-profile-title" className="hub-card-title">Профиль книги</h2>
+        <h2 id="hub-profile-title" className="hub-card-title">Book profile</h2>
       </header>
       {profile.isLoading ? (
-        <div className="hub-skel" aria-busy="true" aria-label="Загрузка профиля">
+        <div className="hub-skel" aria-busy="true" aria-label="Loading profile">
           <span /><span /><span />
         </div>
       ) : profile.isError ? (
-        <p className="ui-note ui-note--error">Не удалось загрузить профиль: {describeApiError(profile.error, "сервер не ответил")}.</p>
+        <p className="ui-note ui-note--error">Could not load profile: {describeApiError(profile.error, "the server did not respond")}.</p>
       ) : data ? (
         <dl className="hub-kv">
           <div>
-            <dt>Автор</dt>
+            <dt>Author</dt>
             <dd>
               <select
                 className="ui-select hub-author"
                 value={data.book.author_id}
                 disabled={busy}
-                aria-label="Автор книги"
+                aria-label="Book author"
                 onChange={(event) => bind.mutate(event.target.value)}
               >
-                <option value="">не привязан</option>
+                <option value="">unlinked</option>
                 {data.authors.map((author) => (
                   <option key={author.id} value={author.id}>{author.name}</option>
                 ))}
               </select>
             </dd>
           </div>
-          <div><dt>Словарь книги</dt><dd className="num">{counts?.book_pronunciation_terms ?? 0} {plural(counts?.book_pronunciation_terms ?? 0, "ударение", "ударения", "ударений")}</dd></div>
-          <div><dt>Словарь автора</dt><dd className="num">{counts?.author_pronunciations ?? 0} {plural(counts?.author_pronunciations ?? 0, "ударение", "ударения", "ударений")}</dd></div>
+          <div><dt>Book dictionary</dt><dd className="num">{counts?.book_pronunciation_terms ?? 0} {plural(counts?.book_pronunciation_terms ?? 0, "stress entry", "stress entries", "stress entries")}</dd></div>
+          <div><dt>Author dictionary</dt><dd className="num">{counts?.author_pronunciations ?? 0} {plural(counts?.author_pronunciations ?? 0, "stress entry", "stress entries", "stress entries")}</dd></div>
           <div>
-            <dt>Связано с автором</dt>
-            <dd className="num">{counts?.linked_characters ?? 0} из {counts?.author_characters ?? 0} персонажей</dd>
+            <dt>Linked to author</dt>
+            <dd className="num">{counts?.linked_characters ?? 0} of {counts?.author_characters ?? 0} characters</dd>
           </div>
-          <div><dt>Синхронизация</dt><dd>{data.last_sync ? formatWhen(data.last_sync.at) : <span className="hub-dim">ещё не было</span>}</dd></div>
+          <div><dt>Synchronization</dt><dd>{data.last_sync ? formatWhen(data.last_sync.at) : <span className="hub-dim">not yet</span>}</dd></div>
         </dl>
       ) : null}
       {data?.suggested ? (
         <p className="ui-note hub-suggest">
-          Похоже, это {data.suggested.name}: совпало {data.suggested.matched} {plural(data.suggested.matched, "роль", "роли", "ролей")} из каста.{" "}
+          Possible match: {data.suggested.name}: matched {data.suggested.matched} {plural(data.suggested.matched, "role", "roles", "roles")} in cast.{" "}
           <Button size="sm" variant="secondary" loading={bind.isPending} onClick={() => bind.mutate(data.suggested!.author_id)}>
-            Привязать и заполнить каст
+            Link and fill cast
           </Button>
         </p>
       ) : null}
       <div className="hub-card-actions">
         <Button size="sm" variant="secondary" disabled={busy || !data} loading={sync.isPending} onClick={() => sync.mutate()}>
-          Обновить профиль автора
+          Update author profile
         </Button>
         <Button size="sm" variant="secondary" disabled={busy || !data} loading={apply.isPending} onClick={() => apply.mutate()}>
-          Применить профиль к книге
+          Apply profile to book
         </Button>
         <label className="ui-check hub-check">
           <input type="checkbox" checked={overwrite} disabled={busy} onChange={(e) => setOverwrite(e.target.checked)} />
-          <span>перезаписать ручные цвета и актёров</span>
+          <span>overwrite manually selected colors and voice actors</span>
         </label>
       </div>
     </section>

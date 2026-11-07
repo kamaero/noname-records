@@ -152,11 +152,11 @@ export function ActorPicker({ row, rows, dictors, canListen, proposeOnly, canCre
         className={value ? "actor-pick" : "actor-pick is-empty"}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`Актёр роли ${row.name}: ${value || "не назначен"}`}
+        aria-label={`Voice actor for role ${row.name}: ${value || "unassigned"}`}
         disabled={saving}
         onClick={() => setOpen(!open)}
       >
-        <span className="actor-pick-name">{value || "назначить"}</span>
+        <span className="actor-pick-name">{value || "assign"}</span>
         <Icon name="chevron" />
       </button>
       {open
@@ -165,12 +165,12 @@ export function ActorPicker({ row, rows, dictors, canListen, proposeOnly, canCre
               ref={panel}
               className="actor-pop"
               role="dialog"
-              aria-label={`Актёр роли ${row.name}`}
+              aria-label={`Voice actor for role ${row.name}`}
               style={{ top: place.top, left: place.left, width: place.width, transform: place.up ? "translateY(-100%)" : undefined }}
             >
               <label className="actor-pop-search">
                 <Icon name="search" />
-                <input autoFocus type="search" value={query} placeholder="Найти диктора" aria-label="Найти диктора"
+                <input autoFocus type="search" value={query} placeholder="Find voice actor" aria-label="Find voice actor"
                   onChange={(e) => setQuery(e.target.value)} />
               </label>
               <ul className="actor-pop-list">
@@ -181,7 +181,7 @@ export function ActorPicker({ row, rows, dictors, canListen, proposeOnly, canCre
                     <li key={d.user_id} className={current ? "is-current" : ""} title={d.note || undefined}>
                       {canListen && d.main_demo ? (
                         <button type="button" className={playing === d.main_demo.id ? "actor-pop-play is-on" : "actor-pop-play"}
-                          aria-label={`Слушать демо: ${d.name}`} onClick={() => toggle(d.main_demo!.id)}>
+                          aria-label={`Listen to demo: ${d.name}`} onClick={() => toggle(d.main_demo!.id)}>
                           {playing === d.main_demo.id ? <span className="actor-pop-stop" /> : <Icon name="play" />}
                         </button>
                       ) : (
@@ -190,45 +190,45 @@ export function ActorPicker({ row, rows, dictors, canListen, proposeOnly, canCre
                       <span className="actor-pop-who">
                         <strong>{d.name}</strong>
                         <span className="actor-pop-sub">
-                          {d.reachable === true ? "на связи" : d.has_telegram ? "не на связи" : "без Telegram"}
-                          {canListen && d.demos > 1 ? ` · демо: ${d.demos}` : ""}
-                          {taken ? <span className="actor-pop-taken"> · уже {taken.join(", ")} в этой книге</span> : null}
+                          {d.reachable === true ? "reachable" : d.has_telegram ? "unreachable" : "no Telegram"}
+                          {canListen && d.demos > 1 ? ` · demo: ${d.demos}` : ""}
+                          {taken ? <span className="actor-pop-taken"> · already {taken.join(", ")} in this book</span> : null}
                         </span>
                       </span>
                       <span className="actor-pop-actions">
-                        <button type="button" onClick={() => commit(`${d.name}?`, d)}>{proposeOnly ? "Предложить" : "На пробу"}</button>
+                        <button type="button" onClick={() => commit(`${d.name}?`, d)}>{proposeOnly ? "Suggest" : "Invite to audition"}</button>
                         {proposeOnly ? null : (
-                          <button type="button" className="is-main" onClick={() => commit(d.name, d)}>Утвердить</button>
+                          <button type="button" className="is-main" onClick={() => commit(d.name, d)}>Approve</button>
                         )}
                       </span>
                     </li>
                   );
                 })}
-                {found.length === 0 ? <li className="actor-pop-empty">Дикторов не нашлось.</li> : null}
+                {found.length === 0 ? <li className="actor-pop-empty">No voice actors found.</li> : null}
                 {found.length > LIMIT ? (
-                  <li className="actor-pop-empty">Показаны {LIMIT} из {found.length} — уточните поиск.</li>
+                  <li className="actor-pop-empty">Showing {LIMIT} of {found.length} — narrow your search.</li>
                 ) : null}
               </ul>
               <div className="actor-pop-foot">
                 {query.trim() && !exact ? (
                   <>
                     <button type="button" onClick={() => commit(query.trim(), null)}>
-                      Записать «{query.trim()}» строкой
+                      Save «{query.trim()}» as text
                     </button>
                     {canCreate ? (
                       <button type="button" onClick={() => { setOpen(false); onCreate(query.trim()); }}>
-                        Создать диктора «{query.trim()}»
+                        Create voice actor «{query.trim()}»
                       </button>
                     ) : (
-                      <span className="actor-pop-hint">нет учётки — письмо не дойдёт</span>
+                      <span className="actor-pop-hint">no account; notifications cannot be delivered</span>
                     )}
                   </>
                 ) : null}
                 {canRecast ? (
-                  <button type="button" onClick={() => { setOpen(false); onRecast(); }}>Переназначить по циклу…</button>
+                  <button type="button" onClick={() => { setOpen(false); onRecast(); }}>Reassign across series…</button>
                 ) : null}
                 {value ? (
-                  <button type="button" className="is-danger" onClick={() => commit("", null)}>Снять актёра</button>
+                  <button type="button" className="is-danger" onClick={() => commit("", null)}>Remove voice actor</button>
                 ) : null}
               </div>
             </div>,

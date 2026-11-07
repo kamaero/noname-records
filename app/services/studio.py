@@ -16,7 +16,7 @@ def name() -> str:
 def write_to() -> str:
     """«напишите Ольге» — STUDIO_CONTACT_NAME задаётся в дательном падеже; пусто — в студию."""
     contact = (settings.studio_contact_name or "").strip()
-    return f"напишите {contact}" if contact else "напишите в студию"
+    return f"contact {contact}" if contact else "contact the studio"
 
 
 def site_url(path: str = "") -> str:

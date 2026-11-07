@@ -80,7 +80,7 @@ def test_extending_moves_the_date_resets_reminders_and_tells_the_dictor(factory,
         assert row.due_at > before + timedelta(days=2, hours=23)
         assert row.reminded_overdue_at is None and row.reminded_before_at is None
         assert row.extended_by == "Тимур"
-    assert letters and letters[0][0] == ["42"] and "продлён" in letters[0][1]
+    assert letters and letters[0][0] == ["42"] and "extended" in letters[0][1]
 
 
 def test_extending_to_a_date_uses_the_end_of_that_moscow_day(factory, letters):

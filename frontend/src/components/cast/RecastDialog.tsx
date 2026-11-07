@@ -10,11 +10,11 @@ import type { PickerDictor } from "./ActorPicker";
    показывает это до решения; итог пишет журнал рекастов и письмо новому актёру. */
 
 const REASONS: [string, string][] = [
-  ["overlap", "Занят в соседней роли"],
-  ["audition_failed", "Проба не подошла"],
-  ["left", "Ушёл из проекта"],
-  ["removed", "Удалён из базы"],
-  ["other", "Другое"],
+  ["overlap", "Busy with another role"],
+  ["audition_failed", "Audition was not suitable"],
+  ["left", "Left the project"],
+  ["removed", "Removed from database"],
+  ["other", "Other"],
 ];
 
 type Book = { book_id: string; book_title: string; actor?: string };
@@ -49,7 +49,7 @@ export function RecastDialog({ row, dictors, onClose, onDone }: {
     let alive = true;
     apiGet<Preview>(`/api/v2/characters/${encodeURIComponent(row.character_id)}/recast-preview?to_actor=${encodeURIComponent(actor)}`)
       .then((p) => alive && setPreview(p))
-      .catch((e) => alive && setError(describeApiError(e, "Не удалось посчитать предпросмотр.")));
+      .catch((e) => alive && setError(describeApiError(e, "Could not calculate preview.")));
     return () => {
       alive = false;
     };
@@ -60,32 +60,32 @@ export function RecastDialog({ row, dictors, onClose, onDone }: {
     try {
       const result = await apiPostJson<Result>(`/api/v2/characters/${encodeURIComponent(row.character_id)}/recast`,
         { to_actor: actor, reason, comment });
-      const parts = [`встал в: ${result.changed.map((b) => b.book_title).join(", ") || "—"}`];
-      if (result.kept.length) parts.push(`остался прежний (записано): ${result.kept.map((b) => b.book_title).join(", ")}`);
-      if (result.outvoted.length) parts.push(`голос не перевесил: ${result.outvoted.map((b) => b.book_title).join(", ")}`);
+      const parts = [`reassigned in: ${result.changed.map((b) => b.book_title).join(", ") || "—"}`];
+      if (result.kept.length) parts.push(`unchanged (already recorded): ${result.kept.map((b) => b.book_title).join(", ")}`);
+      if (result.outvoted.length) parts.push(`decision did not take priority: ${result.outvoted.map((b) => b.book_title).join(", ")}`);
       onDone(parts.join(" · "));
     } catch (e) {
-      setError(describeApiError(e, "Рекаст не прошёл."));
+      setError(describeApiError(e, "Reassignment failed."));
       setBusy(false);
     }
   };
 
   return (
     <Dialog
-      title={`Переназначить: «${row.name}»`}
-      subtitle={current ? `Сейчас: ${current}. Новый актёр встанет во все книги цикла, где роль ещё не записана.` : undefined}
+      title={`Reassign: «${row.name}»`}
+      subtitle={current ? `Current: ${current}. The new voice actor will be assigned across the series where the role is not yet recorded.` : undefined}
       onClose={onClose}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Отмена</Button>
-          <Button variant="primary" loading={busy} disabled={!actor || !preview} onClick={run}>Переназначить</Button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy} disabled={!actor || !preview} onClick={run}>Reassign</Button>
         </>
       }
     >
       <div className="form-grid">
-        <Field label="Новый актёр" required>
+        <Field label="New voice actor" required>
           {(props) => (
-            <input {...props} data-autofocus value={actor || query} placeholder="Найти диктора"
+            <input {...props} data-autofocus value={actor || query} placeholder="Find voice actor"
               onChange={(e) => { setActor(""); setQuery(e.target.value); }} />
           )}
         </Field>
@@ -94,24 +94,24 @@ export function RecastDialog({ row, dictors, onClose, onDone }: {
             {found.map((d) => (
               <li key={d.user_id}><button type="button" onClick={() => setActor(d.name)}>{d.name}</button></li>
             ))}
-            {found.length === 0 ? <li className="recast-none">Дикторов не нашлось</li> : null}
+            {found.length === 0 ? <li className="recast-none">No voice actors found</li> : null}
           </ul>
         ) : null}
-        <Field label="Причина">
+        <Field label="Reason">
           {(props) => (
             <select {...props} value={reason} onChange={(e) => setReason(e.target.value)}>
               {REASONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
           )}
         </Field>
-        <Field label="Комментарий" hint="Попадёт в журнал рекастов">
+        <Field label="Comment" hint="Recorded in reassignment history">
           {(props) => <input {...props} value={comment} onChange={(e) => setComment(e.target.value)} />}
         </Field>
         {preview ? (
           <div className="recast-preview">
-            <p><strong>Сменится</strong> (если голос пройдёт): {preview.changed.map((b) => b.book_title).join(", ") || "нигде"}</p>
+            <p><strong>Will change</strong> (if your decision takes priority): {preview.changed.map((b) => b.book_title).join(", ") || "nowhere"}</p>
             {preview.kept.length ? (
-              <p><strong>Останется прежний</strong> — роль там уже записана: {preview.kept.map((b) => `${b.book_title} (${b.actor})`).join(", ")}</p>
+              <p><strong>Will stay unchanged</strong> — already recorded: {preview.kept.map((b) => `${b.book_title} (${b.actor})`).join(", ")}</p>
             ) : null}
           </div>
         ) : null}

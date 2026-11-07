@@ -24,12 +24,12 @@ export function currentCastBook<T extends { id: string; cast_checked_at: string 
 export function CastEntryPage() {
   const booksQuery = useQuery({ queryKey: ["books"], queryFn: () => apiGet<BooksResponse>("/api/books") });
 
-  if (booksQuery.isLoading) return <SkeletonPanel label="Загружаю книги…" lines={3} />;
+  if (booksQuery.isLoading) return <SkeletonPanel label="Loading books…" lines={3} />;
   if (booksQuery.isError) {
     return (
       <div className="lib">
-        <PageHeader title="Каст" />
-        <EmptyState text={describeApiError(booksQuery.error, "Не удалось загрузить книги.")} />
+        <PageHeader title="Cast" />
+        <EmptyState text={describeApiError(booksQuery.error, "Could not load books.")} />
       </div>
     );
   }
@@ -37,8 +37,8 @@ export function CastEntryPage() {
   if (!books.length) {
     return (
       <div className="lib">
-        <PageHeader title="Каст" />
-        <EmptyState text="Книг пока нет. Каст появится, когда в библиотеке будет книга." />
+        <PageHeader title="Cast" />
+        <EmptyState text="No books yet. Upload a book to see its cast here." />
       </div>
     );
   }

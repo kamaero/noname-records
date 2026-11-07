@@ -33,11 +33,10 @@ def role_recorded(db, character: Character) -> bool:
     book = db.get(ScriptBook, character.book_id)
     if book is None:
         return False
-    return db.query(AudioFile.id).filter(
-        AudioFile.kind == "take",
-        AudioFile.book_code == derive_book_code(str(book.title or "")),
-        AudioFile.role == str(character.name or ""),
-    ).first() is not None
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, character.book_id)
+    return any(identities.matches_character_audio(audio, character)
+               for audio in db.query(AudioFile).filter(AudioFile.kind == "take").all())
 
 
 def cycle_siblings(db, character: Character) -> list[Character]:
@@ -71,9 +70,11 @@ def propagate_approval(db, character: Character, *, voter_uid: str, voter_name: 
     а не в `changed`: письмо и журнал называют только книги, где актёр правда встал.
     Рассказчик по циклу не ходит никогда, даже связанный с профилем.
     """
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, character.book_id)
     actor = approved_actor(str(character.actor_name or ""))
     result = {"changed": [], "kept": [], "outvoted": [], "profile_actor": ""}
-    if not actor or is_narrator_name(str(character.name or "")):
+    if not actor or identities.is_narrator(str(character.name or "")):
         return result
     profile_id = str(character.author_character_id or "").strip()
     profile = db.get(AuthorCharacter, profile_id) if profile_id else None
@@ -118,10 +119,12 @@ def recast_preview(db, character: Character, *, to_actor: str) -> dict:
     в каждой книге, заранее не известно (там может перевесить автор), поэтому «сменится»
     здесь — «сменится, если голос пройдёт»; итог `recast` называет и проигранные книги.
     """
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, character.book_id)
     actor = " ".join(str(to_actor or "").split())
     if not actor or actor.endswith("?"):
         raise ValueError("no_actor")
-    if is_narrator_name(str(character.name or "")):
+    if identities.is_narrator(str(character.name or "")):
         raise ValueError("narrator")
     profile = db.get(AuthorCharacter, str(character.author_character_id or "")) if character.author_character_id else None
     from_actor = str((profile.actor_name if profile else "") or approved_actor(str(character.actor_name or "")) or "")
@@ -145,12 +148,14 @@ def recast(db, character: Character, *, to_actor: str, reason: str, comment: str
     прежний уже прислал дубли, он остаётся. В отличие от утверждения, запись в журнале
     `recasts` обязательна: это решение, о котором спросят «почему».
     """
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, character.book_id)
     actor = " ".join(str(to_actor or "").split())
     if reason not in RECAST_REASONS:
         raise ValueError("bad_reason")
     if not actor or actor.endswith("?"):
         raise ValueError("no_actor")
-    if is_narrator_name(str(character.name or "")):
+    if identities.is_narrator(str(character.name or "")):
         raise ValueError("narrator")  # рассказчик свой в каждой книге, по циклу не ходит
     profile = db.get(AuthorCharacter, str(character.author_character_id or "")) if character.author_character_id else None
     from_actor = str((profile.actor_name if profile else "") or approved_actor(str(character.actor_name or "")) or "")
@@ -222,10 +227,12 @@ def _dictor_for(db, name: str) -> str:
 
 def rebuild_assignments(db, book_id: str) -> int:
     """Пересобрать `dictor_assignments` книги по касту и рассказчику. Возвращает число строк."""
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
     db.query(DictorAssignment).filter(DictorAssignment.book_id == book_id).delete(synchronize_session=False)
     rows = 0
     for character in db.query(Character).filter(Character.book_id == book_id).all():
-        if is_narrator_name(str(character.name or "")):
+        if identities.is_narrator(str(character.name or "")):
             continue  # рассказчик книги — из сметы, ниже, одной строкой
         raw = str(character.actor_name or "").strip()
         user_id = _dictor_for(db, raw)

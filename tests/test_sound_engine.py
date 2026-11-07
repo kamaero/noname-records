@@ -247,3 +247,33 @@ def test_sound_calls_are_booked_to_the_sound_step(book, tmp_path, monkeypatch):
     run_sound(session_factory=book, book_id=BOOK, run_id=new_run(book), mode="chapter", chapter_id="c2",
               ask=ask, read_credits=lambda: None, notify=lambda _t: None, root=str(tmp_path))
     assert seen and set(seen) == {"sound"}
+
+
+def test_english_book_uses_english_sound_and_location_merge_prompts(book, tmp_path):
+    from app.models import ScriptBook, SoundPlace
+    from app.v2.models import V2Segment
+    from app.services.sound_engine import run_sound
+    with book() as db:
+        db.get(ScriptBook, BOOK).language = "en"
+        before = [(row.id, row.text) for row in db.query(V2Segment).order_by(V2Segment.id)]
+        db.commit()
+    calls = []
+
+    def ask(model, system, user, schema):
+        calls.append((system, user))
+        if "pairs" in schema["properties"]:
+            assert "same place under different names" in system
+            return {"pairs": []}
+        assert "English audiobook" in system and "BOOK LOCATIONS:" in user
+        location = "Forest" if len(calls) == 1 else "Tower"
+        return {"scenes": [{"start": 0, "place": {"id": "", "name": location, "description": "A quiet location.",
+                    "ambience_queries": ["quiet forest"]}, "time_of_day": "day", "weather": "clear",
+                    "ambience": "wind", "mood": "calm", "music_queries": ["quiet strings"]}],
+                "transitions": [], "sounds": []}
+
+    result = run_sound(session_factory=book, book_id=BOOK, run_id=new_run(book), mode="all",
+                        ask=ask, read_credits=lambda: None, notify=lambda text: None, root=str(tmp_path))
+    assert result["status"] == "done" and result["chapters_incomplete"] == 0 and len(calls) == 3
+    with book() as db:
+        assert [(row.id, row.text) for row in db.query(V2Segment).order_by(V2Segment.id)] == before
+        assert {row.name for row in db.query(SoundPlace)} == {"Forest", "Tower"}

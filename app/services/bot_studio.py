@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+from app.services.studio_calendar import studio_timezone
+
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -248,12 +250,12 @@ class Studio:
                 done, total = self.progress(ch, row.actor_name)
                 if total == 0 or done > 0:
                     continue
-                item = f"роль «{role}» («{title}») — не начата"
+                item = f'role «{role}» («{title}») — not started'
             else:
                 if self._auditioned(row.book_id, role, row.actor_name):
                     continue
-                state = "взята, не загружена" if row.accepted_at is not None else "не загружена"
-                item = f"проба «{role}» («{title}») — {state}"
+                state = 'accepted, not uploaded' if row.accepted_at is not None else 'not uploaded'
+                item = f'audition «{role}» («{title}») — {state}'
             person = next((p for p in people if same_person(p.actor, row.actor_name)), None)
             if person is None:
                 person = Silent(actor=str(row.actor_name or ""), chat="", last_seen=None)
@@ -267,48 +269,49 @@ class Studio:
 
 
 SS_PREFIX = "ss:"
-_MONTHS = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября",
-           "октября", "ноября", "декабря")
-SECTIONS = {"p": "🎙 Пробы ждут решения", "d": "⏰ Сроки", "b": "📚 Книги", "q": "🔇 Молчат"}
+_MONTHS = ('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
+           'October', 'November', 'December')
+SECTIONS = {"p": '🎙 Auditions awaiting a decision', "d": '⏰ Deadlines', "b": '📚 Books', "q": '🔇 Inactive'}
 
 
 def _actor(name: str) -> str:
-    return "без имени" if not name or name == UNKNOWN_ACTOR else _esc(name)
+    return 'unnamed' if not name or name == UNKNOWN_ACTOR else _esc(name)
 
 
 def _days(moment: datetime, now: datetime) -> str:
-    return f"{max(0, (now - moment).days)} дн."
+    return f'{max(0, (now - moment).days)} days'
 
 
-def _due_line(d: Due) -> str:
-    what = "проба" if d.kind == "audition" else "роль"
-    when = format_due(d.due_at, kind="time" if d.kind == "audition" else "role")
-    return f"• {_esc(d.actor)} — {what} «{_esc(d.role)}» («{_esc(d.book_title)}»), до {when}"
+def _due_line(d: Due, *, timezone: str = "") -> str:
+    what = 'audition' if d.kind == "audition" else 'role'
+    when = format_due(d.due_at, kind="time" if d.kind == "audition" else "role", timezone=timezone)
+    return f'• {_esc(d.actor)} — {what} «{_esc(d.role)}» («{_esc(d.book_title)}»), due {when}'
 
 
 def _seen(person: Silent, studio: Studio) -> str:
     """Без слов, выдающих род: «не заходил(а)» читается как канцелярит, «не заходила» — гадание."""
     if not person.chat:
-        return "Telegram не найден"
+        return 'Telegram not found'
     if person.last_seen is None:
-        return "визитов в бот нет"
-    return f"в боте {_days(person.last_seen, studio.now)} назад"
+        return 'no bot visits'
+    return f'last bot visit {_days(person.last_seen, studio.now)} ago'
 
 
 def overview(db, *, now: datetime) -> tuple[str, dict]:
     studio = Studio(db, now=now)
     pending = studio.pending()
     overdue, soon = studio.deadlines()
-    local = now + timedelta(hours=3)
-    lines = [f"🏢 <b>Студия — {local.day} {_MONTHS[local.month - 1]}</b>", ""]
-    oldest = f" (самая старая — {_days(pending[0].first_at, now)})" if pending else ""
-    lines.append(f"🎙 Пробы ждут решения: {len(pending)}{oldest}")
-    lines.append(f"⏰ Сроки: просрочено {len(overdue)} · скоро {len(soon)}")
+    from app.services.studio_calendar import local_time
+    local = local_time(now, studio_timezone(db))
+    lines = [f'🏢 <b>Studio — {local.day} {_MONTHS[local.month - 1]}</b>', ""]
+    oldest = f' (oldest: {_days(pending[0].first_at, now)})' if pending else ""
+    lines.append(f'🎙 Auditions awaiting a decision: {len(pending)}{oldest}')
+    lines.append(f'⏰ Deadlines: overdue {len(overdue)} · upcoming {len(soon)}')
     for book in studio.books():
-        lines.append(f"📚 {_esc(book.title)} — записано: {book.recorded}/{book.roles}")
-    lines.append(f"🔇 Молчат: {len(studio.silent())}")
-    buttons = [[{"text": "Пробы ▸", "callback_data": f"{SS_PREFIX}p"}, {"text": "Сроки ▸", "callback_data": f"{SS_PREFIX}d"}],
-               [{"text": "Книги ▸", "callback_data": f"{SS_PREFIX}b"}, {"text": "Молчат ▸", "callback_data": f"{SS_PREFIX}q"}]]
+        lines.append(f'📚 {_esc(book.title)} — recorded: {book.recorded}/{book.roles}')
+    lines.append(f'🔇 Inactive: {len(studio.silent())}')
+    buttons = [[{"text": 'Auditions ▸', "callback_data": f"{SS_PREFIX}p"}, {"text": 'Deadlines ▸', "callback_data": f"{SS_PREFIX}d"}],
+               [{"text": 'Books ▸', "callback_data": f"{SS_PREFIX}b"}, {"text": 'Inactive ▸', "callback_data": f"{SS_PREFIX}q"}]]
     return _fit(lines), {"inline_keyboard": buttons}
 
 
@@ -326,15 +329,14 @@ def section(db, key: str, *, now: datetime) -> str:
             lines.append(f"«{_esc(title)}»:")
             lines += [f"• «{_esc(p.role)}» — {_actor(p.actor)}, {_days(p.first_at, now)}" for p in items]
         if not pending:
-            lines.append("Нет.")
+            lines.append('None.')
     elif key == "d":
         overdue, soon = studio.deadlines()
-        lines += ["Просрочено:"] + ([_due_line(d) for d in overdue] or ["нет"])
-        lines += ["", "Скоро (3 дня):"] + ([_due_line(d) for d in soon] or ["нет"])
+        lines += ['Overdue:'] + ([_due_line(d, timezone=studio_timezone(db)) for d in overdue] or ['none'])
+        lines += ["", 'Due soon (3 days):'] + ([_due_line(d, timezone=studio_timezone(db)) for d in soon] or ['none'])
     elif key == "b":
         for b in studio.books():
-            lines.append(f"• «{_esc(b.title)}» — записано: {b.recorded}/{b.roles} · утверждено: {b.approved} · "
-                         f"свободно: {b.free}")
+            lines.append(f'• «{_esc(b.title)}» — recorded: {b.recorded}/{b.roles} · approved: {b.approved} · available: {b.free}')
     else:
         silent = studio.silent()
         for person in silent:
@@ -345,7 +347,7 @@ def section(db, key: str, *, now: datetime) -> str:
             lines.append(f"• {_esc(person.actor)}{nick} — {_seen(person, studio)}")
             lines += [f"   {_esc(item)}" for item in person.items]
         if not silent:
-            lines.append("Нет.")
+            lines.append('None.')
     return _fit(lines)
 
 
@@ -413,32 +415,32 @@ def _card(db, person: Person, *, now: datetime) -> str:
         contact = db.get(BotContact, person.tid)
         head = [f"👤 <b>{_esc(person.name)}</b>"]
         if user is not None:
-            head.append(f"Логин: <code>{_esc(user.login)}</code>")
-        nick = f"@{_esc(contact.username)}" if contact is not None and contact.username else "без ника"
-        seen = f"в боте {max(0, (now - contact.last_seen_at).days)} дн. назад" if contact is not None else "визитов в бот нет"
+            head.append(f'Login: <code>{_esc(user.login)}</code>')
+        nick = f"@{_esc(contact.username)}" if contact is not None and contact.username else 'no username'
+        seen = f'last bot visit {max(0, (now - contact.last_seen_at).days)} days ago' if contact is not None else 'no bot visits'
         head.append(f"Telegram: {nick} · {seen}")
     else:
         owns = owner_by_name(person.name)
-        head = [f"👤 <b>{_esc(person.name)}</b>", "Telegram не привязан — есть только в касте."]
+        head = [f"👤 <b>{_esc(person.name)}</b>", 'No Telegram account linked; listed only in the cast.']
     lines = person_lines(db, owns, now=now, you=False)
-    parts = head + ["", "🎬 <b>Утверждённые роли</b>"] + (lines.roles or ["Нет."])
-    parts += ["", "🎙 <b>Пробы</b>"] + (lines.auditions or ["Нет."])
+    parts = head + ["", '🎬 <b>Approved roles</b>'] + (lines.roles or ['None.'])
+    parts += ["", '🎙 <b>Auditions</b>'] + (lines.auditions or ['None.'])
     if lines.rejected:
-        parts += ["", "✉️ <b>Отказы</b>"] + lines.rejected
+        parts += ["", '✉️ <b>Other selections</b>'] + lines.rejected
     return _fit(parts)
 
 
 def dictor_reply(db, query: str, *, now: datetime) -> tuple[str, dict | None]:
     query = str(query or "").strip()
     if not query:
-        return "Напишите: /dictor Фамилия", None
+        return 'Enter: /dictor Surname', None
     people = find_people(db, query)
     if not people:
-        return f"Не нашёл «{_esc(query)}».", None
+        return f'No match for «{_esc(query)}».', None
     if len(people) == 1:
         return _card(db, people[0], now=now), None
     if len(people) > MAX_PICKS:
-        return f"Под «{_esc(query)}» подходят {len(people)} человек — уточните имя.", None
+        return f'The name «{_esc(query)}» matches {len(people)} people; please specify the name.', None
     rows = []
     for p in people:
         if p.tid:
@@ -447,8 +449,8 @@ def dictor_reply(db, query: str, *, now: datetime) -> tuple[str, dict | None]:
             # у актёра без Telegram нет id — кнопка несёт персонажа, по нему имя восстановится
             ch = next(c for c in db.query(Character).all()
                       if same_person(parse_actor_name(str(c.actor_name or ""))[0], p.name))
-            rows.append([{"text": f"{p.name[:50]} (каст)", "callback_data": f"{DC_PREFIX}c:{ch.id}"}])
-    return "Кого показать?", {"inline_keyboard": rows}
+            rows.append([{"text": f'{p.name[:50]} (cast)', "callback_data": f"{DC_PREFIX}c:{ch.id}"}])
+    return 'Who would you like to view?', {"inline_keyboard": rows}
 
 
 def card_by_pick(db, data: str, *, now: datetime) -> str:
@@ -457,11 +459,11 @@ def card_by_pick(db, data: str, *, now: datetime) -> str:
         account = (db.query(TelegramAuthAccount)
                    .filter(TelegramAuthAccount.telegram_user_id == value, TelegramAuthAccount.is_active == "true").first())
         if account is None:
-            return "Учётка не найдена."
+            return 'Account not found.'
         names = _account_names(db, account)
         return _card(db, Person(name=names[-1] if len(names) > 1 else (names[0] if names else value), tid=value), now=now)
     if kind == "c" and value:
         ch = db.get(Character, value)
         name = parse_actor_name(str(ch.actor_name or ""))[0] if ch is not None else ""
-        return _card(db, Person(name=name, tid=""), now=now) if name else "Актёр не найден."
+        return _card(db, Person(name=name, tid=""), now=now) if name else 'Actor not found.'
     return ""

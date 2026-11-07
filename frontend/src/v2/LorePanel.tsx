@@ -33,29 +33,29 @@ type Selected = { kind: "article"; id: string } | { kind: "entity"; entity: Lore
  */
 function worldOf(topic: string): string {
   const match = /^(.+?)\.\s+\S/.exec(topic.trim());
-  if (!match) return "Общее";
-  return match[1].split(",")[0].trim() || "Общее";
+  if (!match) return "General";
+  return match[1].split(",")[0].trim() || "General";
 }
 
 function ArticleView({ id }: { id: string }) {
   const article = useLoreArticle(id);
   const [zoom, setZoom] = useState("");
-  if (article.isLoading) return <p className="lore-dim">Открываю статью…</p>;
-  if (article.isError || !article.data) return <p className="ui-note ui-note--error">Статья не открылась.</p>;
+  if (article.isLoading) return <p className="lore-dim">Opening article…</p>;
+  if (article.isError || !article.data) return <p className="ui-note ui-note--error">Could not open article.</p>;
   return (
     <article className="lore-article">
       <h3 className="lore-article-title">{article.data.title}</h3>
       {article.data.images.map((src) => (
-        <button key={src} type="button" className="lore-map" onClick={() => setZoom(src)} title="Открыть во весь экран">
-          <img src={src} alt="Карта мира" loading="lazy" />
+        <button key={src} type="button" className="lore-map" onClick={() => setZoom(src)} title="Open full screen">
+          <img src={src} alt="World map" loading="lazy" />
         </button>
       ))}
       {article.data.body.split("\n\n").map((paragraph, index) => (
         <p key={index}>{paragraph}</p>
       ))}
       {zoom ? (
-        <div className="lore-zoom" role="dialog" aria-label="Карта" onClick={() => setZoom("")}>
-          <img src={zoom} alt="Карта мира" />
+        <div className="lore-zoom" role="dialog" aria-label="Map" onClick={() => setZoom("")}>
+          <img src={zoom} alt="World map" />
         </div>
       ) : null}
     </article>
@@ -67,9 +67,9 @@ function EntityView({ entity }: { entity: LoreEntity }) {
     <article className="lore-article">
       <h3 className="lore-article-title">{entity.name}</h3>
       {entity.portrait ? <img className="lore-portrait" src={entity.portrait} alt={entity.name} loading="lazy" /> : null}
-      {entity.aliases.length ? <p className="lore-dim">Он же: {entity.aliases.join(", ")}</p> : null}
+      {entity.aliases.length ? <p className="lore-dim">Also known as: {entity.aliases.join(", ")}</p> : null}
       <p>{entity.description}</p>
-      {entity.topic ? <p className="lore-dim">Из раздела «{entity.topic.replace(/\.$/, "")}»</p> : null}
+      {entity.topic ? <p className="lore-dim">From section «{entity.topic.replace(/\.$/, "")}»</p> : null}
     </article>
   );
 }
@@ -94,8 +94,8 @@ export function LorePanel({ bookId, onClose }: LorePanelProps) {
 
   return (
     <Sheet
-      title="Лор"
-      subtitle={lore.data?.author ? `Мир книг: ${lore.data.author.name}` : undefined}
+      title="Lore"
+      subtitle={lore.data?.author ? `Story world: ${lore.data.author.name}` : undefined}
       onClose={onClose}
     >
       <div className="lore">
@@ -104,7 +104,7 @@ export function LorePanel({ bookId, onClose }: LorePanelProps) {
           <input
             className="ui-input"
             value={query}
-            placeholder="Найти персонажа, расу, слово"
+            placeholder="Find a character, species or term"
             onChange={(event) => {
               setQuery(event.target.value);
               setSelected(null);
@@ -113,7 +113,7 @@ export function LorePanel({ bookId, onClose }: LorePanelProps) {
           />
           {query ? (
             <button type="button" className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => setQuery("")}>
-              Сбросить
+              Clear
             </button>
           ) : null}
         </div>
@@ -121,7 +121,7 @@ export function LorePanel({ bookId, onClose }: LorePanelProps) {
         {selected ? (
           <>
             <button type="button" className="ui-btn ui-btn--ghost ui-btn--sm lore-back" onClick={() => setSelected(null)}>
-              ← К списку
+              ← Back to list
             </button>
             {selected.kind === "article" ? <ArticleView id={selected.id} /> : <EntityView entity={selected.entity} />}
           </>
@@ -129,7 +129,7 @@ export function LorePanel({ bookId, onClose }: LorePanelProps) {
           <div className="lore-results">
             {foundEntities.length ? (
               <>
-                <h4 className="lore-group">Персонажи и расы</h4>
+                <h4 className="lore-group">Characters and species</h4>
                 <ul className="lore-list">
                   {foundEntities.slice(0, 60).map((entity) => (
                     <li key={entity.id}>
@@ -142,7 +142,7 @@ export function LorePanel({ bookId, onClose }: LorePanelProps) {
                 </ul>
               </>
             ) : null}
-            <h4 className="lore-group">В статьях {search.isFetching ? <span className="lore-dim">ищу…</span> : null}</h4>
+            <h4 className="lore-group">In articles {search.isFetching ? <span className="lore-dim">searching…</span> : null}</h4>
             {hits.length ? (
               <ul className="lore-list">
                 {hits.map((hit) => (
@@ -155,12 +155,12 @@ export function LorePanel({ bookId, onClose }: LorePanelProps) {
                 ))}
               </ul>
             ) : search.isFetching ? null : (
-              <p className="lore-dim">Ничего не нашлось.</p>
+              <p className="lore-dim">Nothing found.</p>
             )}
             {!foundEntities.length && !hits.length && !search.isFetching ? null : null}
           </div>
         ) : lore.isLoading ? (
-          <p className="lore-dim">Открываю…</p>
+          <p className="lore-dim">Opening…</p>
         ) : (
           <div className="lore-toc">
             {[...worlds.entries()].map(([world, items]) => (
@@ -172,8 +172,8 @@ export function LorePanel({ bookId, onClose }: LorePanelProps) {
                       <button type="button" onClick={() => setSelected({ kind: "article", id: article.id })}>
                         <strong>{article.title}</strong>
                         <span className="lore-dim">
-                          {Math.round(article.chars / 1000)} тыс. знаков
-                          {article.images ? ` · карт: ${article.images}` : ""}
+                          {Math.round(article.chars / 1000)} k characters
+                          {article.images ? ` · maps: ${article.images}` : ""}
                         </span>
                       </button>
                     </li>
@@ -183,8 +183,7 @@ export function LorePanel({ bookId, onClose }: LorePanelProps) {
             ))}
             {entities.length ? (
               <p className="lore-dim lore-hint">
-                И ещё {entities.length} {plural(entities.length, "карточка", "карточки", "карточек")} персонажей,
-                рас и титулов — они ищутся по имени в строке выше.
+                And {entities.length} {plural(entities.length, "entry", "entries", "entries")} for characters, species and titles. Search for them by name above.
               </p>
             ) : null}
           </div>

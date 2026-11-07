@@ -43,7 +43,7 @@ def check_bot_reach(rows: list[dict], *, token: str, timeout: int = 8) -> dict:
         try:
             payload = requests.get(url, params={"chat_id": chat_id}, timeout=timeout).json()
         except Exception:  # noqa: BLE001 — сеть подвела, а не человек
-            item["reason"] = "не удалось спросить Telegram"
+            item["reason"] = 'Could not contact Telegram'
             items.append(item)
             continue
         if payload.get("ok"):

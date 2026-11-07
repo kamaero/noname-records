@@ -22,8 +22,8 @@ def limit_gate(db, request: Request, *, estimate_rub: float, unknown_price: bool
     if not decision.allowed:
         return JSONResponse(decision.payload(), status_code=409)
     if decision.unknown_price:
-        request.state.spend_warning = ("У модели этого шага нет цены: траты прогона не войдут в лимит. "
-                                       "Впишите цену в «Настройки → Нейросети».")
+        request.state.spend_warning = ("This step uses a model without a configured price; its costs will not count towards the limit. "
+                                       "Set its price in Settings → AI providers.")
     return None
 
 

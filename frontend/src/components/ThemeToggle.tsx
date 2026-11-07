@@ -5,12 +5,12 @@ import { useTheme } from "../hooks/useTheme";
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   return (
-    <div className="theme-toggle" role="group" aria-label="Тема оформления">
+    <div className="theme-toggle" role="group" aria-label="Color theme">
       <button
         type="button"
         className={theme === "light" ? "is-active" : ""}
         onClick={() => setTheme("light")}
-        title="Светлая тема"
+        title="Light theme"
         aria-pressed={theme === "light"}
       >
         <Icon name="sun" />
@@ -19,7 +19,7 @@ export function ThemeToggle() {
         type="button"
         className={theme === "dark" ? "is-active" : ""}
         onClick={() => setTheme("dark")}
-        title="Тёмная тема (T)"
+        title="Dark theme (T)"
         aria-pressed={theme === "dark"}
       >
         <Icon name="moon" />

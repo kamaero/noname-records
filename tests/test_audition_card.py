@@ -38,8 +38,8 @@ def db(monkeypatch):
 
 def test_caption_names_role_book_actor_voice_and_scores(db):
     text = audition_card.caption(db, db.get(AudioFile, "a1"))
-    assert text.startswith("🎙 Проба «Дракон» («Карта Приозерья») — Цертан Царели · голосовое")
-    assert "Автор: —   Студия: 7" in text
+    assert text.startswith("🎙 Audition «Дракон» («Карта Приозерья») — Цертан Царели · voice message")
+    assert "Author: —   Studio: 7" in text
 
 
 def test_keyboard_has_ten_scores_and_approve():
@@ -120,22 +120,22 @@ def test_the_author_scores_the_author_lane_and_is_asked_why(staff):
     out = handle_update(staff, _press("ac:s4:a1", "80"), now=NOW)
     assert _score(staff, "author") == 4 and _score(staff, "studio") == 7
     edit = next(o for o in out if o.method == "editMessageCaption")
-    assert "Автор: 4   Студия: 7" in edit.payload["caption"] and edit.payload["message_id"] == 5
+    assert "Author: 4   Studio: 7" in edit.payload["caption"] and edit.payload["message_id"] == 5
     why = next(o for o in out if o.method == "sendMessage")
-    assert "Чем не этот герой" in why.payload["text"]
+    assert "What does not fit this character" in why.payload["text"]
     buttons = [b for row in why.payload["reply_markup"]["inline_keyboard"] for b in row]
     assert [b["callback_data"] for b in buttons] == ["ac:rvoice:a1", "ac:rmanner:a1", "ac:rall:a1", "ac:c:a1"]
-    assert [b["text"] for b in buttons][0] == "Тембр не этого героя"
+    assert [b["text"] for b in buttons][0] == "Voice does not fit this character"
     out = handle_update(staff, _press("ac:rmanner:a1", "80"), now=NOW)
     assert staff.query(AuditionScore).filter_by(lane="author").one().reason == "manner"
     # владелец узнаёт о реакции сразу — отдельным сообщением
-    assert any("Подача не этого героя" in t and "4/10" in t for t in _texts(out, "11"))
+    assert any("Delivery does not fit this character" in t and "4/10" in t for t in _texts(out, "11"))
 
 
 def test_a_six_also_asks_why(staff):
     """С 11.10 — любая оценка ниже 7: шестёрка ведёт к отказу так же, как пятёрка."""
     out = handle_update(staff, _press("ac:s6:a1", "80"), now=NOW)
-    assert any("Чем не этот герой" in t for t in _texts(out, "80"))
+    assert any("What does not fit this character" in t for t in _texts(out, "80"))
 
 
 def test_a_high_score_offers_only_own_words(staff):
@@ -152,11 +152,11 @@ def _say(text, tid):
 def test_own_words_are_saved_for_the_studio_and_sent_to_the_owner(staff):
     handle_update(staff, _press("ac:s4:a1", "80"), now=NOW)
     ask = handle_update(staff, _press("ac:c:a1", "80"), now=NOW)
-    assert "Увидит только студия" in _texts(ask, "80")[0]
+    assert "Only the studio" in _texts(ask, "80")[0]
     out = handle_update(staff, _say("Голос должен быть звонким и девчачьим", "80"), now=NOW)
     row = staff.query(AuditionScore).filter_by(lane="author").one()
     assert row.comment == "Голос должен быть звонким и девчачьим" and row.score == 4
-    assert "Записал" in _texts(out, "80")[0]
+    assert "Saved" in _texts(out, "80")[0]
     assert any("«Голос должен быть звонким и девчачьим»" in t for t in _texts(out, "11"))
     # ожидание снято: следующее сообщение — обычный разговор, не комментарий
     handle_update(staff, _say("спасибо", "80"), now=NOW)
@@ -174,7 +174,7 @@ def test_own_words_wait_expires(staff):
 
 def test_own_words_need_a_score_first(staff):
     out = handle_update(staff, _press("ac:c:a1", "80"), now=NOW)
-    assert "Сначала поставьте оценку" in _texts(out, "80")[0]
+    assert "Rate the audition first" in _texts(out, "80")[0]
 
 
 def test_the_owner_scores_the_studio_lane_and_both_low_schedule_a_rejection(staff):
@@ -194,7 +194,7 @@ def test_approve_goes_through_the_shared_chain(staff, monkeypatch):
     monkeypatch.setattr("app.services.cast_assign.notify_role_approved", lambda db, **kw: calls.append(kw) or {})
     out = handle_update(staff, _press("ac:a:a1", "11"), now=NOW)
     assert staff.get(Character, "c1").actor_name == "Цертан Царели"
-    assert "Утверждено: Цертан Царели — «Дракон»" in _texts(out, "11")[0] and calls
+    assert "Approved: Цертан Царели — «Дракон»" in _texts(out, "11")[0] and calls
     edit = next(o for o in out if o.method == "editMessageCaption")   # подпись и кнопки — одним вызовом
     assert "ac:a:a1" not in [b["callback_data"] for row in edit.payload["reply_markup"]["inline_keyboard"] for b in row]
 
@@ -205,7 +205,7 @@ def test_approving_a_busy_actor_asks_first(staff, monkeypatch):
     staff.commit()
     out = handle_update(staff, _press("ac:a:a1", "11"), now=NOW)
     ask = next(o for o in out if o.method == "sendMessage")
-    assert "На «Убув» уже стоит Цертан Царели" in ask.payload["text"]
+    assert "For «Убув», Цертан Царели is already assigned" in ask.payload["text"]
     assert staff.get(Character, "c1").actor_name == "Цертан Царели?"
     handle_update(staff, _press("ac:A:a1", "11"), now=NOW)
     assert staff.get(Character, "c1").actor_name == "Цертан Царели"
@@ -215,20 +215,20 @@ def test_the_same_actor_already_on_the_role(staff):
     staff.get(Character, "c1").actor_name = "Цертан Царели"
     staff.commit()
     out = handle_update(staff, _press("ac:a:a1", "11"), now=NOW)
-    assert "Роль уже утверждена: Цертан Царели" in _texts(out, "11")[0]
+    assert "The role is already approved: Цертан Царели" in _texts(out, "11")[0]
 
 
 def test_stale_cards(staff):
     staff.get(Character, "c1").name = "Не Дракон"
     staff.commit()
     out = handle_update(staff, _press("ac:a:a1", "11"), now=NOW)
-    assert "Роль не найдена в касте" in _texts(out, "11")[0]
+    assert "Role not found in the cast" in _texts(out, "11")[0]
     out = handle_update(staff, _press("ac:s8:a1", "11"), now=NOW)
     assert _score(staff, "studio") == 8                      # оценка — по паре, каст не нужен
     staff.delete(staff.get(AudioFile, "a1"))
     staff.commit()
     out = handle_update(staff, _press("ac:s8:a1", "11"), now=NOW)
-    assert "Проба удалена" in _texts(out, "11")[0]
+    assert "Audition deleted" in _texts(out, "11")[0]
 
 
 def test_a_file_on_the_nas_is_read_from_there_or_linked_when_the_nas_is_down(db, monkeypatch):

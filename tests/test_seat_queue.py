@@ -111,5 +111,5 @@ def test_interrupted_runs_are_marked_on_start():
         assert seat.mark_interrupted_runs(db) == 3
         assert {r.status for r in db.query(V2Run)} == {"failed"}
         assert db.query(BackgroundRun).filter_by(run_key="b").one().status == "done"
-        assert "закрыли" in db.query(V2Run).filter_by(id="v1").one().error
+        assert "closed during the run" in db.query(V2Run).filter_by(id="v1").one().error
         assert db.get(ScriptBook, "b1").status == "stopped"

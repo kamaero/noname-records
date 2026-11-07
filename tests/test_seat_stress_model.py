@@ -141,7 +141,7 @@ def test_the_real_loader_never_writes_into_the_program_package(monkeypatch, tmp_
     monkeypatch.setattr(stress_model, "ruaccent_package_dir", lambda: package)
     stress_model.download()
     body = stress_model.state()
-    assert body["state"] == "failed" and "сборк" in body["error"]
+    assert body["state"] == "failed" and "packaging issue" in body["error"]
     assert list(package.iterdir()) == []
 
 

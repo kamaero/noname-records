@@ -47,6 +47,7 @@ def _serialize_book_summary(book: ScriptBook, progress: dict | None) -> dict[str
         "display_title": book.display_title or book.title,
         "source_filename": book.source_filename,
         "source_format": book.source_format,
+        "language": str(getattr(book, "language", None) or "ru"),
         "status": str(book.status or ""),
         "status_label": _status_label(str(book.status or "")),
         "stop_requested": bool(book.stop_requested and str(book.stop_requested).lower() not in ("false", "0", "")),

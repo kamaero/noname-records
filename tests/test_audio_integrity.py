@@ -205,7 +205,7 @@ def test_verify_chapter_leaves_local_files_alone_when_the_mirror_is_down(tmp_pat
 
     sessions = _sessions()
     with sessions() as db:
-        book = ScriptBook(title="Карта", source_filename="k.txt", source_format="txt")
+        book = ScriptBook(title="Карта Переправы", source_filename="k.txt", source_format="txt")
         db.add(book)
         db.commit()
         chapter = ScriptChapter(book_id=book.id, chapter_index=1, chapter_title="Глава 1")
@@ -252,7 +252,7 @@ def test_chapter_verdict_counts_every_outcome(tmp_path, monkeypatch):
 
     sessions = _sessions()
     with sessions() as db:
-        book = ScriptBook(title="Карта", source_filename="k.txt", source_format="txt")
+        book = ScriptBook(title="Карта Переправы", source_filename="k.txt", source_format="txt")
         db.add(book)
         db.commit()
         chapter = ScriptChapter(book_id=book.id, chapter_index=1, chapter_title="Глава 1")
@@ -298,7 +298,7 @@ def roles_are(monkeypatch):
 def _chapter(db, title="Глава1") -> str:
     # У ScriptBook нет поля book_code (оно только у AudioFile) — source_filename и
     # source_format у книги обязательны без значения по умолчанию.
-    book = ScriptBook(title="КП", source_filename="kp.txt", source_format="txt")
+    book = ScriptBook(title="Карта Переправы", source_filename="kp.txt", source_format="txt")
     db.add(book)
     db.flush()
     chapter = ScriptChapter(book_id=book.id, chapter_index=1, chapter_title=title)

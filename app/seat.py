@@ -11,7 +11,7 @@ from app.time_utils import utcnow_naive
 
 OWNER_ID = "local-owner"
 ALLOWED_HOSTS = ("127.0.0.1", "localhost")
-INTERRUPTED = "Приложение закрыли во время прогона — запустите его заново."
+INTERRUPTED = "The app closed during the run. Start the run again."
 
 
 def one_seat() -> bool:

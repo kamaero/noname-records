@@ -2,25 +2,25 @@ export type ChipTone = "accent" | "blue" | "amber" | "danger" | "neutral";
 
 type StatusMeta = { label: string; tone: ChipTone };
 
-/** Book status codes → Russian label + token colour. Unknown codes fall back to neutral + raw code. */
+/** Book status codes → display label + token colour. Unknown codes fall back to neutral + raw code. */
 export const BOOK_STATUS: Record<string, StatusMeta> = {
-  uploaded: { label: "Загружена", tone: "neutral" },
-  queued: { label: "В очереди", tone: "neutral" },
-  processing: { label: "В работе", tone: "blue" },
-  char_extracting: { label: "В работе", tone: "blue" },
-  stopping: { label: "Останавливается", tone: "amber" },
-  stopped: { label: "Остановлена", tone: "amber" },
-  author_review: { label: "Проверка", tone: "blue" },
-  needs_review: { label: "Проверка", tone: "blue" },
-  pending_review: { label: "Проверка", tone: "blue" },
-  partially_approved: { label: "Частично утверждена", tone: "amber" },
-  approved: { label: "Утверждена", tone: "accent" },
-  published: { label: "Опубликована", tone: "accent" },
-  published_to_dictor: { label: "У дикторов", tone: "accent" },
-  ready_for_mix: { label: "К сведению", tone: "accent" },
-  done: { label: "Готово", tone: "accent" },
-  failed: { label: "Ошибка", tone: "danger" },
-  stalled: { label: "Зависла", tone: "danger" },
+  uploaded: { label: "Uploaded", tone: "neutral" },
+  queued: { label: "Queued", tone: "neutral" },
+  processing: { label: "In progress", tone: "blue" },
+  char_extracting: { label: "In progress", tone: "blue" },
+  stopping: { label: "Stopping", tone: "amber" },
+  stopped: { label: "Stopped", tone: "amber" },
+  author_review: { label: "Review", tone: "blue" },
+  needs_review: { label: "Review", tone: "blue" },
+  pending_review: { label: "Review", tone: "blue" },
+  partially_approved: { label: "Partly approved", tone: "amber" },
+  approved: { label: "Approved", tone: "accent" },
+  published: { label: "Published", tone: "accent" },
+  published_to_dictor: { label: "With voice actors", tone: "accent" },
+  ready_for_mix: { label: "Ready to mix", tone: "accent" },
+  done: { label: "Done", tone: "accent" },
+  failed: { label: "Error", tone: "danger" },
+  stalled: { label: "Stalled", tone: "danger" },
 };
 
 export function describeStatus(code: string): StatusMeta & { known: boolean } {

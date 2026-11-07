@@ -65,6 +65,7 @@ from app.v2.character_map import (
 from app.v2.dispute_ops import disputed_spans
 from app.v2.homograph_ops import homograph_places, homograph_words
 from app.v2.models import V2Run, V2Segment
+from app.v2.job_profile import active_profile_job, lock_book_profile
 from app.v2.pipeline import STEPS, V2_MODE, active_run, create_queued_run, expire_stale_runs
 from app.v2.profile_ops import apply_from_author, bind_author, book_profile, sync_to_author
 from app.v2.progress import book_progress
@@ -295,7 +296,7 @@ async def api_v2_consilium_run(request: Request, book_id: str):
             blocked = _consilium_blocked(db, book, credits=credits,
                                          estimate_rub=plan["estimate_rub"][mode])
             gate = None if blocked else limit_gate(
-                db, request, estimate_rub=plan["estimate_rub"][mode], what="консилиум",
+                db, request, estimate_rub=plan["estimate_rub"][mode], what="AI review",
                 unknown_price=spend.unknown_for(db, ("consilium_reader_1", "consilium_reader_2", "consilium_arbiter")))
             db.commit()
             return book.id, plan, blocked or gate
@@ -459,7 +460,7 @@ async def api_v2_character_about(request: Request, character_id: str):
                 changed.append(key)
         if changed:
             db.add(ScriptLog(book_id=row.book_id, level="info",
-                             message=f"Каст: {actor_name} изменил роль «{row.name}» ({', '.join(changed)})."))
+                             message=f"Cast: {actor_name} edited role «{row.name}» ({', '.join(changed)})."))
         payload = {
             "character_id": row.id,
             "name": row.name,
@@ -482,6 +483,43 @@ def api_v2_book_recording(request: Request, book_id: str):
     if status is None:
         return not_found_response("book_not_found")
     return JSONResponse({"ok": True, **status, "can_download": _can_edit(request)})
+
+
+async def api_v2_book_language(request: Request, book_id: str):
+    """Смена профиля касается будущих задач, сохранённые данные не переписываются."""
+    if not _is_authenticated(request):
+        return unauthorized_response()
+    if request.method == "POST" and not _can_edit(request):
+        return forbidden_response()
+    body = await _json_body(request) if request.method == "POST" else None
+    if request.method == "POST" and (body is None or body.get("language") not in ("ru", "en")):
+        return bad_request_response("unsupported_book_language")
+    with SessionLocal() as db:
+        book = (lock_book_profile(db, str(book_id or "").strip()) if body is not None
+                else db.get(ScriptBook, str(book_id or "").strip()))
+        if book is None:
+            return not_found_response("book_not_found")
+        changed = body is not None and book.language != body["language"]
+        if changed:
+            running = active_profile_job(db, book.id)
+            if running is not None:
+                return error_response("run_in_progress", status_code=409,
+                                      extra={"run_id": running.id, "status": running.status})
+            from app.services.role_identity import legacy_language_conflicts
+            conflicts = legacy_language_conflicts(db, book) if body["language"] == "en" else []
+            if conflicts:
+                return JSONResponse({"ok": False, "error": "ambiguous_narrator_identity",
+                                     "message": "This legacy book uses Narrator as a narrator alias. Its role identities must be resolved before switching to English.",
+                                     "roles": conflicts}, status_code=409)
+            was = book.language
+            book.language = body["language"]
+            uid, actor = _actor(request)
+            db.add(ScriptLog(book_id=book.id, level="info", message=(
+                f"Book language: {was} → {book.language}; changed by {actor}. "
+                "Existing results retained; no processing started.")))
+            db.commit()
+        return JSONResponse({"ok": True, "language": book.language, "changed": bool(changed),
+                             "review_required": bool(changed), "reprocessing_started": False})
 
 
 def api_v2_chapter_recording(request: Request, chapter_id: str):
@@ -532,8 +570,11 @@ def api_v2_chapter_asr(request: Request, chapter_id: str):
         return unauthorized_response()
     if not _can_edit(request):
         return forbidden_response()
+    from app.services.asr_run import chapter_language
+
     with SessionLocal() as db:
         status = chapter_recording_status(db, str(chapter_id or "").strip())
+        language = chapter_language(db, str(chapter_id or "").strip())
     if status is None:
         return not_found_response("chapter_not_found")
     if not any(row["files"] for row in status["roles"]):
@@ -548,8 +589,9 @@ def api_v2_chapter_asr(request: Request, chapter_id: str):
         entity_type="script_chapter",
         entity_id=str(chapter_id or "").strip(),
         run_key=f"asr:{chapter_id}",
-        meta={"chapter_id": str(chapter_id or "").strip(), "force": True},
+        meta={"chapter_id": str(chapter_id or "").strip(), "force": True, "language": language},
         chapter_id=str(chapter_id or "").strip(),
+        language=language,
         # Кнопка обещает распознать заново — и платит за это; приём файлов ставит ту же
         # задачу без `force` и пересчитывает уже услышанное бесплатно.
         force=True,
@@ -934,7 +976,7 @@ async def api_v2_segment_stress(request: Request, segment_id: str):
         segment = db.get(V2Segment, segment_id)
         if segment is not None:
             db.add(ScriptLog(book_id=segment.book_id, level="info",
-                             message=f"Ударения: {actor_name} выбрал чтение «{result['word']}» в одном месте."))
+                             message=f"Word stress: {actor_name} selected the pronunciation of «{result['word']}» for one occurrence."))
         db.commit()
     return JSONResponse({"ok": True, **result})
 
@@ -974,7 +1016,7 @@ async def api_v2_character_palette(request: Request, character_id: str):
                 changed = True
         if changed:
             db.add(ScriptLog(book_id=row.book_id, level="info",
-                             message=f"Каст: {actor_name} изменил цвет роли «{row.name}»."))
+                             message=f"Cast: {actor_name} changed the color of role «{row.name}»."))
         payload = {field: str(getattr(row, field, "") or "") for field in _PALETTE_FIELDS}
         db.commit()
     return JSONResponse({"ok": True, "character_id": str(character_id), **payload})
@@ -997,13 +1039,13 @@ async def api_v2_stress_skip(request: Request, book_id: str):
             return not_found_response("book_not_found")
         if bool(body.get("undo")):
             changed = unskip_stress_word(db, book_id=book.id, word=word)
-            action = "вернул в очередь"
+            action = "restored"
         else:
             changed = skip_stress_word(db, book_id=book.id, word=word, actor_uid=uid)
-            action = "убрал из очереди"
+            action = "removed"
         if changed:
             db.add(ScriptLog(book_id=book.id, level="info",
-                             message=f"Ударения: {actor_name} {action} слово «{word.strip()}»."))
+                             message=f"Word stress queue: {actor_name} {action} word «{word.strip()}»."))
         db.commit()
     return JSONResponse({"ok": True, "changed": changed})
 
@@ -1346,11 +1388,11 @@ async def api_v2_set_model(request: Request, book_id: str):
         book.llm_provider, book.llm_model = chosen.provider, chosen.model
         db.add(ScriptLog(
             book_id=book.id, level="info",
-            message=f"V2: модель разметки — {chosen.label} ({chosen.provider}/{chosen.model}), выбрал {actor_name}",
+            message=f"V2: annotation model — {chosen.label} ({chosen.provider}/{chosen.model}), selected by {actor_name}",
         ))
         record_operator_intervention(
             db, book=book, action_type="v2_set_model", actor_uid=actor_uid, actor_name=actor_name,
-            reason="v2: выбор модели разметки",
+            reason="v2: annotation model selection",
             payload={"key": chosen.key, "provider": chosen.provider, "model": chosen.model,
                      "trains_on_text": chosen.trains_on_text},
         )
@@ -1410,11 +1452,11 @@ async def api_v2_set_book_title(request: Request, book_id: str):
         if display != was:
             db.add(ScriptLog(
                 book_id=book.id, level="info",
-                message=f"Книга переименована: «{was}» → «{display}», код для имён файлов — {code}. Переименовал {actor_name}",
+                message=f"Book renamed: «{was}» → «{display}», filename code — {code}. Renamed by {actor_name}",
             ))
             record_operator_intervention(
                 db, book=book, action_type="book_rename", actor_uid=actor_uid, actor_name=actor_name,
-                reason="переименование книги",
+                reason="book rename",
                 payload={"was": was, "now": display, "title": book.title, "author": book.author_label, "code": code},
             )
         db.commit()
@@ -1528,12 +1570,12 @@ async def api_v2_auto_publish(request: Request, book_id: str):
         book.auto_publish = "true" if enabled else "false"
         db.add(ScriptLog(
             book_id=book.id, level="info",
-            message=("V2: главы открываются дикторам сразу после одобрения" if enabled
-                     else "V2: автопубликация одобренных глав выключена") + f" ({actor_name})",
+            message=("V2: chapters are published to voice actors immediately after approval" if enabled
+                     else "V2: automatic publication of approved chapters is disabled") + f" ({actor_name})",
         ))
         record_operator_intervention(
             db, book=book, action_type="v2_auto_publish", actor_uid=actor_uid, actor_name=actor_name,
-            reason="v2: автопубликация одобренных глав", payload={"enabled": enabled},
+            reason="v2: automatic publication of approved chapters", payload={"enabled": enabled},
         )
         db.commit()
     return JSONResponse({"ok": True, "auto_publish": enabled})
@@ -1673,31 +1715,32 @@ async def api_v2_run(request: Request, book_id: str):
     # Смета большой книги читает весь её текст: на цикле событий это морозило бы сайт.
     def prepare():
         with SessionLocal() as db:
-            book = db.get(ScriptBook, str(book_id or "").strip())
+            book = lock_book_profile(db, str(book_id or "").strip())
             if book is None:
-                return not_found_response("book_not_found"), None
+                return not_found_response("book_not_found"), None, None
             expire_stale_runs(db, book.id)
-            running = active_run(db, book.id)
+            running = active_profile_job(db, book.id, kinds=("v2_pipeline",))
             if running is not None:
                 db.commit()
-                return error_response("run_in_progress", status_code=409, extra={"run_id": running.id, "status": running.status}), None
+                return error_response("run_in_progress", status_code=409, extra={"run_id": running.id, "status": running.status}), None, None
             estimate, unknown = spend.estimate_markup(db, book, steps, force=force)
-            gate = limit_gate(db, request, estimate_rub=estimate, unknown_price=unknown, what="разметка книги")
+            gate = limit_gate(db, request, estimate_rub=estimate, unknown_price=unknown, what="book annotation")
             if gate is not None:
                 db.commit()
-                return gate, None
-            run = create_queued_run(db, book.id)
+                return gate, None, None
+            language = book.language
+            run = create_queued_run(db, book.id, language=language)
             book.pipeline_mode = V2_MODE
             book.status = "processing"
             book.stop_requested = "false"
             db.add(ScriptLog(
                 book_id=book.id, level="info",
-                message=f"V2: прогон {run.id} поставлен в очередь ({actor_name}): шаги {', '.join(steps)}{' (force)' if force else ''}",
+                message=f"V2: run {run.id} queued by {actor_name}; steps {', '.join(steps)}{' (force)' if force else ''}",
             ))
             db.commit()
-            return None, run.id
+            return None, run.id, language
 
-    early, run_id = await asyncio.to_thread(prepare)
+    early, run_id, language = await asyncio.to_thread(prepare)
     if early is not None:
         return early
 
@@ -1710,11 +1753,13 @@ async def api_v2_run(request: Request, book_id: str):
         entity_type="script_book",
         entity_id=book_id,
         run_key=v2_run_key(book_id),
-        meta={"book_id": book_id, "v2_run_id": run_id, "steps": list(steps), "force": force, "by": actor_uid},
+        meta={"book_id": book_id, "v2_run_id": run_id, "steps": list(steps), "force": force, "by": actor_uid,
+              "language": language},
         book_id=book_id,
         steps=list(steps),
         force=force,
         v2_run_id=run_id,
+        language=language,
     )
     if not job_id:
         # Either the queue refused the job or a fresh background run with the same key
@@ -1742,7 +1787,7 @@ async def api_v2_stop(request: Request, book_id: str):
             return not_found_response("book_not_found")
         book.stop_requested = "true"
         running = active_run(db, book.id)
-        db.add(ScriptLog(book_id=book.id, level="info", message=f"V2: запрошена остановка ({actor_name})"))
+        db.add(ScriptLog(book_id=book.id, level="info", message=f"V2: stop requested by {actor_name}"))
         db.commit()
         return JSONResponse({"ok": True, "stop_requested": True, "run_id": running.id if running else None})
 

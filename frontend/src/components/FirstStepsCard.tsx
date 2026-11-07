@@ -19,7 +19,7 @@ import type { FirstSteps, FirstStep } from "../types";
 const MARKS: Record<FirstStep["state"], string> = { done: "✓", todo: "", running: "…", failed: "!", locked: "" };
 
 function rub(value: number): string {
-  return `${Math.max(1, Math.round(value)).toLocaleString("ru-RU")} ₽`;
+  return `${Math.max(1, Math.round(value)).toLocaleString("en-US")} RUB`;
 }
 
 export function FirstStepsCard() {
@@ -36,7 +36,7 @@ export function FirstStepsCard() {
   const flags = useMutation({
     mutationFn: (body: { hidden?: boolean; no_limit?: boolean }) => apiPutJson<FirstSteps>("/api/first-steps", body),
     onSuccess: refresh,
-    onError: (error) => pushToast({ tone: "error", title: "Не сохранилось", detail: describeApiError(error, "Попробуйте ещё раз.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Could not save", detail: describeApiError(error, "Please try again.") }),
   });
   const sample = useMutation({
     mutationFn: () => apiPostJson<{ book_id: string }>("/api/first-steps/sample", {}),
@@ -45,7 +45,7 @@ export function FirstStepsCard() {
       client.invalidateQueries({ queryKey: ["books"] });
       navigate(`/books/${encodeURIComponent(book_id)}`);
     },
-    onError: (error) => pushToast({ tone: "error", title: "Пример не добавлен", detail: describeApiError(error, "Попробуйте ещё раз.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Could not add the sample", detail: describeApiError(error, "Please try again.") }),
   });
 
   const data = query.data;
@@ -58,34 +58,34 @@ export function FirstStepsCard() {
     switch (step.key) {
       case "key":
       case "models":
-        return <Link className="fs-link" to="/settings">Настройки → Нейросети</Link>;
+        return <Link className="fs-link" to="/settings">Settings → AI providers</Link>;
       case "limit":
         return (
           <span className="fs-actions">
-            <Link className="fs-link" to="/settings?tab=spend">Задать лимит</Link>
-            <Button size="sm" variant="ghost" loading={flags.isPending} onClick={() => flags.mutate({ no_limit: true })}>Работаю без лимита</Button>
+            <Link className="fs-link" to="/settings?tab=spend">Set a limit</Link>
+            <Button size="sm" variant="ghost" loading={flags.isPending} onClick={() => flags.mutate({ no_limit: true })}>Continue without a limit</Button>
           </span>
         );
       case "sample":
-        return <Button size="sm" variant="primary" loading={sample.isPending} onClick={() => sample.mutate()}>Добавить пример</Button>;
+        return <Button size="sm" variant="primary" loading={sample.isPending} onClick={() => sample.mutate()}>Add sample</Button>;
       case "run":
-        return book && step.state !== "locked" ? <Link className="fs-link" to={book}>{step.state === "failed" ? "Открыть журнал" : "Открыть книгу"}</Link> : null;
+        return book && step.state !== "locked" ? <Link className="fs-link" to={book}>{step.state === "failed" ? "Open log" : "Open book"}</Link> : null;
       case "result":
         return book && step.state !== "locked" ? (
           <span className="fs-actions">
-            <Link className="fs-link" to={`${book}/cast`}>Каст</Link>
+            <Link className="fs-link" to={`${book}/cast`}>Cast</Link>
             {/* сразу в первую размеченную главу примера: из общего списка книг его ещё надо найти */}
-            <Link className="fs-link" to={reader}>Читалка</Link>
+            <Link className="fs-link" to={reader}>Reader</Link>
           </span>
         ) : null;
     }
   }
 
   return (
-    <section className="panel fs-card" aria-label="Первые шаги">
+    <section className="panel fs-card" aria-label="First steps">
       <header className="fs-head">
-        <h2>Первые шаги</h2>
-        <span className="fs-count">{data.done_count} из {data.total}</span>
+        <h2>First steps</h2>
+        <span className="fs-count">{data.done_count} of {data.total}</span>
       </header>
       <ol className="fs-steps">
         {data.steps.map((step) => (
@@ -96,7 +96,7 @@ export function FirstStepsCard() {
               <span className="fs-detail">
                 {step.detail}
                 {step.key === "run" && step.state === "todo" && data.sample_estimate_rub !== null
-                  ? (data.sample_estimate_unknown ? " Цена модели неизвестна — впишите её в «Настройках»." : ` По смете — около ${rub(data.sample_estimate_rub)}.`)
+                  ? (data.sample_estimate_unknown ? " The model price is unknown. Enter it in Settings." : ` Estimated cost: about ${rub(data.sample_estimate_rub)}.`)
                   : ""}
               </span>
             </div>
@@ -105,8 +105,8 @@ export function FirstStepsCard() {
         ))}
       </ol>
       <footer className="fs-foot">
-        <span className="fs-detail">Дальше: <Link to="/dictors">пригласите дикторов</Link> · подключите Telegram-бота (на сервере, см. README)</span>
-        <Button size="sm" variant="ghost" onClick={() => flags.mutate({ hidden: true })}>Скрыть</Button>
+        <span className="fs-detail">Next: <Link to="/dictors">invite voice actors</Link> · connect a Telegram bot (server setup; see README)</span>
+        <Button size="sm" variant="ghost" onClick={() => flags.mutate({ hidden: true })}>Hide</Button>
       </footer>
     </section>
   );

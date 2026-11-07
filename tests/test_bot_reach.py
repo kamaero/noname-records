@@ -92,7 +92,7 @@ class TestWhenItCannotAsk:
         item = next(x for x in check_bot_reach(rows, token="t")["items"] if x["telegram_user_id"] == "900000107")
 
         assert item["reachable"] is None
-        assert "не удалось" in item["reason"].lower()
+        assert "could not contact" in item["reason"].lower()
 
     def test_nobody_to_check(self):
         assert check_bot_reach([], token="t") == {"items": [], "checked": 0, "unreachable": 0, "error": ""}

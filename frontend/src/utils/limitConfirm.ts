@@ -8,11 +8,11 @@
 import { ApiError, apiPostJson } from "../api/client";
 
 function rub(value: unknown): string {
-  return `${Math.round(Number(value) || 0).toLocaleString("ru-RU")} ₽`;
+  return `${Math.round(Number(value) || 0).toLocaleString("en-US")} RUB`;
 }
 
 export function overLimitText(payload: Record<string, unknown>): string {
-  return `Прогон ≈ ${rub(payload.estimate_rub)}, до месячного лимита осталось ${rub(payload.left_rub)} (лимит ${rub(payload.limit_rub)}).`;
+  return `Estimated cost: ${rub(payload.estimate_rub)}. Remaining monthly budget: ${rub(payload.left_rub)} (limit: ${rub(payload.limit_rub)}).`;
 }
 
 /** Сервер запустил, но предупредил: у модели нет цены, траты не войдут в лимит. Редко и важно. */
@@ -27,13 +27,13 @@ export async function postWithLimit<T>(path: string, body: unknown): Promise<T> 
     return warnIfUnpriced(await apiPostJson<T>(path, body));
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 409 || error.payload.error !== "over_limit") throw error;
-    if (!window.confirm(`${overLimitText(error.payload)}\n\nЗапустить сверх лимита?`)) throw error;
+    if (!window.confirm(`${overLimitText(error.payload)}\n\nRun over the limit?`)) throw error;
     const sep = path.includes("?") ? "&" : "?";
     try {
       return warnIfUnpriced(await apiPostJson<T>(`${path}${sep}override_limit=1`, body));
     } catch (second) {
       if (second instanceof ApiError && second.status === 403) {
-        throw new ApiError("Сверх лимита запускает только администратор студии.", { status: 403, payload: second.payload });
+        throw new ApiError("Only the studio administrator can approve a run over the limit.", { status: 403, payload: second.payload });
       }
       throw second;
     }

@@ -1,3 +1,4 @@
+import { roleLabel } from "./types";
 /**
  * Карточка находки консилиума — док читалки, как выбор роли. Показывает, что стоит в
  * сценарии, что сказал каждый чтец, что доказал (или не смог) арбитр, и даёт кнопки-имена.
@@ -66,15 +67,15 @@ export function ConsiliumCard({ bookId, item, castNames, items, onClose, onNext 
       // «оставить» приходит либо от dismiss, либо от accept с именем из сценария (status: dismissed)
       const speaker = "speaker" in result ? result.speaker : "";
       const applied = choice.kind === "accept" && "status" in result && result.status === "accepted";
-      setDecided(applied ? `Роль в абзаце: ${speaker}` : "Оставлено как в сценарии");
-      pushToast({ tone: "success", title: applied ? `Роль изменена: ${speaker}` : "Оставлено как есть" });
+      setDecided(applied ? `Paragraph role: ${roleLabel(speaker)}` : "Script assignment kept");
+      pushToast({ tone: "success", title: applied ? `Role changed: ${roleLabel(speaker)}` : "Kept unchanged" });
       await invalidateReader(queryClient, bookId, applied ? ["chapters", "disputed", "consilium"] : ["consilium"]);
       // чтобы следующая находка той же главы видела новую сверку позже
       await queryClient.invalidateQueries({ queryKey: ["v2", "consilium-impact"] });
     },
     onError: async (error) => {
       if (isStaleFindingError(error)) setStale(true);
-      pushToast({ tone: "error", title: "Решение не сохранилось", detail: describeConsiliumError(error) });
+      pushToast({ tone: "error", title: "Decision not saved", detail: describeConsiliumError(error) });
       await invalidateReader(queryClient, bookId, ["consilium"]);
     },
   });
@@ -90,34 +91,34 @@ export function ConsiliumCard({ bookId, item, castNames, items, onClose, onNext 
   const alreadyDecided = item.status !== "new";
 
   return (
-    <section className="v2r-dock v2r-dock--cons" role="region" aria-label="Находка консилиума">
+    <section className="v2r-dock v2r-dock--cons" role="region" aria-label="AI review finding">
       <div className="v2r-dock-head">
-        <span className="v2r-dock-title">Консилиум · {KIND_TITLES[item.kind]}</span>
+        <span className="v2r-dock-title">AI review · {KIND_TITLES[item.kind]}</span>
         <span className="v2r-dock-source">
-          гл. {item.chapter_index}, абз. {item.ordinal}
+          ch. {item.chapter_index}, paragraph {item.ordinal}
         </span>
-        <button type="button" className="btn btn-sm v2r-btn v2r-dock-close" onClick={onClose} aria-label="Закрыть">
+        <button type="button" className="btn btn-sm v2r-btn v2r-dock-close" onClick={onClose} aria-label="Close">
           ✕
         </button>
       </div>
       <p className="v2r-cons-note">{KIND_NOTES[item.kind]}</p>
 
       <dl className="v2r-cons-facts">
-        <dt>сейчас в сценарии</dt>
-        <dd><strong>{item.current_speaker}</strong></dd>
-        <dt>чтецы порознь</dt>
+        <dt>current script</dt>
+        <dd><strong>{roleLabel(item.current_speaker)}</strong></dd>
+        <dt>independent reviewers</dt>
         <dd>opus: {readerAnswer(item.reader_opus, cast)} · sol: {readerAnswer(item.reader_sol, cast)}</dd>
-        <dt>арбитр</dt>
+        <dt>arbiter</dt>
         <dd>
           {provenChange || provenKeep ? (
             <>
-              <strong>{provenChange ? `сменить на ${item.arbiter_speaker}` : "сценарий прав"}</strong>
-              <blockquote className="v2r-cons-quote">«{item.evidence_quote}» <span className="num">— абз. {item.evidence_para}</span></blockquote>
+              <strong>{provenChange ? `change to ${roleLabel(item.arbiter_speaker)}` : "script confirmed"}</strong>
+              <blockquote className="v2r-cons-quote">«{item.evidence_quote}» <span className="num">— paragraph {item.evidence_para}</span></blockquote>
               {item.reason ? <span className="v2r-cons-reason">{item.reason}</span> : null}
             </>
           ) : (
             <>
-              <strong>Арбитр не смог доказать по тексту — решаете вы.</strong>
+              <strong>The arbiter found insufficient evidence in the text. You decide.</strong>
               {item.reason ? <span className="v2r-cons-reason v2r-cons-reason--weak">{item.reason}</span> : null}
             </>
           )}
@@ -126,19 +127,19 @@ export function ConsiliumCard({ bookId, item, castNames, items, onClose, onNext 
 
       {decided || alreadyDecided ? (
         <div className="v2r-dock-actions">
-          <span className="v2r-cons-done">{decided ?? "Эта находка уже решена."}</span>
+          <span className="v2r-cons-done">{decided ?? "This finding is already resolved."}</span>
           {next ? (
             <button type="button" className="btn btn-sm btn-primary" onClick={() => onNext(next)}>
-              к следующей →
+              next finding →
             </button>
           ) : (
-            <span className="v2r-dock-hint">Нерешённых находок больше нет.</span>
+            <span className="v2r-dock-hint">No unresolved findings remain.</span>
           )}
         </div>
       ) : (
         <>
-          {stale ? <p className="v2r-sheet-error">Это место правили после прогона — посмотрите заново.</p> : null}
-          <div className="v2r-dock-actions" role="group" aria-label="Кто говорит">
+          {stale ? <p className="v2r-sheet-error">This passage was edited after the run. Review it again.</p> : null}
+          <div className="v2r-dock-actions" role="group" aria-label="Who is speaking">
             {!stale
               ? candidates.map((candidate) => (
                   <button
@@ -148,8 +149,8 @@ export function ConsiliumCard({ bookId, item, castNames, items, onClose, onNext 
                     className={candidate.primary ? "btn btn-sm btn-primary v2r-cons-pick" : "btn btn-sm v2r-btn v2r-cons-pick"}
                     onClick={() => decide.mutate(candidate.keep ? { kind: "dismiss" } : { kind: "accept", speaker: candidate.name })}
                   >
-                    {candidate.keep ? `${candidate.name} — оставить как в сценарии` : candidate.name}
-                    <span className="v2r-cons-backers">{candidate.backers.filter((b) => b !== "script" || !candidate.keep).map((b) => BACKER_LABELS[b]).join(" и ")}</span>
+                    {candidate.keep ? `${roleLabel(candidate.name)} — keep script assignment` : roleLabel(candidate.name)}
+                    <span className="v2r-cons-backers">{candidate.backers.filter((b) => b !== "script" || !candidate.keep).map((b) => BACKER_LABELS[b]).join(" and ")}</span>
                     {(() => {
                       const note = candidate.keep ? null : impactNote(impact.data, candidate.name);
                       return note ? <span className={`v2r-cons-impact v2r-cons-impact--${note.level}`}>{note.text}</span> : null;
@@ -158,11 +159,11 @@ export function ConsiliumCard({ bookId, item, castNames, items, onClose, onNext 
                 ))
               : (
                   <button type="button" disabled={busy} className="btn btn-sm v2r-btn" onClick={() => decide.mutate({ kind: "dismiss" })}>
-                    оставить как есть
+                    keep unchanged
                   </button>
                 )}
             <button type="button" disabled={busy} className={other ? "btn btn-sm v2r-btn is-on" : "btn btn-sm v2r-btn"} onClick={() => setOther((open) => !open)} aria-expanded={other}>
-              другая роль…
+              another role…
             </button>
           </div>
           {other ? (
@@ -171,8 +172,8 @@ export function ConsiliumCard({ bookId, item, castNames, items, onClose, onNext 
                 <input
                   className="v2r-search-input v2r-cons-filter"
                   type="search"
-                  placeholder="Найти роль в касте книги…"
-                  aria-label="Поиск роли по касту книги"
+                  placeholder="Find a role in the cast…"
+                  aria-label="Search book cast"
                   autoComplete="off"
                   value={filter}
                   onChange={(event) => setFilter(event.target.value)}
@@ -186,7 +187,7 @@ export function ConsiliumCard({ bookId, item, castNames, items, onClose, onNext 
                     <button key={name} type="button" disabled={busy} title={note?.text}
                             className={note?.level === "warn" ? "btn btn-sm v2r-btn v2r-cons-name--warn" : "btn btn-sm v2r-btn"}
                             onClick={() => decide.mutate({ kind: "accept", speaker: name })}>
-                      {note?.level === "warn" ? "⚠ " : ""}{name}
+                      {note?.level === "warn" ? "⚠ " : ""}{roleLabel(name)}
                     </button>
                   );
                 })}

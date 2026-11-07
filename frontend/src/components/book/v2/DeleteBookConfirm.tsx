@@ -15,16 +15,16 @@ export function DeleteBookConfirm({ title, pending, onConfirm, onCancel }: Delet
     cancelRef.current?.focus();
   }, []);
   return (
-    <div className="hub-confirm" role="group" aria-label="Подтверждение удаления">
+    <div className="hub-confirm" role="group" aria-label="Confirm deletion">
       <p>
-        Удалить книгу «{title}» вместе с главами, кастом и разметкой? Отменить это нельзя.
+        Delete book «{title}» with its chapters, cast and annotations? This cannot be undone.
       </p>
       <div className="hub-confirm-actions">
         <Button variant="danger" size="sm" loading={pending} onClick={onConfirm}>
-          Удалить книгу
+          Delete book
         </Button>
         <Button ref={cancelRef} variant="ghost" size="sm" disabled={pending} onClick={onCancel}>
-          Отмена
+          Cancel
         </Button>
       </div>
     </div>

@@ -36,7 +36,8 @@ def _fail_background_run(session_factory, run_id: str, exc: Exception):
 
 def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
                            assembled_fingerprint: str = "", narrator_take_id: str = "",
-                           narrator_input_fingerprint: str = "", force: bool = False):
+                           narrator_input_fingerprint: str = "", force: bool = False,
+                           language: str | None = None):
     """Проверяем снимок сборки и захватываем оплачиваемую задачу ровно один раз."""
     from app.services.asr_audit import run_asr_audit
     from app.services.asr_audit_lifecycle import assembled_audit_snapshot, claim_audit_run, record_payment_boundary
@@ -48,11 +49,13 @@ def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
                 return
             expected = {"assembled_fingerprint": assembled_fingerprint, "narrator_take_id": narrator_take_id,
                         "narrator_input_fingerprint": narrator_input_fingerprint}
+            if language is not None:
+                expected["language"] = language
             if assembled_audit_snapshot(db, chapter_id) != expected:
                 db.rollback()
                 record_payment_boundary(db, run_id, state="not_started", skip_reason="assembly_changed_before_payment")
                 _finish_background_run(session_factory, BackgroundRun, run_id, "skipped",
-                                       "Состав главы изменился после сборки; оплаты не было")
+                                       "Chapter inputs changed after assembly; no payment was made")
                 return
             record_payment_boundary(db, run_id, state="possibly_paid")
             from app.models import ScriptChapter
@@ -61,19 +64,21 @@ def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
             book_id = str(chapter.book_id) if chapter else ""
             db.commit()
             with spend.context("asr_audit", book_id=book_id, chapter_id=chapter_id, run_id=run_id):
-                audit = run_asr_audit(db, chapter_id, expected_narrator_fingerprint=narrator_input_fingerprint)
+                audit = run_asr_audit(db, chapter_id, expected_narrator_fingerprint=narrator_input_fingerprint,
+                                      **({"language": language} if language is not None else {}))
             db.commit()
             if audit.status == "skipped" and audit.error_message in {"narrator_input_changed", "no_narrator_take"}:
                 record_payment_boundary(db, run_id, state="not_started", skip_reason=audit.error_message)
-            audit_status, message = audit.status, audit.error_message or "без ошибок"
+            audit_status, message = audit.status, audit.error_message or "no issues"
         _finish_background_run(session_factory, BackgroundRun, run_id, audit_status,
-                               f"аудит {audit_status}: {message}")
+                               f"audit {audit_status}: {message}")
     except Exception as exc:
         _fail_background_run(session_factory, run_id, exc)
         raise
 
 
-def perform_asr_chapter_task(chapter_id: str, run_id: str = "", force: bool = False):
+def perform_asr_chapter_task(chapter_id: str, run_id: str = "", force: bool = False,
+                             language: str | None = None):
     """Распознать дубли главы. Идёт в фоне: минута на файл — не для запроса из браузера.
 
     `force` — кнопка «Распознать» в редакторе: слышать заново все дубли. Приём файлов
@@ -86,11 +91,12 @@ def perform_asr_chapter_task(chapter_id: str, run_id: str = "", force: bool = Fa
     try:
         _start_background_run(session_factory, run_id)
         with session_factory() as db:
-            result = run_asr_for_chapter(db, chapter_id, force=bool(force))
+            result = run_asr_for_chapter(db, chapter_id, force=bool(force),
+                                         **({"language": language} if language is not None else {}))
             db.commit()
         _finish_background_run(session_factory, BackgroundRun, run_id, "done",
-                               f"распознано {result['done']}, пересчитано {result.get('realigned', 0)}, "
-                               f"не вышло {result['failed']}")
+                               f"transcribed {result['done']}, realigned {result.get('realigned', 0)}, "
+                               f"failed {result['failed']}")
     except Exception as exc:
         _fail_background_run(session_factory, run_id, exc)
         raise
@@ -107,7 +113,7 @@ def perform_bot_intro_task(telegram_user_id: str, run_id: str = ""):
             result = intro_followup(db, telegram_user_id)
             db.commit()
         _finish_background_run(session_factory, BackgroundRun, run_id, "done",
-                               f"демо {result['demos']}, назначений {result['assignments']}")
+                               f"demos {result['demos']}, assignments {result['assignments']}")
     except Exception as exc:
         _fail_background_run(session_factory, run_id, exc)
         raise
@@ -125,7 +131,7 @@ def perform_audition_card_task(audio_id: str, file_id: str = "", run_id: str = "
             sent = send_card(db, audio_id, file_id=file_id, send_audio=send_audio,
                              send_text=lambda chat, text: bool(send_telegram_message(db, text, chat_ids=[chat],
                                                                                      direct=True)))
-        _finish_background_run(session_factory, BackgroundRun, run_id, "done", f"карточек {sent}")
+        _finish_background_run(session_factory, BackgroundRun, run_id, "done", f"cards {sent}")
     except Exception as exc:
         _fail_background_run(session_factory, run_id, exc)
         raise
@@ -149,13 +155,13 @@ def perform_bot_upload_task(upload_id: str, run_id: str = ""):
         raise
 
 
-def perform_bot_take_task(upload_id: str, run_id: str = ""):
+def perform_bot_take_task(upload_id: str, run_id: str = "", language: str | None = None):
     """Дубль, присланный боту: распознать раз, разложить по главам, отчёт диктору и владельцу."""
     import os
 
     from app.models import BotUpload
     from app.services import asr_run, audio_storage
-    from app.services.bot_takes import process, takes_workdir
+    from app.services.bot_takes import process, takes_workdir, snapshot_language
     from app.services.telegram import fetched_file, send_telegram_message
 
     session_factory = SessionLocal
@@ -163,16 +169,18 @@ def perform_bot_take_task(upload_id: str, run_id: str = ""):
         _start_background_run(session_factory, run_id)
         with session_factory() as db:
             row = db.get(BotUpload, str(upload_id or ""))
+            language = snapshot_language(db, row, language=language) if row is not None else language
             phrases = asr_run.book_phrases(db, row.book_id) if row is not None else []
             # Распознавание — тот же сервис и те же подсказки, что у обычной сверки. Повтор —
             # только на «сервис занят» (`_transcribe_retrying`): таймаут считается «возможно
             # оплачено», и второй раз за него не платим.
             transcribe_part = lambda path: asr_run._transcribe_retrying(  # noqa: E731
-                lambda: asr_run._transcribe_with_service(path, phrases=phrases))
+                lambda: asr_run._transcribe_with_service(path, phrases=phrases, language=language))
             # Каталог постоянный для строки учёта: ручной повтор найдёт в нём оплаченные части.
             workdir = takes_workdir(str(upload_id))
             result = process(
                 db, upload_id, fetch=fetched_file, transcribe_part=transcribe_part, workdir=workdir,
+                language=language,
                 send_text=lambda chat, text: bool(send_telegram_message(db, text, chat_ids=[chat], direct=True)),
                 # Без `direct`: перехват `OWNER_TELEGRAM_ID` доставит сводку владельцу.
                 notify_owner=lambda text: bool(send_telegram_message(db, text)),
@@ -246,7 +254,7 @@ def perform_realign_chapter_task(chapter_id: str, run_id: str = ""):
             except Exception:
                 logger.exception("Не удалось отправить тревогу владельцу, глава %s", chapter_id)
         _finish_background_run(session_factory, BackgroundRun, run_id, "done",
-                               f"найдено у соседних ролей {result['borrowed']}, новых пропусков "
+                               f"found in other roles {result['borrowed']}, new missing lines "
                                f"{sum(len(v) for v in result['new_missing'].values())}")
     except Exception as exc:
         _fail_background_run(session_factory, run_id, exc)
@@ -321,15 +329,15 @@ def perform_verify_chapter_task(chapter_id: str, run_id: str = ""):
             db.commit()
         _finish_background_run(
             session_factory, BackgroundRun, run_id, "done",
-            f"сошлось {result.get('ok', 0)}, битых {result.get('mismatch', 0)}, "
-            f"пропало {result.get('missing', 0)}, пропущено {result.get('skipped', 0)}",
+            f"matched {result.get('ok', 0)}, corrupt {result.get('mismatch', 0)}, "
+            f"missing {result.get('missing', 0)}, skipped {result.get('skipped', 0)}",
         )
     except Exception as exc:
         _fail_background_run(session_factory, run_id, exc)
         raise
 
 
-def perform_consilium_task(book_id: str, mode: str = "recheck", run_id: str = ""):
+def perform_consilium_task(book_id: str, mode: str = "recheck", run_id: str = "", language: str | None = None):
     """Прогон консилиума по книге. Живёт в очереди `consilium` и в своей службе."""
     from app.services.consilium_engine import run_consilium
 
@@ -339,7 +347,9 @@ def perform_consilium_task(book_id: str, mode: str = "recheck", run_id: str = ""
         logger.info("consilium skipped (book=%s, run_id=%s): run is no longer queued", book_id, run_id)
         return None
     try:
-        run_consilium(session_factory=session_factory, book_id=book_id, run_id=run_id, mode=mode)
+        from app.v2.job_profile import background_run_language
+        language = background_run_language(session_factory, run_id, language)
+        run_consilium(session_factory=session_factory, book_id=book_id, run_id=run_id, mode=mode, language=language)
     except BaseException as exc:
         # run_consilium сам ставит failed с причиной; здесь — отметка на случай, если сбой
         # прошёл мимо него (не Exception, сбой самой отметки). Строку, уже закрытую
@@ -353,7 +363,8 @@ def perform_consilium_task(book_id: str, mode: str = "recheck", run_id: str = ""
         raise
 
 
-def perform_sound_task(book_id: str, mode: str = "rest", chapter_id: str = "", run_id: str = ""):
+def perform_sound_task(book_id: str, mode: str = "rest", chapter_id: str = "", run_id: str = "",
+                       language: str | None = None):
     """Звуковая разметка книги или главы. Живёт в очереди `consilium` — одна полоса долгих проходов."""
     from app.services.sound_engine import run_sound
 
@@ -362,7 +373,10 @@ def perform_sound_task(book_id: str, mode: str = "rest", chapter_id: str = "", r
         logger.info("sound skipped (book=%s, run_id=%s): run is no longer queued", book_id, run_id)
         return None
     try:
-        run_sound(session_factory=session_factory, book_id=book_id, run_id=run_id, mode=mode, chapter_id=chapter_id)
+        from app.v2.job_profile import background_run_language
+        language = background_run_language(session_factory, run_id, language)
+        run_sound(session_factory=session_factory, book_id=book_id, run_id=run_id, mode=mode,
+                  chapter_id=chapter_id, language=language)
     except BaseException as exc:
         logger.error(f"sound failed (book={book_id}, run_id={run_id}): {exc}", exc_info=True)
         try:
@@ -373,7 +387,8 @@ def perform_sound_task(book_id: str, mode: str = "rest", chapter_id: str = "", r
         raise
 
 
-def perform_ambient_task(chapter_id: str, marker_id: str = "", prompt_override: str = "", run_id: str = ""):
+def perform_ambient_task(chapter_id: str, marker_id: str = "", prompt_override: str = "", run_id: str = "",
+                         language: str | None = None):
     """Эмбиент главы (или одной сцены). Живёт в очереди `consilium` — одна полоса долгих проходов."""
     from app.services.ambient_engine import run_ambient
 
@@ -382,8 +397,10 @@ def perform_ambient_task(chapter_id: str, marker_id: str = "", prompt_override: 
         logger.info("ambient skipped (chapter=%s, run_id=%s): run is no longer queued", chapter_id, run_id)
         return None
     try:
+        from app.v2.job_profile import background_run_language
+        language = background_run_language(session_factory, run_id, language)
         run_ambient(session_factory=session_factory, chapter_id=chapter_id, run_id=run_id,
-                    marker_id=marker_id, prompt_override=prompt_override)
+                    marker_id=marker_id, prompt_override=prompt_override, language=language)
     except BaseException as exc:
         logger.error(f"ambient failed (chapter={chapter_id}, run_id={run_id}): {exc}", exc_info=True)
         try:
@@ -417,7 +434,8 @@ def _run_is_open(session_factory, run_id: str) -> bool:
 
 
 def perform_v2_pipeline_task(book_id: str, run_id: str = "", *, steps=None, force: bool = False,
-                             v2_run_id: str | None = None, provider: str | None = None, model: str | None = None):
+                             v2_run_id: str | None = None, provider: str | None = None, model: str | None = None,
+                             language: str | None = None):
     """
     RQ task to run the v2 book pipeline (segment → cast → attribute → stress).
 
@@ -425,22 +443,26 @@ def perform_v2_pipeline_task(book_id: str, run_id: str = "", *, steps=None, forc
     batch, and finished or failed; a failed v2 run is raised so RQ and the
     background_runs table both say so.
     """
-    from app.v2.pipeline import STEPS, run_book_pipeline
+    from app.v2.pipeline import STEPS, RunContext, run_book_pipeline
 
     logger.info(f"Starting v2 pipeline task for book {book_id} (run_id={run_id}, v2_run_id={v2_run_id})")
     session_factory = SessionLocal
+    context = RunContext(language=language)
 
     def heartbeat() -> None:
         heartbeat_background_run(
             session_factory,
             BackgroundRun,
             run_key=f"v2-pipeline:{book_id}",
-            meta={"book_id": book_id, "v2_run_id": v2_run_id or ""},
+            meta={"book_id": book_id, "v2_run_id": v2_run_id or "", "language": context.language},
         )
 
     try:
         if run_id:
             _start_background_run(session_factory, run_id)
+
+        if run_id and not v2_run_id:
+            raise RuntimeError("language_snapshot_missing: legacy pipeline job has no snapshotted run")
 
         run = run_book_pipeline(
             book_id,
@@ -450,6 +472,9 @@ def perform_v2_pipeline_task(book_id: str, run_id: str = "", *, steps=None, forc
             model=model,
             run_id=v2_run_id,
             on_heartbeat=heartbeat,
+            language=language,
+            ctx=context,
+            session_factory=session_factory,
         )
         if run.status == "failed":
             raise RuntimeError(run.error or "v2 pipeline failed")

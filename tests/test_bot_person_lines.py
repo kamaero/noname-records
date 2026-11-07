@@ -35,8 +35,8 @@ def db():
 
 def test_owner_by_name_finds_a_cast_only_actor_and_speaks_about_them(db):
     lines = bot_status.person_lines(db, bot_status.owner_by_name("Без Телеграма"), now=NOW, you=False)
-    assert lines.roles == ["• «Убув» — «Карта Приозерья»: сдано 0 из 1 главы"]
-    assert lines.auditions == ["• «Сталин» — «Карта Приозерья»: ждём пробу до 5 октября, 17:00 МСК"]
+    assert lines.roles == ["• «Убув» — «Карта Приозерья»: completed 0 of 1 chapter"]
+    assert lines.auditions == ["• «Сталин» — «Карта Приозерья»: awaiting audition by 5 October, 17:00 MSK"]
     assert lines.rejected == []
 
 

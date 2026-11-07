@@ -33,12 +33,12 @@ def edit_off(chat_id, message_id) -> Outgoing:
 
 
 def time_markup(character_id: str) -> dict:
-    return {"inline_keyboard": [[{"text": "⏳ Нужно больше времени", "callback_data": f"{DL_PREFIX}t:{character_id}"}]]}
+    return {"inline_keyboard": [[{"text": '⏳ Need more time', "callback_data": f"{DL_PREFIX}t:{character_id}"}]]}
 
 
 def invite_markup(character_id: str) -> dict:
     return {"inline_keyboard": [
-        [{"text": "✅ Беру", "callback_data": f"{DL_PREFIX}y:{character_id}"},
-         {"text": "✖️ Не смогу", "callback_data": f"{DL_PREFIX}n:{character_id}"}],
+        [{"text": '✅ Accept', "callback_data": f"{DL_PREFIX}y:{character_id}"},
+         {"text": '✖️ Decline', "callback_data": f"{DL_PREFIX}n:{character_id}"}],
         *time_markup(character_id)["inline_keyboard"],
     ]}

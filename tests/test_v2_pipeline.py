@@ -93,16 +93,16 @@ def test_steps_run_in_pipeline_order_and_the_book_lands_in_author_review(monkeyp
         assert is_v2_book(book)
         assert latest_run(db, BOOK).id == run.id
         messages = [row.message for row in db.query(ScriptLog).filter(ScriptLog.book_id == BOOK).all()]
-        assert any("старт прогона" in m and "segment, attribute, stress" in m for m in messages)
-    assert notified == [("uploaded", "author_review", "Пайплайн v2 завершён: все главы размечены.")]
+        assert any("Starting run" in m and "segment, attribute, stress" in m for m in messages)
+    assert notified == [("uploaded", "author_review", 'Book processing complete: all chapters are annotated.')]
 
 
 def test_unknown_step_and_unknown_book_are_refused():
     SessionLocal = _factory()
     _seed(SessionLocal)
-    with pytest.raises(ValueError, match="неизвестные шаги"):
+    with pytest.raises(ValueError, match="Unknown steps"):
         run_book_pipeline(BOOK, steps=("segment", "polish"), session_factory=SessionLocal, step_functions={"segment": lambda *a: {}})
-    with pytest.raises(ValueError, match="книги"):
+    with pytest.raises(ValueError, match="Book"):
         run_book_pipeline("nope", steps=("segment",), session_factory=SessionLocal, step_functions={"segment": lambda *a: {}})
 
 
@@ -129,7 +129,7 @@ def test_a_stop_between_chapters_ends_the_run_stopped_with_the_written_chapter_k
     )
     assert run.status == "stopped" and run.step == "segment"
     assert (run.chapters_total, run.chapters_done, run.calls, run.prompt_tokens, run.completion_tokens) == (3, 1, 1, 10, 5)
-    assert "остановлено перед главой 2" in run.error
+    assert 'Stopped before chapter 2' in run.error
     assert later == [] and len(heartbeats) >= 2
     with SessionLocal() as db:
         book = db.get(ScriptBook, BOOK)
@@ -149,7 +149,7 @@ def test_a_failing_step_fails_the_run_and_the_book_and_says_why(monkeypatch):
     assert run.error == "RuntimeError: модель не ответила"
     with SessionLocal() as db:
         assert db.get(ScriptBook, BOOK).status == "failed"
-    assert notified == [("uploaded", "failed", "v2 · Роли · RuntimeError: модель не ответила")]
+    assert notified == [("uploaded", "failed", "v2 · Attribution · RuntimeError: модель не ответила")]
 
 
 def test_a_queued_run_made_by_the_api_is_adopted_by_the_worker():
@@ -205,7 +205,8 @@ def test_attribute_step_stores_versions_logs_usage_and_skips_done_chapters(monke
     _run_step(SessionLocal, step_segment)
     asked = []
 
-    def fake_attribute_chapter(units, *, cast, cast_lines, llm, review=True, on_batch=None):
+    def fake_attribute_chapter(units, *, cast, cast_lines, llm, review=True, on_batch=None, language="ru"):
+        assert language == "ru"
         asked.append((len(units), sorted(cast), review))
         records = [u.as_record(span_start=0, span_end=len(u.text), speaker="Рассказчик", confidence=0.9) for u in units]
         return records, ["одна проблема"], {"calls": 1, "prompt_tokens": 100, "completion_tokens": 20}
@@ -215,7 +216,7 @@ def test_attribute_step_stores_versions_logs_usage_and_skips_done_chapters(monke
     result, run = _run_step(SessionLocal, step_attribute, ctx=ctx)
     assert (result["chapters"], result["skipped"]) == (3, 0)
     assert result["stats"] == {"calls": 3, "prompt_tokens": 300, "completion_tokens": 60}
-    assert result["problems"] == ["глава 1: одна проблема", "глава 2: одна проблема", "глава 3: одна проблема"]
+    assert result["problems"] == ['chapter 1: одна проблема', 'chapter 2: одна проблема', 'chapter 3: одна проблема']
     assert (run.calls, run.prompt_tokens, run.completion_tokens) == (3, 300, 60)
     # headings are never asked about; the cast narrows by appears_in
     assert asked == [(2, ["Дгар", "Дгарнин"], False), (1, [], False), (2, [], False)]
@@ -261,7 +262,7 @@ def test_cast_step_reuses_an_existing_cast_and_calls_v1_only_when_there_is_none(
     SessionLocal = _factory()
     _seed(SessionLocal, characters=True)
     called = []
-    monkeypatch.setattr("app.services.char_extraction._run_char_extraction", lambda db, book, job: called.append(job.stage) or 4)
+    monkeypatch.setattr("app.services.char_extraction._run_char_extraction", lambda db, book, job, **kwargs: called.append(job.stage) or 4)
     result, run = _run_step(SessionLocal, step_cast)
     assert result == {"reused": 1, "imported": 0} and called == [] and (run.chapters_total, run.chapters_done) == (1, 1)
 
@@ -279,7 +280,7 @@ def test_cast_extraction_failure_is_reported_and_the_run_goes_on(monkeypatch):
     _seed(SessionLocal, characters=False)
     _notify_recorder(monkeypatch)
 
-    def boom(db, book, job):
+    def boom(db, book, job, **kwargs):
         raise RuntimeError("нет ключа")
 
     monkeypatch.setattr("app.services.char_extraction._run_char_extraction", boom)
@@ -291,7 +292,7 @@ def test_cast_extraction_failure_is_reported_and_the_run_goes_on(monkeypatch):
         assert job.status == "failed" and job.error_message == "RuntimeError: нет ключа"
         assert db.query(V2Segment).count() == 8
         warnings = [r.message for r in db.query(ScriptLog).filter(ScriptLog.level == "warning").all()]
-        assert any("извлечение не удалось" in m for m in warnings)
+        assert any("Character extraction failed" in m for m in warnings)
 
 
 # --- run rows the API reads --------------------------------------------------------------
@@ -421,7 +422,7 @@ def test_a_catalogued_model_brings_its_own_reasoning_knob(monkeypatch):
 def test_the_characters_job_runs_on_the_studios_model(monkeypatch):
     from app.services import step_models
     monkeypatch.setattr(step_models, "step_model", lambda key: ("openrouter", "vendor/chars"))
-    monkeypatch.setattr("app.services.char_extraction._run_char_extraction", lambda db, book, job: 0)
+    monkeypatch.setattr("app.services.char_extraction._run_char_extraction", lambda db, book, job, **kwargs: 0)
     SessionLocal = _factory()
     _seed(SessionLocal, characters=False)
     _run_step(SessionLocal, step_cast)
@@ -432,7 +433,7 @@ def test_the_characters_job_runs_on_the_studios_model(monkeypatch):
 
 def test_a_rerun_of_characters_takes_the_model_chosen_since(monkeypatch):
     from app.services import step_models
-    monkeypatch.setattr("app.services.char_extraction._run_char_extraction", lambda db, book, job: 0)
+    monkeypatch.setattr("app.services.char_extraction._run_char_extraction", lambda db, book, job, **kwargs: 0)
     SessionLocal = _factory()
     _seed(SessionLocal, characters=False)
     with SessionLocal() as db:
@@ -450,13 +451,13 @@ def test_a_missing_markup_key_stops_the_run_before_characters_spend(monkeypatch)
     from app.services import provider_keys
     monkeypatch.setattr(provider_keys, "provider_key", lambda name: "" if name == "deepseek" else "k")
     spent = []
-    monkeypatch.setattr("app.services.char_extraction._run_char_extraction", lambda db, book, job: spent.append(1) or 0)
+    monkeypatch.setattr("app.services.char_extraction._run_char_extraction", lambda db, book, job, **kwargs: spent.append(1) or 0)
     _notify_recorder(monkeypatch)
     SessionLocal = _factory()
     _seed(SessionLocal, characters=False)
     run = run_book_pipeline(BOOK, steps=("segment", "cast", "attribute"), session_factory=SessionLocal)
     assert run.status == "failed" and spent == []
-    assert "DeepSeek" in run.error and "Настройки → Нейросети" in run.error
+    assert "DeepSeek" in run.error and "Settings → AI providers" in run.error
 
 
 def test_each_pipeline_step_runs_inside_its_spend_step(monkeypatch):

@@ -75,7 +75,7 @@ const SOUND_MARGIN_PX = 184;
 function GapRow({ count, onExpand }: { count: number; onExpand: () => void }) {
   return (
     <button type="button" className="v2r-gap" onClick={onExpand}>
-      … пропущено {count} {plural(count, "абзац", "абзаца", "абзацев")} — показать …
+      … omitted {count} {plural(count, "paragraph", "paragraphs", "paragraphs")} — show …
     </button>
   );
 }
@@ -111,7 +111,7 @@ function RemarkSelectionButton({ rect, pending, onPick }: { rect: DOMRect; pendi
       onMouseDown={(event) => event.preventDefault()}
       onClick={onPick}
     >
-      → Рассказчику
+      → Narrator
     </button>
   );
 }
@@ -509,7 +509,7 @@ export function ScriptReader({
   const queue = useStressQueue(bookId, canVoice);
   const disputed = useDisputed(bookId, canEdit);
   const consilium = useConsilium(bookId, canEdit);
-  const consiliumLabel = consilium.data ? `Консилиум: ${consilium.data.counts.new}` : "Консилиум: …";
+  const consiliumLabel = consilium.data ? `AI review: ${consilium.data.counts.new}` : "AI review: …";
   const hasConsilium = Boolean(consilium.data && consilium.data.items.length > 0);
   // Только находка ЭТОЙ главы: если человек ушёл по рейлу с открытой карточкой, чужая
   // карточка над другим текстом предлагала бы переписать абзац, которого на экране нет.
@@ -520,10 +520,10 @@ export function ScriptReader({
     ? consilium.data?.items.find((item) => item.id === editor.findingId && item.chapter_id === chapterId) ?? null
     : null;
   const queueLabel = queue.data
-    ? `Ударения: ${queue.data.counts.unresolved} без ответа`
+    ? `Word stress: ${queue.data.counts.unresolved} unresolved`
     : queue.isError
-      ? "Ударения: очередь недоступна"
-      : "Ударения: …";
+      ? "Word stress: queue unavailable"
+      : "Word stress: …";
   // «Проверено»: the author's own mark, the thing publishing waits for. It lives in
   // the reader because that is where the chapter is actually read.
   const approved = Boolean(data?.chapter.approved);
@@ -531,12 +531,12 @@ export function ScriptReader({
     mutationFn: (next: boolean) => approveChapter(chapterId, next),
     onSuccess: async (result) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Не сохранилось", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Not saved", detail: result.error || "The server returned no details." });
         return;
       }
       pushToast({
         tone: "success",
-        title: result.approved ? `Глава ${result.chapter_index} проверена` : `Отметка с главы ${result.chapter_index} снята`,
+        title: result.approved ? `Chapter ${result.chapter_index} reviewed` : `Review mark for chapter ${result.chapter_index} removed`,
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: editorKeys.chapters }),
@@ -544,7 +544,7 @@ export function ScriptReader({
         queryClient.invalidateQueries({ queryKey: ["v2-progress", bookId] }),
       ]);
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не сохранилось", detail: describeApiError(error, "Попробуйте ещё раз.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Not saved", detail: describeApiError(error, "Please try again.") }),
   });
 
   /**
@@ -556,26 +556,26 @@ export function ScriptReader({
   const remarkReassign = useMutation({
     mutationFn: async ({ segmentId, range }: { segmentId: string; range: TextRange }) => {
       const segment = segments.find((item) => item.id === segmentId);
-      if (!segment) throw new Error("Абзац не найден. Обновите главу.");
+      if (!segment) throw new Error("Paragraph not found. Refresh the chapter.");
       return reassignSegment(segmentId, spansForRange(segment, range, NARRATOR));
     },
     onSuccess: async (result, variables) => {
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Роль не изменена", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Role not changed", detail: result.error || "The server returned no details." });
         return;
       }
       const segment = segments.find((item) => item.id === variables.segmentId);
       const fragment = segment ? segment.text.slice(variables.range.start, variables.range.end) : "";
       pushToast({
         tone: "success",
-        title: `Роль изменена: ${NARRATOR}`,
+        title: `Role changed: ${NARRATOR}`,
         detail: fragment ? `«${remarkPreview(fragment)}»` : undefined,
       });
       const impactToast = reassignImpactToast(result.recording_impact);
       if (impactToast) pushToast({ ...impactToast, durationMs: 9000 });
       await invalidateReader(queryClient, bookId, ["chapters", "cast", "disputed"]);
     },
-    onError: (error) => pushToast({ tone: "error", title: "Роль не изменена", detail: describeReassignError(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Role not changed", detail: describeReassignError(error) }),
   });
 
   // Free-selection «→ Рассказчику» (§5 of the brief): for remarks the underline
@@ -629,10 +629,10 @@ export function ScriptReader({
   });
 
   const disputedLabel = disputed.data
-    ? `Спорные: ${disputed.data.counts.unsure}`
+    ? `Uncertain: ${disputed.data.counts.unsure}`
     : disputed.isError
-      ? "Спорные: недоступно"
-      : "Спорные: …";
+      ? "Uncertain: unavailable"
+      : "Uncertain: …";
   const targetSegment = editor.target ? segments.find((segment) => segment.id === editor.target?.segmentId) : undefined;
   const roleSegment = editor.roleTarget ? segments.find((segment) => segment.id === editor.roleTarget?.segmentId) : undefined;
 
@@ -674,14 +674,14 @@ export function ScriptReader({
   }, [myRoles, bookId, navigate, roleScriptBase, roleScriptSearch]);
 
   if (!chapterId) return embedded ? null : <Navigate to="/reader" replace />;
-  if (chapterQuery.isLoading) return <SkeletonPanel label="Загружаю главу…" lines={6} />;
+  if (chapterQuery.isLoading) return <SkeletonPanel label="Loading chapter…" lines={6} />;
   if (chapterQuery.isError || !data) {
     return (
       <div className="panel panel-pad v2r-empty">
-        <p>{describeApiError(chapterQuery.error, "Не удалось загрузить главу.")}</p>
+        <p>{describeApiError(chapterQuery.error, "Could not load chapter.")}</p>
         {embedded ? null : (
           <Link className="btn btn-sm" to="/reader">
-            К списку книг
+            Back to books
           </Link>
         )}
       </div>
@@ -715,7 +715,7 @@ export function ScriptReader({
 
 
   const castRoles = data.cast.filter((entry) => entry.name !== NARRATOR).length;
-  const castSubtitle = `${castRoles} ${plural(castRoles, "роль", "роли", "ролей")} · рассказчик отдельно`;
+  const castSubtitle = `${castRoles} ${plural(castRoles, "role", "roles", "roles")} · narrator separate`;
   const castLegend = (
     <CastLegend
       cast={data.cast}
@@ -820,7 +820,7 @@ export function ScriptReader({
       .then((openId) => {
         if (openId && chapterNow.current === pickedIn) setSoundMarkerId(openId);
       })
-      .catch((error: unknown) => pushToast({ tone: "error", title: "Не получилось", detail: describeSoundError(error) }))
+      .catch((error: unknown) => pushToast({ tone: "error", title: "Could not complete the action", detail: describeSoundError(error) }))
       .finally(() => {
         if (chapterNow.current === pickedIn) setEditorSheet("sound");
       });
@@ -830,7 +830,7 @@ export function ScriptReader({
     <article
       ref={setPageEl}
       className={["v2r-page", soundRoomy ? "snd-roomy" : "", soundPick ? "snd-picking" : ""].filter(Boolean).join(" ")}
-      lang="ru"
+      lang={data.book.language}
       onClick={canVoice ? onArticleClick : undefined}
       onClickCapture={soundPick ? onPickCapture : undefined}
       onMouseDownCapture={canEdit && !soundPick ? editor.onArticleMouseDown : undefined}  /* role picker: markup */
@@ -858,7 +858,7 @@ export function ScriptReader({
   ) : (
     <div className="v2r-split" ref={split.hostRef} style={split.height ? { height: split.height } : undefined}>
       <section className="v2r-pane" style={{ flexBasis: `calc(${(split.ratio * 100).toFixed(2)}% - 9px)` }}>
-        <div className="v2r-pane-label">Оригинал</div>
+        <div className="v2r-pane-label">Original</div>
         <div className="v2r-pane-scroll" ref={split.sourceRef} onScroll={() => split.onPaneScroll("source")}>
           <SourcePane chapterId={chapterId} query={query} />
         </div>
@@ -867,7 +867,7 @@ export function ScriptReader({
         className="v2r-splitter"
         role="separator"
         aria-orientation="vertical"
-        aria-label="Ширина панелей"
+        aria-label="Panel width"
         aria-valuenow={Math.round(split.ratio * 100)}
         aria-valuemin={25}
         aria-valuemax={75}
@@ -879,7 +879,7 @@ export function ScriptReader({
         <span />
       </div>
       <section className="v2r-pane" style={{ flexBasis: `calc(${((1 - split.ratio) * 100).toFixed(2)}% - 9px)` }}>
-        <div className="v2r-pane-label">Сценарий</div>
+        <div className="v2r-pane-label">Script</div>
         <div className="v2r-pane-scroll" ref={split.scriptRef} onScroll={() => split.onPaneScroll("script")}>
           {article}
         </div>
@@ -1034,15 +1034,15 @@ export function ScriptReader({
           {segments.length === 0 ? (
             <div className="v2r-empty">
               <Icon name="doc" />
-              <p>Глава ещё не размечена в v2.</p>
+              <p>This chapter has not been annotated yet.</p>
               {marked.length > 0 ? (
                 onChapterChange ? (
                   <button type="button" className="btn btn-sm" onClick={() => goTo(marked[0].id)}>
-                    Открыть первую размеченную главу
+                    Open first annotated chapter
                   </button>
                 ) : (
                   <Link className="btn btn-sm" to={readerPath(marked[0].id)}>
-                    Открыть первую размеченную главу
+                    Open first annotated chapter
                   </Link>
                 )
               ) : null}
@@ -1050,39 +1050,39 @@ export function ScriptReader({
           ) : (
             <>
               {!data.chapter.attributed ? (
-                <p className="v2r-notice">Реплики в этой главе ещё не распределены по ролям — показан текст без разметки.</p>
+                <p className="v2r-notice">Roles are not assigned in this chapter yet. Unannotated text is shown.</p>
               ) : null}
               {query.trim() && plan.every((item) => item.type === "gap") ? (
-                <p className="v2r-notice">Ничего не найдено по запросу «{query.trim()}».</p>
+                <p className="v2r-notice">No results for «{query.trim()}».</p>
               ) : null}
 
               {script}
             </>
           )}
 
-          <nav className="v2r-nav v2r-nav--bottom" aria-label="Соседние главы">
+          <nav className="v2r-nav v2r-nav--bottom" aria-label="Adjacent chapters">
             <button type="button" className="btn v2r-btn" onClick={goPrev ?? undefined} disabled={!goPrev}>
-              <Icon name="back" /> Предыдущая глава
+              <Icon name="back" /> Previous chapter
             </button>
             <button type="button" className="btn v2r-btn" onClick={goNext ?? undefined} disabled={!goNext}>
-              Следующая глава <Icon name="arrow" />
+              Next chapter <Icon name="arrow" />
             </button>
           </nav>
         </div>
 
         {prefs.cast && !isMobile ? (
-          <aside className="v2r-cast" aria-label="Каст главы">
+          <aside className="v2r-cast" aria-label="Chapter cast">
             <div className="v2r-cast-head">
               <div className="v2r-cast-titles">
-                <strong>Каст главы</strong>
+                <strong>Chapter cast</strong>
                 <span className="faint">{castSubtitle}</span>
               </div>
               <button
                 type="button"
                 className="btn btn-sm btn-ghost v2r-btn v2r-cast-close"
                 onClick={() => updatePrefs({ cast: false })}
-                aria-label="Скрыть каст главы"
-                title="Скрыть — вернуть можно кнопкой «Каст главы»"
+                aria-label="Hide chapter cast"
+                title="Hide; reopen using Chapter cast"
               >
                 ✕
               </button>
@@ -1093,7 +1093,7 @@ export function ScriptReader({
       </div>
 
       {isMobile && castSheet ? (
-        <Sheet title="Каст главы" subtitle={castSubtitle} onClose={() => setCastSheet(false)}>
+        <Sheet title="Chapter cast" subtitle={castSubtitle} onClose={() => setCastSheet(false)}>
           {castLegend}
         </Sheet>
       ) : null}
@@ -1155,9 +1155,9 @@ export function ScriptReader({
       {soundPick ? (
         <div className="snd-pick-banner" role="status" aria-live="polite">
           <span>{soundPick.hint}</span>
-          <span className="snd-pick-esc">Esc — отмена</span>
+          <span className="snd-pick-esc">Esc — cancel</span>
           <button type="button" className="btn btn-sm v2r-btn" onClick={cancelPick}>
-            Отмена
+            Cancel
           </button>
         </div>
       ) : null}

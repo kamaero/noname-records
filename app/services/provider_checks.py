@@ -13,9 +13,21 @@ import requests
 from app.config import settings
 
 TIMEOUT = 15
-WORDS = {"ok": "Работает.", "bad_key": "Ключ не подходит — проверьте, что скопирован целиком.",
-         "no_money": "На счёте у провайдера нет денег.", "unreachable": "Сервис не отвечает — попробуйте позже.",
-         "error": "Ответ не похож на ответ провайдера — проверьте адрес сервиса или повторите позже."}
+WORDS = {"ok": "Working.", "bad_key": "The key was rejected. Check that you copied it in full.",
+         "no_money": "The provider account has no credit.", "unreachable": "The service is not responding. Try again later.",
+         "error": "The response does not look like a provider response. Check the service address or try again later."}
+LEGACY_WORDS = {
+    "ok": "Работает.", "bad_key": "Ключ не подходит — проверьте, что скопирован целиком.",
+    "no_money": "На счёте у провайдера нет денег.", "unreachable": "Сервис не отвечает — попробуйте позже.",
+    "error": "Ответ не похож на ответ провайдера — проверьте адрес сервиса или повторите позже.",
+}
+
+
+def localized_detail(status: str, detail: str) -> str:
+    # Меняем только прежние системные фразы; произвольная диагностика должна сохраниться.
+    return WORDS[status] if detail == LEGACY_WORDS.get(status) else detail
+
+
 _NO_MONEY_WORDS = ("insufficient", "balance", "credit", "quota", "payment")
 
 
@@ -101,19 +113,19 @@ def _amount(provider: str, data: dict) -> tuple[float, str]:
     if provider == "routerai":
         # то же поле, что читает счётчик прогонов (`routerai_credits`)
         return _number(data["data"]["credits"]), "₽"
-    return _number(data["character_limit"]) - _number(data["character_count"]), "символов"
+    return _number(data["character_limit"]) - _number(data["character_count"]), "characters"
 
 
 def balance(provider: str, key: str, *, http=requests) -> dict:
     empty = {"provider": provider, "available": False, "amount": None, "unit": "", "detail": ""}
     if provider not in _BALANCE_URLS:
-        return {**empty, "detail": "провайдер не сообщает баланс"}
+        return {**empty, "detail": "The provider does not report a balance"}
     _m, _u, headers = _probe(provider, key)
     try:
         resp = http.get(_BALANCE_URLS[provider], headers=headers, timeout=TIMEOUT)
         amount, unit = _amount(provider, resp.json()) if resp.status_code < 300 else (None, "")
     except (requests.RequestException, ValueError, TypeError, AttributeError, IndexError, KeyError):
-        return {**empty, "detail": "нет данных"}
+        return {**empty, "detail": "No data"}
     if amount is None:
-        return {**empty, "detail": "нет данных"}
+        return {**empty, "detail": "No data"}
     return {"provider": provider, "available": True, "amount": round(amount, 2), "unit": unit, "detail": ""}

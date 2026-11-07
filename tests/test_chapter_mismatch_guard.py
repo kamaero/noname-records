@@ -256,8 +256,8 @@ class TestTheUploadEndpointRefusesAMismatch:
         )
         assert status_code == 400
         assert body["items"][0]["error"] == "chapter_mismatch"
-        assert "глава 34" in body["message"]
-        assert "глава 1" in body["message"]
+        assert "chapter 34" in body["message"]
+        assert "chapter 1" in body["message"]
         assert rows == []
 
     def test_confirm_chapter_lets_it_through(self):
@@ -319,7 +319,7 @@ class TestAConfirmedOverrideLeavesATrace:
             sent,
         )
         assert any(
-            "⚠️ Глава подтверждена вручную: в имени файла глава 34, выбрана глава 1" in text
+            "⚠️ Chapter confirmed manually: filename chapter 34, selected chapter 1" in text
             for text in sent
         ), sent
 
@@ -333,7 +333,7 @@ class TestAConfirmedOverrideLeavesATrace:
             sent,
         )
         assert sent
-        assert not any("подтверждена вручную" in text for text in sent)
+        assert not any("confirmed manually" in text for text in sent)
 
     def test_a_batch_that_saved_nothing_leaves_no_line_about_a_confirmation(self, caplog):
         """Пачка отказала из-за ДРУГОГО файла — подтверждённый так и не лёг на диск.

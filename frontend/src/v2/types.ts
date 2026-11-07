@@ -3,6 +3,11 @@
 export const NARRATOR = "Рассказчик";
 export const UNSURE = "UNSURE";
 
+/** Служебный рассказчик отличается от пользовательской роли Narrator; API хранит исходные имена. */
+export function roleLabel(name: string): string {
+  return name === NARRATOR ? "Narrator (system)" : name;
+}
+
 export type ReaderSpan = {
   start: number;
   end: number;
@@ -84,7 +89,7 @@ export type ApproveChapterResponse = {
   error?: string;
 };
 
-export type ReaderBookRef = { id: string; title: string };
+export type ReaderBookRef = { id: string; title: string; language?: "en" | "ru" };
 
 export type ReaderChapterPayload = {
   book: ReaderBookRef;

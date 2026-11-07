@@ -71,6 +71,17 @@ PROMPT_SYSTEM = """Ты составляешь промпт для генера�
 - summary — одна английская строка вида "instruments · texture · tempo" для следующего \
 вызова."""
 
+PROMPT_SYSTEM_EN = """Write an ElevenLabs instrumental music prompt (model_id=music_v2) for an English audiobook scene, underneath a live narrator.
+
+The track must be instrumental, with no vocals, sharp percussion accents or loud climaxes. Keep dynamics even, without abrupt volume changes, so the narrator remains audible.
+
+You receive the location and its description, time of day, weather, scene ambience, mood, music queries, an excerpt, the required duration in seconds, and summaries of previous tracks (instruments · texture · tempo). Every scene needs its own distinct track; do not repeat previous tracks' leading instruments or texture and do not suggest reusing a track between scenes or chapters.
+
+Return English text in the supplied JSON schema:
+- prompt: 40–80 words for ElevenLabs music_v2 describing instruments, mood, tempo and dynamics;
+- summary: one line in the form "instruments · texture · tempo" for later calls.
+Do not rewrite or translate the source excerpt."""
+
 PROMPT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -81,7 +92,7 @@ PROMPT_SCHEMA = {
 }
 
 
-def prompt_user(scene: dict, text_excerpt: str, seconds: int, previous: list[str]) -> str:
+def prompt_user(scene: dict, text_excerpt: str, seconds: int, previous: list[str], *, language: str = "ru") -> str:
     """Пользовательский промпт Opus: разметка сцены + начало текста + длина + прежние summary."""
     scene = scene or {}
     place = scene.get("place") or {}
@@ -89,6 +100,15 @@ def prompt_user(scene: dict, text_excerpt: str, seconds: int, previous: list[str
     place_description = str(place.get("description") or "").strip()
     music_queries = ", ".join(str(q).strip() for q in (scene.get("music_queries") or []) if str(q).strip())
     previous_block = "\n".join(f"- {line}" for line in (previous or []) if str(line).strip())
+    if language == "en":
+        return (
+            f"Location: {place_name} — {place_description}\n"
+            f"Time of day: {scene.get('time_of_day') or ''}. Weather: {scene.get('weather') or ''}.\n"
+            f"Scene ambience: {scene.get('ambience') or ''}.\nMood: {scene.get('mood') or ''}.\n"
+            f"Music queries: {music_queries or '(none)'}\n\n"
+            f"Scene opening excerpt:\n{text_excerpt or ''}\n\nTrack duration: {int(seconds)} seconds.\n\n"
+            f"Previous tracks (do not repeat instruments or texture):\n{previous_block or '(no previous tracks)'}"
+        )
     return (
         f"Место: {place_name} — {place_description}\n"
         f"Время суток: {scene.get('time_of_day') or ''}. Погода: {scene.get('weather') or ''}.\n"
@@ -114,15 +134,15 @@ def parse_prompt(answer) -> tuple[str, str]:
     if isinstance(data, str):
         stripped = data.strip()
         if not stripped:
-            raise ValueError("пустой ответ модели")
+            raise ValueError('Empty model response')
         try:
             data = json.loads(stripped)
         except json.JSONDecodeError as exc:
-            raise ValueError("не удалось разобрать ответ модели как JSON") from exc
+            raise ValueError('Could not parse the model response as JSON') from exc
     if not isinstance(data, dict):
-        raise ValueError("ответ модели не объект")
+        raise ValueError('The model response is not an object')
     prompt = str(data.get("prompt") or "").strip()
     summary = str(data.get("summary") or "").strip()
     if not prompt or not summary:
-        raise ValueError("в ответе модели нет prompt или summary")
+        raise ValueError('The model response is missing prompt or summary')
     return prompt, summary

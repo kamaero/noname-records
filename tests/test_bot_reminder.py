@@ -57,7 +57,7 @@ def db(monkeypatch):
         roles = [
             # (id, книга, роль, актёр, главы)
             ("c1", "b1", "Убув", "Ветрова Ольга", "1,2"),
-            ("c2", "b1", "Хоркон", "Ветрова Ольга", "1,2,3"),      # начата — 1 глава сдана
+            ("c2", "b1", "Хоркон", "Ветрова Ольга", "1,2,3"),      # начата — 1 chapter сдана
             ("c3", "b1", "Фибэл", "Иванов Пётр", "2"),            # сдана целиком — срок закрыт
             ("c4", "b1", "Химес", "Без Телеграма", "3"),
             ("c5", "b2", "Астрид", "Сидорова Анна", "1,2,3"),
@@ -119,17 +119,17 @@ def test_all_books_put_every_role_of_a_person_into_one_letter(db):
 def test_the_letter_word_for_word(db):
     anna = next(t for t in bot_reminder.targets(db, book_id="") if t.actor == "Сидорова Анна")
     assert bot_reminder.reminder_text(anna) == (
-        "🎙 Noname Records — напоминание о записи\n"
+        "🎙 Noname Records — recording reminder\n"
         "\n"
         "«Карта Приозерья»:\n"
-        "• «Фэдывнютд» — 1 глава\n"
+        "• «Фэдывнютд» — 1 chapter\n"
         "«Сезон ветров. Книга 3»:\n"
-        "• «Астрид» — 3 главы\n"
+        "• «Астрид» — 3 chapters\n"
         "\n"
-        "Срок — до 31 декабря 2026.\n"
-        "Записи загружайте на studio.example, раздел «Загрузка». По книге, которая сейчас в работе студии, "
-        "дубли можно прислать и файлом в бот. Если нужна помощь или больше "
-        "времени — напишите в студию."
+        "Deadline: 31 December 2026.\n"
+        "Upload recordings at studio.example. For the book currently being recorded, "
+        "you can also send files to the bot. If you need help or more time, "
+        "contact в студию."
     )
 
 
@@ -143,15 +143,15 @@ def test_the_admin_keyboard_has_both_buttons(db):
 
 def test_the_flow_asks_the_book_shows_a_preview_and_sends_once(db):
     out = handle_update(db, _msg(REMIND_BUTTON), now=NOW)
-    assert "Все книги" in [b["text"] for b in _buttons(out)]
+    assert "All books" in [b["text"] for b in _buttons(out)]
 
     out = handle_update(db, _press(_pick(out, "Карта")), now=NOW)
     text = "\n".join(_texts(out))
-    assert "Напоминание уйдёт 2 дикторам" in text            # Ветрова и Сидорова
-    assert "Без Telegram: Без Телеграма" in text
-    assert "«Убув» — 2 главы" in text or "«Фэдывнютд» — 1 глава" in text   # образец письма
+    assert "Reminder recipients: 2 voice actors" in text            # Ветрова и Сидорова
+    assert "Without Telegram: Без Телеграма" in text
+    assert "«Убув» — 2 chapters" in text or "«Фэдывнютд» — 1 chapter" in text   # образец письма
 
-    send = _pick(out, "Отправить")
+    send = _pick(out, "Send")
     first = handle_update(db, _press(send), now=NOW)
     again = handle_update(db, _press(send), now=NOW)
     assert [o.method for o in first].count("reminder") == 1
@@ -162,14 +162,14 @@ def test_nobody_to_remind_says_so(db):
     db.query(RoleDeadline).delete()
     db.commit()
     out = handle_update(db, _msg(REMIND_BUTTON), now=NOW)
-    out = handle_update(db, _press(_pick(out, "Все книги")), now=NOW)
-    assert "напоминать некому" in "\n".join(_texts(out))
-    assert "Отправить" not in [b["text"] for b in _buttons(out)]
+    out = handle_update(db, _press(_pick(out, "All books")), now=NOW)
+    assert "has no reminder recipients" in "\n".join(_texts(out))
+    assert "Send" not in [b["text"] for b in _buttons(out)]
 
 
 def test_a_dictor_cannot_press_the_admin_buttons(db):
     out = handle_update(db, _msg(REMIND_BUTTON), now=NOW)
-    data = _pick(out, "Все книги")
+    data = _pick(out, "All books")
     assert handle_update(db, _press(data, tid="41"), now=NOW)[1:] == []
 
 
@@ -177,8 +177,8 @@ def test_a_dictor_cannot_press_the_admin_buttons(db):
 
 def test_deliver_sends_each_person_their_own_letter_and_logs_it(db):
     out = handle_update(db, _msg(REMIND_BUTTON), now=NOW)
-    out = handle_update(db, _press(_pick(out, "Все книги")), now=NOW)
-    sent_out = handle_update(db, _press(_pick(out, "Отправить")), now=NOW)
+    out = handle_update(db, _press(_pick(out, "All books")), now=NOW)
+    sent_out = handle_update(db, _press(_pick(out, "Send")), now=NOW)
     bc_id = next(o.payload["id"] for o in sent_out if o.method == "reminder")
     sent = []
 
@@ -186,7 +186,7 @@ def test_deliver_sends_each_person_their_own_letter_and_logs_it(db):
 
     assert sorted(chat for chat, _ in sent) == ["41", "44"]
     assert "«Убув»" in dict(sent)["41"] and "«Хоркон»" not in dict(sent)["41"]
-    assert "Ушло: 2" in summary and "Без Telegram: Без Телеграма" in summary
+    assert "sent: 2" in summary and "Without Telegram: Без Телеграма" in summary
     assert db.query(AuditLog).filter_by(action="bot_reminder").count() == 1
     assert db.get(BotBroadcast, bc_id).sent_count == 2
 

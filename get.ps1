@@ -34,10 +34,10 @@ function Copy-OrDownloadFile {
 
 if (Test-Path -LiteralPath $InstallDirectory) {
     if (Test-Path -LiteralPath (Join-Path $InstallDirectory '.env') -PathType Leaf) {
-        Write-Host "Система уже установлена в $InstallDirectory. Обновление: Set-Location `"$InstallDirectory`"; .\update.ps1"
+        Write-Host "Noname Records is already installed in $InstallDirectory. To update: Set-Location `"$InstallDirectory`"; .\update.ps1"
         return
     }
-    throw "Каталог $InstallDirectory уже существует, но установленная система в нём не найдена. Освободите этот каталог и повторите установку."
+    throw "The directory $InstallDirectory already exists, but contains no Noname Records installation. Move its contents elsewhere and run the installer again."
 }
 
 $StagePath = Join-Path $HOME ('.noname-records-install-' + [Guid]::NewGuid().ToString('N'))
@@ -51,12 +51,12 @@ try {
 
     $git = Get-Command git -ErrorAction SilentlyContinue
     if ($git -and -not $ForceArchive) {
-        Write-Host 'Скачиваю Noname Records через Git...'
+        Write-Host 'Downloading Noname Records with Git...'
         & $git.Source clone -- $RepositoryUrl $CheckoutPath
-        if ($LASTEXITCODE -ne 0) { throw 'Не удалось скачать систему через Git.' }
+        if ($LASTEXITCODE -ne 0) { throw 'Could not download Noname Records with Git.' }
         $PayloadPath = $CheckoutPath
     } else {
-        Write-Host 'Скачиваю архив Noname Records...'
+        Write-Host 'Downloading the Noname Records archive...'
         Copy-OrDownloadFile -Source $ArchiveUrl -Destination $ArchivePath
         New-Item -ItemType Directory -Path $ExtractPath | Out-Null
         Expand-Archive -LiteralPath $ArchivePath -DestinationPath $ExtractPath
@@ -66,13 +66,13 @@ try {
             (Test-Path -LiteralPath (Join-Path $_.FullName 'update.ps1') -PathType Leaf) -and
             (Test-Path -LiteralPath (Join-Path $_.FullName 'docker-compose.yml') -PathType Leaf)
         })
-        if ($payloadCandidates.Count -ne 1) { throw 'Архив имеет неожиданный формат или повреждён.' }
+        if ($payloadCandidates.Count -ne 1) { throw 'The archive has an unexpected structure or is damaged.' }
         $PayloadPath = $payloadCandidates[0].FullName
     }
 
     foreach ($requiredFile in @('install.ps1','update.ps1','docker-compose.yml')) {
         if (-not (Test-Path -LiteralPath (Join-Path $PayloadPath $requiredFile) -PathType Leaf)) {
-            throw "Система скачана не полностью: отсутствует $requiredFile."
+            throw "The download is incomplete: $requiredFile is missing."
         }
     }
     Move-Item -LiteralPath $PayloadPath -Destination $InstallDirectory
@@ -90,6 +90,6 @@ try {
 
 $Installer = Join-Path $InstallDirectory 'install.ps1'
 if (-not (Test-Path -LiteralPath $Installer -PathType Leaf)) {
-    throw 'Система скачана не полностью: install.ps1 отсутствует.'
+    throw 'The download is incomplete: install.ps1 is missing.'
 }
 & $Installer @InstallArgs

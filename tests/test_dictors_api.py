@@ -130,3 +130,20 @@ def test_a_rename_that_fails_midway_puts_the_files_back(factory, monkeypatch):
     assert api.patch("/api/dictors/u1", json={"name": "Совсем Другая"}).status_code == 500
     import os
     assert os.path.isfile(audio_storage.resolve_path("K/1/take/old.wav"))
+
+
+@pytest.mark.parametrize("title,expected", [("", "Demo.mp3"), ("Сохранённое демо", "Сохранённое демо.mp3")])
+def test_download_uses_an_english_fallback_without_rewriting_saved_title_or_key(factory, title, expected):
+    from urllib.parse import unquote
+
+    with factory() as db:
+        demo = db.get(DictorDemo, "d1")
+        demo.title = title
+        key = demo.stored_key
+        db.commit()
+    response = _client(["author"], uid="u1").get("/api/dictors/demos/d1/audio")
+    assert response.status_code == 200 and response.content == b"0123456789"
+    assert expected in unquote(response.headers["content-disposition"])
+    with factory() as db:
+        demo = db.get(DictorDemo, "d1")
+        assert demo.title == title and demo.stored_key == key

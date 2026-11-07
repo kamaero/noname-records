@@ -31,7 +31,7 @@ export type UploadTarget = {
   kind: UploadKind;
 };
 
-const IDLE: UploadStatus = { text: "Выберите файлы или перетащите их сюда.", tone: "info" };
+const IDLE: UploadStatus = { text: "Choose files or drag them here.", tone: "info" };
 
 /** Отказал ли сервер именно по несовпадению главы: `{ok:false, items:[{error:…}]}` в теле 400. */
 function hasChapterMismatchItem(error: ApiError): boolean {
@@ -102,7 +102,7 @@ export function useRecordingUploads(target: UploadTarget) {
       setFiles(valid);
       setConfirmChapter(false);
       setChapterMismatchRefused(false);
-      setStatus(valid.length ? { text: `Файлов к загрузке: ${valid.length}.`, tone: "info" } : IDLE);
+      setStatus(valid.length ? { text: `Files to upload: ${valid.length}.`, tone: "info" } : IDLE);
       void refreshPreview(valid, false);
     },
     [refreshPreview],
@@ -141,18 +141,18 @@ export function useRecordingUploads(target: UploadTarget) {
     const t = targetRef.current;
     if (!files.length) return;
     if (!t.role.trim()) {
-      setStatus({ text: "Выберите роль — без неё файлы некуда сохранить.", tone: "error" });
+      setStatus({ text: "Choose a role to save these files under.", tone: "error" });
       return;
     }
     // у пробы главы нет: её и спрашивать не станут
     if (t.kind === "take" && !t.chapter.trim()) {
-      setStatus({ text: "Выберите главу — без неё файлы некуда сохранить.", tone: "error" });
+      setStatus({ text: "Choose a chapter to save these files under.", tone: "error" });
       return;
     }
     setIsUploading(true);
     setProgress(0);
     const megabytes = files.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024);
-    setStatus({ text: `Отправляю ${megabytes.toFixed(0)} МБ… 0%`, tone: "info" });
+    setStatus({ text: `Uploading ${megabytes.toFixed(0)} MB… 0%`, tone: "info" });
     try {
       const fd = new FormData();
       files.forEach((file) => fd.append("files", file));
@@ -168,8 +168,8 @@ export function useRecordingUploads(target: UploadTarget) {
         setProgress(fraction);
         // Сто процентов отправленных байт — ещё не сохранение: сервер их только принял.
         const text = fraction >= 1
-          ? "Файлы у сервера, сохраняю…"
-          : `Отправляю ${megabytes.toFixed(0)} МБ… ${Math.round(fraction * 100)}%`;
+          ? "Files received; saving…"
+          : `Uploading ${megabytes.toFixed(0)} MB… ${Math.round(fraction * 100)}%`;
         setStatus({ text, tone: "info" });
       });
       if (!result.ok) throw new Error(result.message || result.error || "upload_failed");
@@ -180,18 +180,18 @@ export function useRecordingUploads(target: UploadTarget) {
       setChapterMismatchRefused(false);
       setProgress(0);
       setStatus({
-        text: `Готово: сохранено ${saved} ${saved === 1 ? "файл" : saved < 5 ? "файла" : "файлов"}.`,
+        text: `Done; saved ${saved} ${saved === 1 ? "file" : saved < 5 ? "files" : "files"}.`,
         tone: "success",
       });
       pushToast({
         tone: "success",
-        title: t.kind === "audition" ? "Пробы загружены" : "Дубли загружены",
-        detail: `Сохранено файлов: ${saved}.`,
+        title: t.kind === "audition" ? "Auditions uploaded" : "Takes uploaded",
+        detail: `Files saved: ${saved}.`,
       });
       await queryClient.invalidateQueries({ queryKey: ["recording-workspace"] });
       await queryClient.invalidateQueries({ queryKey: ["v2", "auditions"] });
     } catch (error) {
-      const detail = describeApiError(error, "Сервер не принял файлы.");
+      const detail = describeApiError(error, "The server rejected the files.");
       setProgress(0);
       if (error instanceof ApiError && hasChapterMismatchItem(error)) setChapterMismatchRefused(true);
       // Частичный отказ (507 «диск полон»): часть пачки уже сохранена и закоммичена.
@@ -200,13 +200,13 @@ export function useRecordingUploads(target: UploadTarget) {
       const savedAnyway = error instanceof ApiError ? Number(error.payload.saved_count ?? 0) : 0;
       if (savedAnyway > 0) {
         const sent = files.length;
-        setStatus({ text: `Загружено ${savedAnyway} из ${sent}, не принято: ${detail}`, tone: "error" });
-        pushToast({ tone: "error", title: `Загружено ${savedAnyway} из ${sent}`, detail });
+        setStatus({ text: `Uploaded ${savedAnyway} of ${sent}, rejected: ${detail}`, tone: "error" });
+        pushToast({ tone: "error", title: `Uploaded ${savedAnyway} of ${sent}`, detail });
         await queryClient.invalidateQueries({ queryKey: ["recording-workspace"] });
         await queryClient.invalidateQueries({ queryKey: ["v2", "auditions"] });
       } else {
-        setStatus({ text: `Не удалось загрузить: ${detail}`, tone: "error" });
-        pushToast({ tone: "error", title: "Файлы не загружены", detail });
+        setStatus({ text: `Could not upload: ${detail}`, tone: "error" });
+        pushToast({ tone: "error", title: "Files not uploaded", detail });
       }
     } finally {
       setIsUploading(false);

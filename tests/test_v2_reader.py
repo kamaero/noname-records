@@ -90,7 +90,7 @@ def test_chapter_payload_assembles_segments_cast_and_chapters():
         _seed(db)
         payload = build_chapter_payload(db, CH1)
 
-    assert payload["book"] == {"id": BOOK, "title": "Карта переправы"}
+    assert payload["book"] == {"id": BOOK, "title": "Карта переправы", "language": "ru"}
     assert payload["chapter"] == {
         "id": CH1, "index": 1, "title": "Глава 1", "segments_count": 2, "attributed": True,
         "approved": False, "status": "queued",

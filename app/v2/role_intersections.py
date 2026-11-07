@@ -122,6 +122,8 @@ def role_intersections(db, book_id: str) -> list[dict]:
     список общих глав показывает масштаб. Пара ненаправленная, имена в ответе
     отсортированы — иначе одно и то же пересечение приехало бы дважды.
     """
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book_id)
     book_id = str(book_id or "").strip()
     cast_rows = db.query(Character).filter(Character.book_id == book_id).all()
     cast_by_name = {str(row.name or "").strip(): row for row in cast_rows}
@@ -156,7 +158,7 @@ def role_intersections(db, book_id: str) -> list[dict]:
         # Плейсхолдер («модель не уверена») не сворачиваем — сворачивать некуда,
         # это не персонаж. Остальное — тем же написанием, что и в таблице карты.
         name = raw_name if is_placeholder_name(raw_name) else canonicalize(raw_name)
-        if is_narrator_name(name):
+        if identities.is_narrator(name):
             # Рассказчик не пересекается ни с кем по существу: повествование и
             # речь — разные регистры, один актёр разводит их голосом. Он же
             # присутствует практически в каждой главе, так что оставить его в

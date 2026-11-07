@@ -25,40 +25,40 @@ export function ServiceCard({ bookTitle, bookStatus, stopRequested, progress, ac
     <details className="panel hub-card hub-service">
       <summary className="hub-service-summary">
         <Icon name="chevron" />
-        <span className="hub-card-title">Служебное</span>
-        <span className="hub-dim">режим {progress.mode}{run ? ` · прогон ${run.status}` : ""}</span>
+        <span className="hub-card-title">Technical details</span>
+        <span className="hub-dim">mode {progress.mode}{run ? ` · run ${run.status}` : ""}</span>
       </summary>
       <div className="hub-service-body">
         <dl className="hub-kv">
-          <div><dt>Режим</dt><dd className="num">{progress.mode}</dd></div>
-          <div><dt>Статус</dt><dd className="num">{bookStatus}{stopRequested ? " · stop_requested" : ""}</dd></div>
+          <div><dt>Mode</dt><dd className="num">{progress.mode}</dd></div>
+          <div><dt>Status</dt><dd className="num">{bookStatus}{stopRequested ? " · stop_requested" : ""}</dd></div>
           {run ? (
             <>
-              <div><dt>Прогон</dt><dd className="num">{run.status}{run.step ? ` · ${run.step}` : ""} · {run.chapters_done}/{run.chapters_total} глав</dd></div>
-              <div><dt>Токены</dt><dd className="num">{formatTokens(run.tokens)}{run.calls ? ` · вызовов ${run.calls}` : ""}</dd></div>
-              <div><dt>Начат</dt><dd className="num">{formatWhen(run.started_at)}{run.updated_at ? ` · обновлён ${formatWhen(run.updated_at)}` : ""}</dd></div>
-              {run.error ? <div><dt>Ошибка</dt><dd className="hub-danger hub-wrap">{run.error}</dd></div> : null}
+              <div><dt>Run</dt><dd className="num">{run.status}{run.step ? ` · ${run.step}` : ""} · {run.chapters_done}/{run.chapters_total} chapters</dd></div>
+              <div><dt>Tokens</dt><dd className="num">{formatTokens(run.tokens)}{run.calls ? ` · calls ${run.calls}` : ""}</dd></div>
+              <div><dt>Started</dt><dd className="num">{formatWhen(run.started_at)}{run.updated_at ? ` · updated ${formatWhen(run.updated_at)}` : ""}</dd></div>
+              {run.error ? <div><dt>Error</dt><dd className="hub-danger hub-wrap">{run.error}</dd></div> : null}
             </>
           ) : (
-            <div><dt>Прогон</dt><dd className="hub-dim">разметку v2 ещё не запускали</dd></div>
+            <div><dt>Run</dt><dd className="hub-dim">annotation has not been run yet</dd></div>
           )}
         </dl>
         <div className="hub-card-actions">
           {active ? (
-            <Button size="sm" variant="secondary" loading={actions.stop.isPending} onClick={() => actions.stop.mutate()}>Остановить прогон</Button>
+            <Button size="sm" variant="secondary" loading={actions.stop.isPending} onClick={() => actions.stop.mutate()}>Stop run</Button>
           ) : null}
           {legacy ? (
             <>
               <Button size="sm" variant="secondary" loading={actions.repair.isPending} onClick={() => actions.repair.mutate("stop_pipeline")}>
-                Остановить v1
+                Stop v1
               </Button>
               <Button size="sm" variant="secondary" loading={actions.repair.isPending} onClick={() => actions.repair.mutate("continue_pipeline")}>
-                Продолжить v1
+                Resume v1
               </Button>
             </>
           ) : null}
           {!confirming ? (
-            <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>Удалить книгу</Button>
+            <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>Delete book</Button>
           ) : null}
         </div>
         {confirming ? (

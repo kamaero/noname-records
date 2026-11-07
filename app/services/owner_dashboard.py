@@ -66,7 +66,7 @@ def _build_recent_activity(db) -> list[dict]:
 def _build_usage_by_actor(db) -> list[dict]:
     return [
         {
-            "created_by_name": row[0] or "Неизвестно",
+            "created_by_name": row[0] or 'Unknown',
             "book_count": int(row[1] or 0),
             "prompt_tokens": int(row[2] or 0),
             "completion_tokens": int(row[3] or 0),

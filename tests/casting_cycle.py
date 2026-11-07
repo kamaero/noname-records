@@ -9,7 +9,7 @@ TITLES = ("Сад великанов 1", "Сад великанов 2", "Кар�
 
 
 def build_cycle(db, *, author_id="auth-1", other_author_book=False):
-    author = Author(id=author_id, slug="primerodin", name="Примеродин")
+    author = Author(id=author_id, slug="primerov", name="Примеров")
     db.add(author)
     profile = AuthorCharacter(id="ac-kuybu", author_id=author_id, canonical_name="Куйбу Гудисди",
                               aliases="[]", status="confirmed")

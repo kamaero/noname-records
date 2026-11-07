@@ -23,14 +23,14 @@ type ModelCardProps = {
 };
 
 /** Prices are single-digit rubles with kopecks; the cast table's integer format loses them. */
-const rub = (value: number): string => value.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+const rub = (value: number): string => value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
 function priceLine(choice: HubModelChoice): string {
-  if (choice.rub_in === null || choice.rub_out === null) return "курс доллара не задан — цена в ₽ неизвестна";
-  const base = `${rub(choice.rub_in)} ₽ за 1M входящих · ${rub(choice.rub_out)} ₽ за 1M исходящих`;
+  if (choice.rub_in === null || choice.rub_out === null) return "USD exchange rate is unset; RUB cost is unknown";
+  const base = `${rub(choice.rub_in)} RUB per 1M input · ${rub(choice.rub_out)} RUB per 1M output`;
   const dollars = choice.currency === "USD" ? ` (${choice.price_in} / ${choice.price_out} $)` : "";
   // A base price that has a peak above it is the cheap half of the day, not the price.
-  const when = choice.peak_rub_in !== null ? " — вне пиковых часов" : "";
+  const when = choice.peak_rub_in !== null ? " — off-peak" : "";
   return base + dollars + when;
 }
 
@@ -45,26 +45,26 @@ export function ModelCard({ bookId, model, locked }: ModelCardProps) {
     onSuccess: async (result, key) => {
       setPending(null);
       if (!result.ok) {
-        pushToast({ tone: "error", title: "Модель не сохранена", detail: result.error || "Сервер ответил без подробностей." });
+        pushToast({ tone: "error", title: "Model not saved", detail: result.error || "The server returned no details." });
         return;
       }
       const chosen = model.choices.find((item) => item.key === key);
-      pushToast({ tone: "success", title: `Разметка на «${chosen?.label || key}»`, detail: "Применится со следующего прогона." });
+      pushToast({ tone: "success", title: `Annotation using «${chosen?.label || key}»`, detail: "Applies to the next run." });
       await queryClient.invalidateQueries({ queryKey: hubKeys.progress(bookId) });
     },
     onError: (error) => {
       setPending(null);
-      pushToast({ tone: "error", title: "Модель не сохранена", detail: describeApiError(error, "Не удалось сохранить выбор.") });
+      pushToast({ tone: "error", title: "Model not saved", detail: describeApiError(error, "Could not save selection.") });
     },
   });
 
   return (
     <section className="panel hub-card" aria-labelledby="hub-model-title">
       <header className="hub-card-head">
-        <h2 id="hub-model-title" className="hub-card-title">Модель разметки</h2>
+        <h2 id="hub-model-title" className="hub-card-title">Annotation model</h2>
         {model.last_run_cost_rub !== null ? (
-          <span className="hub-dim" title={`Курс студии: ${rub(model.usd_rub_rate)} ₽/$`}>
-            последний прогон ≈ {rub(model.last_run_cost_rub)} ₽{model.last_run_peak ? " (по дневному тарифу)" : ""}
+          <span className="hub-dim" title={`Studio exchange rate: ${rub(model.usd_rub_rate)} ₽/$`}>
+            last run ≈ {rub(model.last_run_cost_rub)} ₽{model.last_run_peak ? " (at daytime rates)" : ""}
           </span>
         ) : null}
       </header>
@@ -77,17 +77,17 @@ export function ModelCard({ bookId, model, locked }: ModelCardProps) {
             <li key={choice.key} className={current ? "hub-model is-on" : "hub-model"}>
               <div className="hub-model-head">
                 <strong>{choice.label}</strong>
-                {current ? <span className="hub-model-badge">выбрана</span> : null}
+                {current ? <span className="hub-model-badge">selected</span> : null}
                 {choice.trains_on_text ? (
-                  <span className="hub-model-badge hub-model-badge--warn" title="Провайдер вправе использовать присланный текст для обучения">
-                    учится на тексте
+                  <span className="hub-model-badge hub-model-badge--warn" title="The provider may use submitted text for training">
+                    may train on text
                   </span>
                 ) : null}
               </div>
               <div className="hub-model-price num">{priceLine(choice)}</div>
               {choice.peak_rub_in !== null && choice.peak_rub_out !== null ? (
                 <div className="hub-model-price num">
-                  {choice.peak_hours} — вдвое дороже: {rub(choice.peak_rub_in)} / {rub(choice.peak_rub_out)} ₽
+                  {choice.peak_hours} — twice the price: {rub(choice.peak_rub_in)} / {rub(choice.peak_rub_out)} ₽
                 </div>
               ) : null}
               {choice.accuracy ? <div className="hub-model-accuracy">{choice.accuracy}</div> : null}
@@ -96,23 +96,23 @@ export function ModelCard({ bookId, model, locked }: ModelCardProps) {
                 <div className="hub-model-confirm">
                   <span>
                     {choice.trains_on_text
-                      ? "Текст книги уйдёт провайдеру, который вправе на нём учиться. Разрешение автора получено?"
-                      : "Переключить разметку на эту модель?"}
+                      ? "The provider may use the submitted book text for training. Do you have the author's permission?"
+                      : "Switch annotation to this model?"}
                   </span>
                   <Button size="sm" variant="primary" loading={choose.isPending} onClick={() => choose.mutate(choice.key)}>
-                    Да, переключить
+                    Yes, switch
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setPending(null)}>Отмена</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setPending(null)}>Cancel</Button>
                 </div>
               ) : (
                 <Button
                   size="sm"
                   variant="secondary"
                   disabled={locked}
-                  title={locked ? "Дождитесь конца текущего прогона" : undefined}
+                  title={locked ? "Wait for the current run to finish" : undefined}
                   onClick={() => setPending(choice.key)}
                 >
-                  Выбрать
+                  Select
                 </Button>
               )}
             </li>

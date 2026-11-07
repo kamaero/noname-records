@@ -1,3 +1,4 @@
+import { roleLabel } from "../../v2/types";
 /**
  * The «Загрузка» form: which book, which role, which chapter, what the file becomes —
  * then the batch drop zone and the chapter's last files. Until 29.10 it was a narrow
@@ -90,7 +91,7 @@ function formatTime(iso: string): string {
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso.slice(0, 16).replace("T", " ");
-  return date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString("en-US", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 /** «2:35», «0:07», «1:02:03» — то, что человек слышит на плеере, не байты. */
@@ -142,9 +143,9 @@ function canDeleteRecentFile(
     без времени два подтверждения неотличимы — можно стереть не тот безвозвратно. */
 function confirmDeleteRecentFile(row: DictorRecentFile): boolean {
   return window.confirm(
-    `Удалить дубль роли «${row.role || "без роли"}», глава «${row.chapter || "без названия"}», `
-      + `загружен ${formatTime(row.uploaded_at)}, длительность ${formatDuration(row.duration_seconds)}?\n\n`
-      + `Файл «${row.canonical_filename}» будет стёрт с сервера и с зеркала на NAS. Отката не будет.`,
+    `Delete take for role «${row.role || "no role"}», chapter «${row.chapter || "untitled"}», `
+      + `uploaded ${formatTime(row.uploaded_at)}, duration ${formatDuration(row.duration_seconds)}?\n\n`
+      + `File «${row.canonical_filename}» will be deleted from the server and NAS mirror. This cannot be undone.`,
   );
 }
 
@@ -156,9 +157,9 @@ function buildFileColumns(
   onDeleteFile: ((row: DictorRecentFile) => void) | undefined,
 ): Column<DictorRecentFile>[] {
   return [
-    { key: "at", header: "Когда", render: (row) => <span className="num">{formatTime(row.uploaded_at)}</span>, nowrap: true, width: "5.5em" },
-    { key: "role", header: "Роль", render: (row) => row.role || "—" },
-    { key: "file", header: "Файл", render: (row) => <span className="rec-file-cell mono" title={row.canonical_filename}>{row.canonical_filename}</span> },
+    { key: "at", header: "When", render: (row) => <span className="num">{formatTime(row.uploaded_at)}</span>, nowrap: true, width: "5.5em" },
+    { key: "role", header: "Role", render: (row) => row.role || "—" },
+    { key: "file", header: "File", render: (row) => <span className="rec-file-cell mono" title={row.canonical_filename}>{row.canonical_filename}</span> },
     {
       key: "actions",
       header: "",
@@ -175,7 +176,7 @@ function buildFileColumns(
               if (confirmDeleteRecentFile(row)) onDeleteFile(row);
             }}
           >
-            Удалить
+            Delete
           </Button>
         );
       },
@@ -202,11 +203,11 @@ export function RecordingPanel(props: RecordingPanelProps) {
   const selectValue = custom ? CUSTOM : role;
 
   const roleHint = myRoles.length
-    ? `Ваши роли по касту: ${myRoles.map((item) => item.name).join(", ")}.`
+    ? `Your assigned roles: ${myRoles.map((item) => item.name).join(", ")}.`
     : cast.length
-      ? "Роль не назначена: вашего имени нет в касте этой книги. Выберите роль из списка или впишите её."
+      ? "No role assigned: your name is not in this book's cast. Choose a role or enter one."
       : chapters.length
-        ? "Роль не назначена: каст главы ещё пуст. Впишите роль вручную."
+        ? "No role assigned: this chapter has no cast yet. Enter a role manually."
         : undefined;
 
   return (
@@ -214,8 +215,8 @@ export function RecordingPanel(props: RecordingPanelProps) {
       <div className="rec-col rec-col--choose">
         {!canUploadForOthers ? (
           <p className="rec-book-line">
-            <span className="rec-label">Записал</span>
-            <strong title="Имя актёра для файлов">{actorName || "—"}</strong>
+            <span className="rec-label">Recorded by</span>
+            <strong title="Voice actor name for files">{actorName || "—"}</strong>
           </p>
         ) : null}
 
@@ -223,7 +224,7 @@ export function RecordingPanel(props: RecordingPanelProps) {
             уведомления и складывается смета. Менять его вправе только те, к кому
             попадают записи, присланные мимо системы. */}
         {canUploadForOthers && onActorName ? (
-          <Field label="Записал" hint="Чьё имя встанет на файлы. Оставьте своё, если запись ваша.">
+          <Field label="Recorded by" hint="Name shown on the files. Keep your own name for your recordings.">
             {(field) => (
               <>
                 <input
@@ -232,7 +233,7 @@ export function RecordingPanel(props: RecordingPanelProps) {
                   type="text"
                   list="rec-actor-names"
                   value={actorName}
-                  placeholder="Имя актёра как в касте"
+                  placeholder="Voice actor name as shown in cast"
                   onChange={(event) => onActorName(event.target.value)}
                 />
                 <datalist id="rec-actor-names">
@@ -248,7 +249,7 @@ export function RecordingPanel(props: RecordingPanelProps) {
         {notice ? <p className="ui-note ui-note--info rec-note">{notice}</p> : null}
 
         {books.length > 1 ? (
-          <Field label="Книга">
+          <Field label="Book">
             {(field) => (
               <select {...field} className="ui-input rec-select" value={bookId} onChange={(event) => onBook(event.target.value)}>
                 {books.map((book) => (
@@ -261,12 +262,12 @@ export function RecordingPanel(props: RecordingPanelProps) {
           </Field>
         ) : books.length === 1 ? (
           <p className="rec-book-line">
-            <span className="rec-label">Книга</span>
+            <span className="rec-label">Book</span>
             <strong>{books[0].title}</strong>
           </p>
         ) : null}
 
-        <Field label="Роль" hint={roleHint}>
+        <Field label="Role" hint={roleHint}>
           {(field) => (
             <div className="rec-role">
               <select
@@ -285,7 +286,7 @@ export function RecordingPanel(props: RecordingPanelProps) {
                   onRole(value);
                 }}
               >
-                <option value="">— выберите роль —</option>
+                <option value="">— choose a role —</option>
                 {offered.map((item) => {
                   // Роль утверждена за другим (имя без «?») — пробу на неё не примут (решение
                   // владельца 05.10); показываем, но выбрать нельзя, чтобы не писать впустую.
@@ -297,19 +298,19 @@ export function RecordingPanel(props: RecordingPanelProps) {
                   const taken = Boolean(holder) && !holder.endsWith("?") && !mine;
                   return (
                     <option key={item.name} value={item.name} disabled={taken}>
-                      {item.name} · {item.lines}{taken ? " · утверждена" : ""}
+                      {roleLabel(item.name)} · {item.lines}{taken ? " · approved" : ""}
                     </option>
                   );
                 })}
-                <option value={CUSTOM}>Другая роль…</option>
+                <option value={CUSTOM}>Another role…</option>
               </select>
               {custom ? (
                 <input
                   className="ui-input"
                   type="text"
                   value={role}
-                  placeholder="Имя роли как в касте"
-                  aria-label="Имя роли"
+                  placeholder="Role name as shown in cast"
+                  aria-label="Role name"
                   onChange={(event) => onRole(event.target.value)}
                 />
               ) : null}
@@ -317,9 +318,9 @@ export function RecordingPanel(props: RecordingPanelProps) {
                 <Link
                   className="rec-role-all"
                   to={roleScriptHref(bookId, role, "/recording/role", roleScriptSearch)}
-                  title="Все реплики этой роли по всей книге, с контекстом"
+                  title="All lines for this role throughout the book, with context"
                 >
-                  Все реплики роли в книге →
+                  All lines for this role →
                 </Link>
               ) : null}
             </div>
@@ -328,7 +329,7 @@ export function RecordingPanel(props: RecordingPanelProps) {
 
         {/* У пробы главу не требуют — назвать можно, но роль ещё не назначена. Именно
             требование главы и загоняло слово «пробы» внутрь имени файла. */}
-        <Field label={chapterOptional ? "Глава, из которой читали" : "Глава"}>
+        <Field label={chapterOptional ? "Chapter read from" : "Chapter"}>
           {(field) => (
             <select
               {...field}
@@ -337,70 +338,68 @@ export function RecordingPanel(props: RecordingPanelProps) {
               disabled={loading || !chapters.length}
               onChange={(event) => onChapter(event.target.value)}
             >
-              {chapterOptional ? <option value="">— не указана —</option> : null}
-              {!chapters.length && !chapterOptional ? <option value="">— нет опубликованных глав —</option> : null}
+              {chapterOptional ? <option value="">— not specified —</option> : null}
+              {!chapters.length && !chapterOptional ? <option value="">— no published chapters —</option> : null}
               {chapters.map((chapter) => (
                 <option key={chapter.id} value={chapter.id}>
-                  {chapter.index}. {chapter.title || "Без названия"}{chapter.released ? " · сдана" : ""}
+                  {chapter.index}. {chapter.title || "Untitled"}{chapter.released ? " · delivered" : ""}
                 </option>
               ))}
             </select>
           )}
         </Field>
 
-        <section className="rec-section" aria-label={audition ? "Проба" : "Дубль"}>
+        <section className="rec-section" aria-label={audition ? "Audition" : "Take"}>
           {/* Диктора не спрашивают, проба это или дубль: он не обязан помнить, на что
               утверждён, — а система обязана. Ему показывают, что из этого вышло. */}
           <div className={audition ? "rec-kind-badge is-audition" : "rec-kind-badge"}>
             <strong>
-              {audition ? (takenByOther ? `Проба — а роль за «${roleOwner}»` : "Проба на роль") : "Дубль утверждённой роли"}
+              {audition ? (takenByOther ? `Audition; role assigned to «${roleOwner}»` : "Role audition") : "Take for an assigned role"}
             </strong>
             <span>
               {!audition
-                ? `Роль за «${actorName}» — файл встанет в запись главы.`
+                ? `Role assigned to «${actorName}»; this file will become a chapter recording.`
                 : takenByOther
-                  ? `Файл уйдёт в пробы «${actorName}». Если это запись «${roleOwner}» — впишите его в поле «Записал» выше.`
-                  : "Роль пока ничья — файл уйдёт в пробы. Главу можно не указывать, попыток может быть несколько."}
+                  ? `This file will be saved as an audition for «${actorName}». If it was recorded by «${roleOwner}», enter their name in Recorded by above.`
+                  : "This role is unassigned. The file will be saved as an audition. Chapter is optional; you may submit multiple attempts."}
             </span>
           </div>
 
           {/* Не образец, а именно то имя, которого ждут от этого файла. */}
           {expectedFilename ? (
             <div className="rec-naming">
-              <span className="rec-naming-label">Назовите файл так:</span>
+              <span className="rec-naming-label">Name your file:</span>
               <code className="rec-naming-name mono">{expectedFilename}</code>
               <button
                 type="button"
                 className="rec-naming-copy"
-                title="Скопировать имя"
+                title="Copy filename"
                 onClick={() => void navigator.clipboard?.writeText(expectedFilename)}
               >
-                Скопировать
+                Copy
               </button>
             </div>
           ) : (
             <p className="rec-naming-empty muted">
-              Выберите роль — и здесь появится точное имя, которым назвать файл.
+              Choose a role to see the exact filename to use.
             </p>
           )}
           <p className="rec-naming-rule muted">
-            Утверждённая роль — <code className="mono">KP_Ch01_Dgarnin_Zotov.wav</code>, проба —{" "}
-            <code className="mono">KP_Ch01_Osniva_NataliGolubeva_proba.wav</code>. Книга, глава, роль, актёр — в этом порядке.{" "}
-            <code className="mono">Ch01</code> — номер главы: <code className="mono">Ch01</code> — первая, <code className="mono">Ch34</code> — тридцать
-            четвёртая. Глава берётся из выбора выше, а не из имени файла; если они разойдутся, система не примет файл.
+            Assigned role — <code className="mono">KP_Ch01_Dgarnin_Zotov.wav</code>, audition —{" "}
+            <code className="mono">KP_Ch01_Osniva_NataliGolubeva_proba.wav</code>. Book, chapter, role, voice actor, in that order.{" "}
+            <code className="mono">Ch01</code> — chapter number: <code className="mono">Ch01</code> — first, <code className="mono">Ch34</code> — thirty-fourth. The chapter is taken from your selection above; mismatching filenames are rejected.
           </p>
           {/* Правило хранения исходников: запись на сервере лежит в одном экземпляре,
               и без копии у диктора её неоткуда восстановить, если она пропадёт. */}
           <p className="rec-naming-rule muted">
-            Не удаляйте исходники у себя до выхода последней главы и сохраните копию в надёжном месте.
-            На сервере запись хранится в одном экземпляре — восстановить её, если она пропадёт, будет неоткуда.
+            Keep your original recordings until the final chapter is released, and store a safe backup. The server holds one copy; lost recordings cannot be recovered without your originals.
           </p>
         </section>
       </div>
 
       <div className="rec-col rec-col--files">
-        <section className="rec-section" aria-label="Файлы">
-          <h3 className="rec-label">Файлы</h3>
+        <section className="rec-section" aria-label="Files">
+          <h3 className="rec-label">Files</h3>
           <BatchUpload
             files={upload.files}
             preview={upload.preview}
@@ -419,8 +418,8 @@ export function RecordingPanel(props: RecordingPanelProps) {
           />
         </section>
 
-        <section className="rec-section" aria-label="Последние файлы">
-          <h3 className="rec-label">Последние файлы главы</h3>
+        <section className="rec-section" aria-label="Recent files">
+          <h3 className="rec-label">Recent chapter files</h3>
           <DataTable
             className="rec-table"
             columns={fileColumns}
@@ -428,8 +427,8 @@ export function RecordingPanel(props: RecordingPanelProps) {
             rowKey={(row) => row.id || row.canonical_filename}
             loading={loading}
             skeletonRows={2}
-            empty={<p className="rec-table-empty">В этой главе пока ничего не загружено.</p>}
-            aria-label="Последние загруженные файлы"
+            empty={<p className="rec-table-empty">No files uploaded for this chapter yet.</p>}
+            aria-label="Recently uploaded files"
           />
         </section>
       </div>

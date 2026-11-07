@@ -19,9 +19,9 @@ def db():
 
 
 def _approve(db, character, actor, *, weight=2):
-    cast_role_vote(db, character=character, voter_uid="u-author", voter_name="Примеродин",
+    cast_role_vote(db, character=character, voter_uid="u-author", voter_name="Примеров",
                    weight=weight, actor_name=actor)
-    return casting.propagate_approval(db, character, voter_uid="u-author", voter_name="Примеродин", weight=weight)
+    return casting.propagate_approval(db, character, voter_uid="u-author", voter_name="Примеров", weight=weight)
 
 
 def test_an_approved_actor_takes_the_role_in_every_book_of_the_cycle(db):
@@ -71,7 +71,7 @@ def test_a_book_of_another_author_is_never_touched(db):
 
 def test_a_sibling_where_the_author_outvotes_the_approval_is_not_reported_changed(db):
     cycle = build_cycle(db)
-    cast_role_vote(db, character=cycle["kuybu"][1], voter_uid="u-author", voter_name="Примеродин",
+    cast_role_vote(db, character=cycle["kuybu"][1], voter_uid="u-author", voter_name="Примеров",
                    weight=2, actor_name="Сомов Роман")
     cast_role_vote(db, character=cycle["kuybu"][0], voter_uid="u-admin", voter_name="Владелец",
                    weight=1, actor_name="Иванов Иван")

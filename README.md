@@ -1,270 +1,88 @@
 # Noname Records
 
-**Бесплатная система для студии многоголосой озвучки книг.** Вы загружаете книгу — система
-размечает, кто какую реплику говорит, помогает собрать каст, раздаёт дикторам их тексты,
-принимает записи, сверяет их с текстом и собирает проект главы для сведения в Adobe Audition.
+Noname Records is a self-hosted workspace for full-cast audiobook production. Import a book, review speaker attribution, cast actors, collect recordings, compare takes with the script, and export a chapter project for Adobe Audition.
 
-Систему вы ставите у себя: на свой компьютер или на арендованный сервер. Нейросетям платите
-напрямую своими ключами — без посредников и наценок. Ваши книги и записи никуда не уходят,
-кроме выбранных вами нейросетей.
+Your studio runs its own copy. AI services use your own provider keys and may charge for requests. Check provider terms, estimates and prices before starting a job. Book text and audio are sent only to the services you choose for that work. The software is free under the [AGPL-3.0 license](LICENSE).
 
-> Лицензия AGPL-3.0: пользоваться, изменять и распространять можно свободно. Если вы
-> запускаете изменённую версию как сервис для других людей — обязаны открыть свои изменения.
+[Русская документация](README.ru.md)
 
----
+## Requirements
 
-## Что умеет
+- Mac or Windows with Docker Desktop and at least 8 GB of memory, or a Linux server with Docker Compose.
+- Internet access for installation and external AI services.
+- API keys for the providers you choose; enter them during setup or in **Settings → AI providers**.
+- A domain and HTTPS for remote collaborators or the optional Telegram bot.
 
-1. **Приём книги.** `.txt`, `.docx`, `.fb2` или `.epub`. Текст делится на главы и абзацы;
-   нейросеть не переписывает текст, а только размечает его.
-2. **Разметка.** Система находит персонажей и назначает говорящего каждой реплике, предлагает
-   ударения в редких словах. Сомнительные места остаются человеку. Главный экран — **Читалка**:
-   текст книги с цветной разметкой ролей.
-3. **Каст.** Актёры, пробы, пересечения ролей, смета по словам. Пробы слушают автор и студия.
-4. **Запись.** Каждый диктор видит только свои роли и опубликованные главы, сдаёт дубли через сайт.
-5. **Сверка.** Распознавание речи сравнивает запись с текстом и показывает пропущенные реплики.
-6. **Сведение.** Архив главы и проект `.sesx` для Adobe Audition с дорожками по ролям, маркерами
-   сцен и (по желанию) фоновыми звуками.
-7. **Telegram-бот** (по желанию): назначения на роли, сроки, реплики на перезапись, логин и пароль
-   для дикторов.
+The budget screen currently records expenses and limits in RUB. An unknown price is not a free request and may not be included in the limit. Review the estimate and provider settings before paid work.
 
----
+## Install on Mac
 
-## Что понадобится
+1. Install and start [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+2. Open Terminal and run:
 
-- **Компьютер или сервер.** Для одного человека, который пробует систему, хватит своего
-  компьютера — **Mac или Windows**, 8 ГБ памяти. Чтобы дикторы заходили из дома и работал
-  Telegram-бот — нужен сервер в интернете (VPS с Linux и доменом), см. «Установка на сервер».
-  На Linux система ставится только как сервер.
-- **Ключи нейросетей.** Ключ — это длинная строка-пароль, по которой нейросеть списывает деньги
-  с вашего счёта. Их можно ввести при установке или позже — на сайте, в разделе
-  «Настройки → Нейросети» (там же кнопка «Проверить» и балансы).
+```bash
+curl -fsSL https://raw.githubusercontent.com/kamaero/noname-records/main/get.sh | bash
+```
 
-| Для чего | Сервис | Нужен? |
+3. Follow the prompts, set administrator credentials and select local mode. Keys can be added later.
+4. Open [http://localhost:8080](http://localhost:8080) and sign in.
+
+## Install on Windows
+
+Install and start Docker Desktop with WSL 2 enabled, then run in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/kamaero/noname-records/main/get.ps1 | iex"
+```
+
+Follow the prompts and open [http://localhost:8080](http://localhost:8080).
+
+## Install on a server
+
+Point your domain's DNS A record at the Linux server, connect to it, and replace `studio.example.com` with your domain:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kamaero/noname-records/main/get.sh | bash -s -- --domain studio.example.com
+```
+
+The installer configures Docker and HTTPS. Sign in at your domain. The optional Telegram bot requires your own bot token and webhook secret; keep these private.
+
+## Get started
+
+1. Sign in and configure keys and models under **Settings → AI providers**.
+2. Add the sample book or upload a book; review the estimate before starting analysis.
+3. Review attribution in the reader, correct uncertain passages and organize the cast.
+4. Create actor accounts, publish chapters and collect recordings.
+5. Review ASR results and download the chapter project for mixing.
+
+## Maintenance
+
+Run commands from the installation directory (`~/noname-records` on Mac/Linux or `$HOME\\noname-records` in Windows PowerShell):
+
+| Task | Mac / Linux | Windows PowerShell |
 |---|---|---|
-| Разметка книги (кто говорит, персонажи) | [DeepSeek](https://platform.deepseek.com) → *API keys* | **Да** |
-| Сверка записей с текстом | [OpenAI](https://platform.openai.com/api-keys) или [RouterAI](https://routerai.ru) | Когда начнутся записи |
-| Строгая проверка рассказчика | [RouterAI](https://routerai.ru) | По желанию; платная |
-| Вторая проверка разметки (консилиум), звуковая разметка | [RouterAI](https://routerai.ru) (оплата в рублях) | По желанию |
-| Фоновые звуки сцен | [ElevenLabs](https://elevenlabs.io) | По желанию |
-| Разметка моделью Claude вместо DeepSeek (точнее, дороже) | [Anthropic](https://console.anthropic.com) | По желанию |
+| Update | `./update.sh` | `powershell -ExecutionPolicy Bypass -File update.ps1` |
+| Back up | `./backup.sh` | `powershell -ExecutionPolicy Bypass -File backup.ps1` |
+| Stop / start | `docker compose stop` / `docker compose up -d` | same |
+| View logs | `docker compose logs --tail 100 web worker` | same |
 
-Строгая проверка рассказчика выключена по умолчанию. Для неё добавьте ключ RouterAI
-в «Настройки → Нейросети», задайте `ASR_AUDIT_ENABLED=1` в окружении приложения и
-перезапустите службу. После полной сборки главы проверка запускается автоматически;
-повтор в таблице ASR оплачивается отдельно. Цена зависит от длительности и тарифов.
+Updates create a backup first. Keep another copy away from the server. The `data` directory contains the database and recordings; `.env` contains configuration and secrets.
 
-**Сколько стоит.** Сама система бесплатна; платите только нейросетям за то, что запустили.
-DeepSeek заметно дешевле Claude; сверка записей стоит мало по сравнению с разметкой.
+If Docker is unavailable, start Docker Desktop and wait until it is ready. If the server is unreachable, check DNS and HTTPS; after correcting DNS, restart Caddy with `docker compose restart caddy`. Generate an administrator password hash with `docker compose run --rm web python scripts/generate_password_hash.py`. For Telegram webhook status, run `docker compose exec web python -m scripts.telegram_set_webhook --info`.
 
-**Траты и лимит.** «Настройки → Траты» показывают, сколько ушло за месяц — по шагам и по
-провайдерам, — и там же задаётся месячный лимит. Если прогон не помещается в остаток лимита,
-он не запустится, пока администратор не подтвердит «сверх лимита»; начатый прогон всегда
-доделывается, сверка записей дикторов не останавливается никогда. Цены моделей из каталога
-система знает сама; для остальных («Настройки → Нейросети» подскажет, каких) впишите цену —
-иначе траты по ним видны как «цена неизвестна» и в лимит не входят.
+## Development
 
----
-
-## Установка на свой компьютер
-
-Установщик всё сделает сам: скачает систему, поставит Docker (программу, в которой работает
-система), задаст несколько вопросов и откроет сайт. Понадобится интернет и 15–30 минут.
-
-### Mac
-
-1. Установите **Docker Desktop**: https://www.docker.com/products/docker-desktop/ — скачайте
-   версию для своего Mac (*Apple Silicon* для M1/M2/M3/M4, *Intel* для старых), откройте
-   скачанный файл и перетащите Docker в «Программы». Запустите Docker и дождитесь, пока
-   значок кита в верхней строке перестанет ульдатать.
-2. Откройте **Терминал** (Cmd + Пробел, наберите «Терминал», Enter).
-3. Скопируйте эту строку, вставьте в Терминал (Cmd + V) и нажмите Enter:
-
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/kamaero/noname-records/main/get.sh | bash
-   ```
-
-4. Отвечайте на вопросы: название студии, логин и пароль администратора (придумайте и
-   запомните), режим — «компьютер», ключи нейросетей (можно пропустить — нажмите Enter).
-5. Когда появится «Система готова», откройте в браузере **http://localhost:8080** и войдите.
-
-После входа на главной будет карточка **«Первые шаги»**: ключ нейросети, модели, месячный
-лимит и книга-пример — короткий детектив на две главы. Разметка примера стоит около 3 рублей
-(точную смету сайт покажет до запуска) и показывает всю цепочку: персонажей, каст и Читалку.
-Карточку можно скрыть и вернуть в «Настройках».
-
-### Windows 10 / 11
-
-1. Установите **Docker Desktop**: https://www.docker.com/products/docker-desktop/ → *Download for
-   Windows*. При установке оставьте галочку *Use WSL 2*. После установки перезагрузите компьютер,
-   запустите Docker Desktop и дождитесь надписи *Engine running* внизу окна.
-2. Нажмите **Пуск**, наберите `PowerShell`, откройте **Windows PowerShell**.
-3. Скопируйте строку, вставьте в окно PowerShell (правой кнопкой мыши) и нажмите Enter:
-
-   ```powershell
-   powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/kamaero/noname-records/main/get.ps1 | iex"
-   ```
-
-4. Отвечайте на вопросы, как в пункте 4 для Mac.
-5. Откройте в браузере **http://localhost:8080** и войдите.
-
-Система ставится в папку `noname-records` в вашей домашней папке (`C:\Users\<вы>\noname-records`).
-
----
-
-## Установка на сервер (VPS)
-
-Сервер нужен, чтобы дикторы и автор заходили на сайт из дома, а Telegram-бот присылал им
-задания. Это арендованный компьютер в дата-центре, который работает круглосуточно.
-
-### 1. Арендуйте сервер
-
-Мы рекомендуем **[CloudVPS](https://cloudvps.host/)**: недорого, серверы в Европе, оплата
-картой или криптовалютой, сервер готов через 5 минут после оплаты.
-
-- Тариф: **VM-2** (2 ядра, 4 ГБ памяти, 40 ГБ диска, около €8 в месяц) — для начала.
-  Если записей много (несколько книг одновременно) — **VM-3** (80 ГБ диска, около €16).
-  Записи дикторов занимают больше всего места; перейти на тариф выше можно позже.
-- Расположение: любое (например, Германия или Нидерланды).
-- Операционная система: **Ubuntu 24.04**.
-
-После оплаты вы получите **IP-адрес** сервера (четыре числа через точку, например
-`203.0.113.25`) и **пароль** пользователя `root`. Если не нашли их в письме — они в личном
-кабинете CloudVPS, в карточке сервера.
-
-### 2. Купите домен (адрес сайта)
-
-Для HTTPS и Telegram-бота нужен домен, например `studio-voice.ru`. Его покупают у
-регистратора (reg.ru, nic.ru, Namecheap и другие), около 200–1000 ₽ в год. В настройках
-домена у регистратора (раздел «DNS» или «Управление записями») добавьте **A-запись**:
-имя `@`, значение — IP-адрес сервера. Подождите 15–60 минут, пока запись разойдётся.
-
-### 3. Подключитесь к серверу
-
-- **Mac:** откройте Терминал и введите `ssh root@203.0.113.25` (ваш IP). На вопрос
-  *Are you sure…* ответьте `yes`, затем вставьте пароль (символы при вводе не видны — так и надо).
-- **Windows 10 / 11:** откройте PowerShell и введите ту же команду `ssh root@203.0.113.25`.
-
-### 4. Установите систему одной командой
-
-Подставьте свой домен вместо `studio-voice.ru`:
+Python 3.12, FastAPI, SQLAlchemy, Alembic, SQLite, RQ and Redis; React 18, TypeScript and Vite.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kamaero/noname-records/main/get.sh | bash -s -- --domain studio-voice.ru
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/python -m pytest -q
+cd frontend && npm ci && npm run build
 ```
 
-Установщик поставит Docker, задаст вопросы, сам получит сертификат HTTPS и запустит систему.
-Когда появится «Система готова», откройте **https://studio-voice.ru** и войдите администратором.
+Before publication, run `scripts/release_audit.py --tree --history --release` with the required read-only people and book databases. Never publish private books, recordings, names or secrets.
 
-### 5. Telegram-бот (по желанию)
-
-1. В Telegram откройте [@BotFather](https://t.me/BotFather) → `/newbot` → придумайте имя.
-   BotFather пришлёт **токен** вида `123456789:AA…`.
-2. На сервере откройте настройки: `nano ~/noname-records/.env` — впишите
-   `TELEGRAM_BOT_TOKEN=` (токен), `TELEGRAM_BOT_USERNAME=` (имя бота без @),
-   `TELEGRAM_WEBHOOK_SECRET=` (любая длинная строка из букв и цифр),
-   `TELEGRAM_NOTIFY_ENABLED=true` и `OWNER_TELEGRAM_ID=` (ваш id — узнайте у
-   [@userinfobot](https://t.me/userinfobot)). Сохраните: Ctrl + O, Enter, Ctrl + X.
-3. Примените и подключите бота:
-
-   ```bash
-   cd ~/noname-records && docker compose up -d && docker compose exec web python -m scripts.telegram_set_webhook
-   ```
-
-4. В BotFather выполните `/setdomain`, выберите бота и укажите свой домен — тогда на сайте
-   заработает кнопка «Войти через Telegram».
-
----
-
-## Первые шаги
-
-1. **Войдите** администратором — логин и пароль вы задали при установке.
-   Затем откройте **«Настройки → Нейросети»**, вставьте ключ DeepSeek (если не ввели его при
-   установке) и нажмите «Проверить» — должно появиться «работает».
-2. **Библиотека → Загрузить книгу.** Выберите файл и запустите разметку. Глава размечается
-   несколько минут; за ходом можно следить на странице книги.
-3. **Читалка.** Проверьте разметку: щёлкните по реплике, чтобы сменить говорящего; ударения
-   правятся там же.
-4. **Каст.** Назначьте актёров на роли, отправьте на пробы, утвердите.
-5. **Пользователи** и **Дикторы.** Заведите учётки дикторам и автору. С ботом — нажмите
-   «Скопировать приглашение» и отправьте его дикторам: бот сам выдаст им вход.
-6. **Опубликуйте главы** — дикторы увидят свои реплики и начнут сдавать дубли.
-
-Подробная справка для дикторов есть на самом сайте — раздел «Помощь».
-
----
-
-## Обслуживание
-
-Все команды — в папке системы (`cd ~/noname-records`; на Windows — `cd $HOME\noname-records`
-в PowerShell).
-
-| Что сделать | Mac / сервер | Windows |
-|---|---|---|
-| Обновить до новой версии | `./update.sh` | `powershell -ExecutionPolicy Bypass -File update.ps1` |
-| Сделать резервную копию | `./backup.sh` | `powershell -ExecutionPolicy Bypass -File backup.ps1` |
-| Остановить | `docker compose stop` | `docker compose stop` |
-| Запустить снова | `docker compose up -d` | `docker compose up -d` |
-| Посмотреть ошибки | `docker compose logs --tail 100 web worker` | то же |
-
-Обновление само делает резервную копию перед установкой новой версии. Копии лежат в папке
-`backups`. **Храните копии ещё где-нибудь** (облако, внешний диск): копия на том же сервере
-не спасёт, если сервер пропадёт.
-
-Где что лежит: база и записи — папка `data`, настройки — файл `.env` (в нём ключи и пароли,
-никому его не пересылайте).
-
----
-
-## Частые проблемы
-
-**«Docker не запустился».** На Mac и Windows откройте Docker Desktop и дождитесь, пока он
-запустится, затем повторите установку. На Windows проверьте, что включена виртуализация
-(Docker Desktop подскажет, если нет).
-
-**Сайт не открывается на сервере.** Проверьте, что A-запись домена указывает на IP сервера
-(`ping studio-voice.ru` должен показать ваш IP), и подождите до часа после её создания.
-Сертификат HTTPS система получает сама, когда домен уже указывает на сервер; после
-исправления A-записи выполните `docker compose restart caddy`.
-
-**Разметка не запускается или стоит на месте.** Откройте «Настройки → Нейросети»: у ключа
-DeepSeek должно быть «работает», а у шага разметки не должно быть предупреждения. Проверьте баланс в
-личном кабинете DeepSeek. После правки `.env` выполните `docker compose up -d`.
-
-**«Ключ сохранён, но не читается».** Ключи на сайте хранятся зашифрованными; если в `.env`
-поменяли `SECRET_KEY` или `KEYS_ENCRYPTION_KEY`, старые ключи не расшифровать — введите их
-заново в «Настройки → Нейросети».
-
-**Забыли пароль администратора.** Запустите установщик хеша и впишите результат в `.env`
-(строка `ADMIN_PASSWORD_HASH=`), затем `docker compose up -d`:
-
-```bash
-docker compose run --rm web python scripts/generate_password_hash.py
-```
-
-**Бот молчит.** Боту нужен сервер с доменом и HTTPS. Проверьте подключение:
-`docker compose exec web python -m scripts.telegram_set_webhook --info`.
-
----
-
-## Для разработчиков
-
-Python 3.12, FastAPI, SQLAlchemy, Alembic, SQLite, RQ + Redis; фронт — React 18 + TypeScript +
-Vite. Устройство системы — [ARCHITECTURE.md](ARCHITECTURE.md), дизайн интерфейса —
-[DESIGN.md](DESIGN.md), принципы продукта — [PRODUCT.md](PRODUCT.md), справочники API и
-настроек — [docs/reference](docs/reference).
-
-```bash
-python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
-.venv/bin/python -m pytest -q                      # тесты
-cd frontend && npm ci && npm run build             # фронт
-```
-
-Перед публикацией изменений: `python scripts/release_audit.py` — проверка, что в репозиторий
-не попали ключи, адреса серверов и бинарные файлы с чужими метаданными. Реальных людей и тексты
-книг он ищет, только если дать ему вашу базу: `--release --people-from data/noname.db
---books-from data/noname.db` (в режиме `--release` без базы он отказывается работать).
-
-## Лицензия
+## License
 
 [GNU AGPL-3.0](LICENSE).

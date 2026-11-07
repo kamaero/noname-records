@@ -16,7 +16,7 @@ export function sceneNumbers(markers: SoundMarker[]): Map<string, number> {
 
 /** «СЦЕНА 2 · Таверна у Ворот · ночь · дождь» — пустые части пропускаются. */
 export function sceneTitle(marker: SoundMarker, place: SoundPlace | undefined, number: number): string {
-  return [`СЦЕНА ${number}`, place?.name, marker.payload.time_of_day, marker.payload.weather].filter(Boolean).join(" · ");
+  return [`SCENE ${number}`, place?.name, marker.payload.time_of_day, marker.payload.weather].filter(Boolean).join(" · ");
 }
 
 export async function copyQuery(text: string): Promise<boolean> {

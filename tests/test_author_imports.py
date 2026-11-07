@@ -12,17 +12,17 @@ def _reset():
 def test_full_bootstrap_flow():
     _reset()
     with SessionLocal() as db:
-        author = ap.get_or_create_author(db, "primerodin_flow", "Примеродин")
+        author = ap.get_or_create_author(db, "primerov_flow", "Примеров")
         entries = [
             {"name": "Хубол", "aliases": ["Полумракский Купец"], "topic": "Бароны", "description": "Купец"},
             {"name": "Агг", "aliases": ["Столп Полумрака"], "topic": "Бароны", "description": "Великан"},
         ]
         s1 = import_compendium(db, author.id, entries)
         assert s1["created"] == 2 and s1["updated"] == 0
-        s2 = import_cast(db, author.id, {"Полумракский Купец": "Примеродин Александр", "Новый": "Иванов Иван"})
+        s2 = import_cast(db, author.id, {"Полумракский Купец": "Примеров Алексей", "Новый": "Иванов Иван"})
         assert s2["actor_set"] == 1 and s2["created_unconfirmed"] == 1
         hubol = ap.find_character(db, author.id, "Хубол")
-        assert hubol.actor_name == "Примеродин Александр" and hubol.status == "confirmed"
+        assert hubol.actor_name == "Примеров Алексей" and hubol.status == "confirmed"
         s3 = import_legend(db, author.id, {"Агг": "#cc0000"})
         assert s3["color_set"] == 1
         agg = ap.find_character(db, author.id, "Агг")
@@ -35,7 +35,7 @@ def test_new_character_field_counted_once_not_double():
     counted only under created_unconfirmed — not also actor_set/color_set."""
     _reset()
     with SessionLocal() as db:
-        author = ap.get_or_create_author(db, "primerodin_newchar", "Примеродин")
+        author = ap.get_or_create_author(db, "primerov_newchar", "Примеров")
         sc = import_cast(db, author.id, {"Совсем Новый": "Актёр Икс"})
         assert sc == {"actor_set": 0, "created_unconfirmed": 1, "conflicts": [], "noop": 0}
         assert ap.find_character(db, author.id, "Совсем Новый").actor_name == "Актёр Икс"

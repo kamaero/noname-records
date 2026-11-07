@@ -32,9 +32,10 @@ from app.v2.reader import effective_book_attributions
 _WORD = re.compile(r"\S+")
 
 
-def _resolver(characters: list[Character]):
+def _resolver(characters: list[Character], identities=None):
     """Speaker name (or alias, stress and case folded) → character id."""
-    narrator = next((row for row in characters if is_narrator_name(row.name)), None)
+    is_narrator = identities.is_narrator if identities else is_narrator_name
+    narrator = next((row for row in characters if is_narrator(row.name)), None)
     narrator_id = str(narrator.id) if narrator is not None else ""
     by_key: dict[str, str] = {}
     for row in characters:
@@ -47,7 +48,13 @@ def _resolver(characters: list[Character]):
         text = str(name or "").strip()
         if not text or is_placeholder_name(text):
             return None
-        return narrator_id or None if is_narrator_name(text) else by_key.get(normalize_name(text))
+        if identities and identities.typed:
+            from app.services.role_identity import CHARACTER_PREFIX, NARRATOR_REF
+            ref = identities.ref(text)
+            if ref == NARRATOR_REF:
+                return narrator_id or None
+            return ref[len(CHARACTER_PREFIX):] if ref.startswith(CHARACTER_PREFIX) else None
+        return narrator_id or None if is_narrator(text) else by_key.get(normalize_name(text))
 
     return resolve
 
@@ -58,7 +65,8 @@ def aggregate_v2_lines(db, book_id: str) -> dict[str, dict[str, int]]:
         row for row in db.query(Character).filter(Character.book_id == book_id).all()
         if str(row.name or "").strip() and not is_placeholder_name(row.name)
     ]
-    resolve = _resolver(characters)
+    from app.services.role_identity import book_roles
+    resolve = _resolver(characters, book_roles(db, book_id))
     texts = dict(db.query(V2Segment.id, V2Segment.text).filter(V2Segment.book_id == book_id).all())
 
     known: dict[str, str | None] = {}

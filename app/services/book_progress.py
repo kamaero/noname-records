@@ -318,17 +318,17 @@ def collect_books_progress(db, books: list) -> dict[str, dict]:
         out[book.id]["effective_status"] = derive_book_pipeline_status(book, out[book.id])
         out[book.id]["effective_status_label"] = status_label(out[book.id]["effective_status"])
         if out[book.id]["effective_status"] == "char_extracting":
-            out[book.id]["action_hint"] = f"{step_model('characters')[1]} извлекает персонажей по всей книге и собирает полный CHAR_MEMORY."
+            out[book.id]["action_hint"] = f"{step_model('characters')[1]} is identifying speaking characters throughout the book."
         elif out[book.id]["char_extraction_failed"] > 0 and out[book.id]["effective_status"] == "processing":
-            out[book.id]["action_hint"] = "CHAR_EXTRACTION упал, но downstream продолжает работу с ослабленным контекстом. Проверь CHAR_MEMORY и качество speaker attribution."
+            out[book.id]["action_hint"] = "Character extraction failed. Processing continues with limited context; review the cast and speaker attribution."
         elif out[book.id]["effective_status"] == "stalled":
-            out[book.id]["action_hint"] = "Задача зависла дольше допустимого окна. Проверь лог и нажми CONTINUE."
+            out[book.id]["action_hint"] = "The task has not responded within the expected time. Check the log and select Continue."
         elif out[book.id]["effective_status"] == "failed":
-            out[book.id]["action_hint"] = "Есть failed job. Проверь лог книги и перезапусти пайплайн после правки."
+            out[book.id]["action_hint"] = "A task failed. Check the book log, resolve the issue and restart processing."
         elif out[book.id]["polishing_skipped"] > 0 and out[book.id]["effective_status"] == "author_review":
-            out[book.id]["action_hint"] = "Книга готова к review. Polishing сейчас работает как вторичный consistency-контур и мог быть автоматически пропущен."
+            out[book.id]["action_hint"] = "The book is ready for review. The optional consistency check may have been skipped automatically."
         elif out[book.id]["effective_status"] == "author_review":
-            out[book.id]["action_hint"] = "Книга готова к валидации."
+            out[book.id]["action_hint"] = "The book is ready for review."
         else:
             out[book.id]["action_hint"] = ""
     return out

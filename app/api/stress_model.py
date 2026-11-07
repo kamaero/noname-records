@@ -29,7 +29,7 @@ async def api_stress_model_download(request: Request):
     if denied:
         return denied
     if not one_seat():
-        return JSONResponse({"error": "На сервере модель скачивается сама."}, status_code=409)
+        return JSONResponse({"error": "The model is downloaded automatically on the server."}, status_code=409)
     stress_model.start_download()
     return stress_model.state()
 

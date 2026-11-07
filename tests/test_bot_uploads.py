@@ -66,7 +66,7 @@ def test_one_invitation_asks_to_confirm(db):
     out = handle_update(db, _audio(), now=NOW)
     row = db.query(BotUpload).one()
     assert row.state == "choose" and row.kind == "audio" and row.file_id == "F" * 80
-    assert "Проба на «Дракон» («Карта Приозерья»)?" in out[0].payload["text"]
+    assert "Audition for «Дракон» («Карта Приозерья»)?" in out[0].payload["text"]
     assert _data(out[0].payload) == [f"bu:c:{row.id}:c1", f"bu:x:{row.id}"]
 
 
@@ -81,7 +81,7 @@ def test_several_invitations_offer_roles(db):
 
 def test_no_invitation_no_audition(db):
     out = handle_update(db, _audio(tid="42"), now=NOW)
-    assert "только по приглашению" in out[0].payload["text"] and db.query(BotUpload).count() == 0
+    assert "by invitation" in out[0].payload["text"] and db.query(BotUpload).count() == 0
 
 
 def test_voice_is_accepted_and_video_is_not(db):
@@ -95,7 +95,7 @@ def test_voice_is_accepted_and_video_is_not(db):
     video["message"].pop("audio")
     video["message"]["video"] = {"file_id": "X", "file_size": 10}
     out = handle_update(db, video, now=NOW)
-    assert "аудиофайлом или голосовым" in out[0].payload["text"]
+    assert "audio file or voice message" in out[0].payload["text"]
 
 
 def _sized(size):
@@ -106,7 +106,7 @@ def _sized(size):
 def test_a_big_file_goes_to_the_site(db, monkeypatch):
     monkeypatch.setattr(bot_uploads, "max_download_bytes", lambda: 20 * 1024 * 1024)
     out = handle_update(db, _sized(20 * 1024 * 1024 + 1), now=NOW)
-    assert "больше 20 МБ" in out[0].payload["text"] and db.query(BotUpload).count() == 0
+    assert "larger than 20 MB" in out[0].payload["text"] and db.query(BotUpload).count() == 0
 
 
 def test_a_file_exactly_at_the_limit_is_accepted(db, monkeypatch):
@@ -126,7 +126,7 @@ def test_the_local_limit_reads_as_gigabytes(db, monkeypatch):
     """«Файл больше 2000 МБ» диктор не поймёт с первого раза — пишем «2 ГБ»."""
     monkeypatch.setattr(bot_uploads, "max_download_bytes", lambda: 2000 * 1024 * 1024)
     out = handle_update(db, _sized(2001 * 1024 * 1024), now=NOW)
-    assert "больше 2 ГБ" in out[0].payload["text"]
+    assert "larger than 2 GB" in out[0].payload["text"]
 
 
 def test_confirm_queues_once(db):
@@ -144,13 +144,13 @@ def test_cancel_stale_foreign_and_closed(db):
     row = db.query(BotUpload).one()
     assert [o.method for o in handle_update(db, _press(f"bu:c:{row.id}:c1", tid="42"), now=NOW)] == ["answerCallbackQuery"]
     late = handle_update(db, _press(f"bu:c:{row.id}:c1"), now=NOW + timedelta(hours=25))
-    assert "устарел" in late[1].payload["text"] and db.get(BotUpload, row.id).state == "choose"
+    assert "expired" in late[1].payload["text"] and db.get(BotUpload, row.id).state == "choose"
     db.get(RoleDeadline, "d1").closed_at = NOW
     db.commit()
     closed = handle_update(db, _press(f"bu:c:{row.id}:c1"), now=NOW)
-    assert "неактуально" in closed[1].payload["text"]
+    assert "no longer current" in closed[1].payload["text"]
     out = handle_update(db, _press(f"bu:x:{row.id}"), now=NOW)
-    assert db.get(BotUpload, row.id).state == "cancelled" and "Отменено" in out[1].payload["text"]
+    assert db.get(BotUpload, row.id).state == "cancelled" and "Cancelled" in out[1].payload["text"]
 
 
 def test_text_while_choosing_is_not_an_intro_name(db):
@@ -205,7 +205,7 @@ def test_store_saves_under_the_cast_name_and_sends_the_card_by_file_id(db, monke
     audio = db.query(AudioFile).one()
     assert result == "stored" and db.get(BotUpload, "up1").state == "stored" and db.get(BotUpload, "up1").audio_id == audio.id
     assert (audio.kind, audio.role, audio.actor_name, audio.chapter) == ("audition", "Дракон", "Ветрова Ольга", "")
-    assert texts == [("41", "Проба принята — «Дракон». Ответ придёт сюда.")]
+    assert texts == [("41", "Audition received — «Дракон». The response will arrive here.")]
     assert cards == [(audio.id, "FILE")]
     assert db.query(AuditLog).filter_by(action="bot_upload_stored").count() == 1
 
@@ -235,7 +235,7 @@ def test_a_failed_download_marks_failed_and_tells_the_dictor(db, monkeypatch):
                                send_text=lambda chat, text: texts.append(text) or True,
                                send_audio=lambda c, **kw: True, store_file=_fake_store, now=NOW)
     assert result == "failed" and db.get(BotUpload, "up1").state == "failed" and db.query(AudioFile).count() == 0
-    assert "Не получилось сохранить пробу" in texts[0]
+    assert "Could not save the audition" in texts[0]
 
 
 def test_store_skips_rows_not_queued(db):
@@ -253,7 +253,7 @@ def test_cancel_after_yes_does_not_pretend(db):
     handle_update(db, _press(f"bu:c:{row.id}:c1"), now=NOW)
     out = handle_update(db, _press(f"bu:x:{row.id}"), now=NOW)
     assert db.get(BotUpload, row.id).state == "queued"
-    assert "уже принята" in out[1].payload["text"] and "Отменено" not in out[1].payload["text"]
+    assert "already been accepted" in out[1].payload["text"] and "Cancelled" not in out[1].payload["text"]
 
 
 def test_yes_fixes_the_sender_and_promises_a_reply(db):
@@ -261,7 +261,7 @@ def test_yes_fixes_the_sender_and_promises_a_reply(db):
     row = db.query(BotUpload).one()
     out = handle_update(db, _press(f"bu:c:{row.id}:c1"), now=NOW)
     assert db.get(BotUpload, row.id).actor_name == "Ветрова Ольга"
-    assert "пришлю подтверждение" in out[1].payload["text"]
+    assert "Confirmation will arrive" in out[1].payload["text"]
 
 
 def test_a_recast_before_the_worker_does_not_credit_someone_else(db, monkeypatch):
@@ -278,7 +278,7 @@ def test_a_recast_before_the_worker_does_not_credit_someone_else(db, monkeypatch
                                send_text=lambda chat, text: texts.append(text) or True,
                                send_audio=None, store_file=_fake_store, now=NOW)
     assert result == "failed" and db.query(AudioFile).count() == 0
-    assert "роль уже передана" in texts[0]
+    assert "role has been reassigned" in texts[0]
 
 
 def test_an_ogg_sent_as_music_goes_from_storage_not_by_voice_file_id(db, monkeypatch):

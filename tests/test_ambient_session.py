@@ -90,7 +90,7 @@ class TestAmbientTracksInTheSession:
 
         names = [line.strip() for line in xml.splitlines() if line.strip().startswith("<name>")]
         assert names.index("<name>Ambient 1</name>") < names.index("<name>Ambient 2</name>") \
-            < names.index("<name>Саундтрек 1</name>")
+            < names.index("<name>Soundtrack 1</name>")
         assert names.index("<name>Тупуг</name>") < names.index("<name>Ambient 1</name>")
         assert "Г1_Эмбиент - Лес.mp3" in xml
 
@@ -141,7 +141,7 @@ class TestAmbientTracksInTheSession:
         with factory() as db:
             xml = build_chapter_session(db, "c1")
 
-        assert xml is not None and "Ambient" not in xml and "Саундтрек 1" in xml
+        assert xml is not None and "Ambient" not in xml and "Soundtrack 1" in xml
 
 
 class TestRecordingDoesNotSeeTheAmbient:
@@ -183,7 +183,7 @@ class TestRecordingDoesNotSeeTheAmbient:
         assert forest.startswith(b"ID3")
         for name in ambient_names:
             assert name in session, "сессия зовёт трек тем же именем, что в архиве"
-        head, _sep, section = manifest.partition("\nЭмбиент\n")
+        head, _sep, section = manifest.partition("\nAmbient\n")
         assert "Эмбиент" not in head, "эмбиент не среди дублей"
         assert all(name in section for name in ambient_names)
         # в счёт записи эмбиент не идёт

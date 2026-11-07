@@ -31,7 +31,8 @@ MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 
 def build_definition(*, locale: str, phrases: list[str] | None = None) -> dict:
     """Что сказать сервису до того, как он услышит первое слово."""
-    definition: dict = {"locales": [str(locale or "ru-RU")]}
+    # По умолчанию Azure маскирует брань: сверка теряет произнесённые слова книги.
+    definition: dict = {"locales": [str(locale or "ru-RU")], "profanityFilterMode": "None"}
     seen: list[str] = []
     for phrase in phrases or []:
         text = " ".join(str(phrase or "").split())

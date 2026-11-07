@@ -53,7 +53,7 @@ def lines():
 @pytest.fixture()
 def db(monkeypatch, tmp_path, lines):
     monkeypatch.setattr(audio_storage.settings, "audio_storage_path", str(tmp_path / "rec"))
-    fake = lambda db, chapter_id, role: list(lines.get(chapter_id, []))  # noqa: E731
+    fake = lambda db, chapter_id, role, **kw: list(lines.get(chapter_id, []))  # noqa: E731
     # `asr_replay` берёт `expected_lines` по имени при импорте — подменяем у обоих, иначе
     # пересчёт сверки (`run_asr_for_chapter`) видел бы настоящие реплики, а не фикстуру.
     monkeypatch.setattr(asr_run, "expected_lines", fake)
@@ -117,6 +117,73 @@ class Run:
         )
 
 
+def test_english_bot_take_uses_number_profile_for_split_and_alignment(db, tmp_path, lines):
+    from tests.asr_studio import heard
+    lines.clear()
+    lines["ch1"] = ["I have 21 silver keys"]
+    db.get(ScriptBook, "b1").language = "en"
+    db.commit()
+    source = _wav(tmp_path / "chapter.wav", 10)
+    run = Run(db, tmp_path, source, heard=heard("I have twenty one silver keys")("unused"))
+    assert run() == "done"
+    assert run.calls == 1
+    job = db.query(AsrJob).one()
+    assert job.language == "en" and job.coverage == 1.0
+    assert json.loads(db.get(BotUpload, "up1").result_json)["language"] == "en"
+
+
+def test_bot_profile_stays_frozen_when_book_changes_before_retry(db):
+    db.get(ScriptBook, "b1").language = "en"
+    db.commit()
+    upload = db.get(BotUpload, "up1")
+    assert bot_takes.snapshot_language(db, upload) == "en"
+    db.get(ScriptBook, "b1").language = "ru"
+    db.commit()
+    assert bot_takes.snapshot_language(db, upload, language="ru") == "en"
+
+
+def test_bot_enqueue_snapshots_language_in_row_and_queue(db, monkeypatch):
+    from app import db as db_module
+    from app.workers import launcher
+    db.get(ScriptBook, "b1").language = "en"
+    db.commit()
+    monkeypatch.setattr(db_module, "SessionLocal", lambda: db)
+    seen = []
+    monkeypatch.setattr(launcher, "enqueue_tracked_task", lambda *a, **kw: seen.append(kw) or "job")
+    assert bot_takes.enqueue_take("up1") == "job"
+    assert seen[0]["language"] == seen[0]["meta"]["language"] == "en"
+    assert json.loads(db.get(BotUpload, "up1").result_json)["language"] == "en"
+
+
+def test_legacy_paid_bot_cache_is_preserved_without_claiming_english(db, tmp_path):
+    db.get(ScriptBook, "b1").language = "en"
+    db.commit()
+    (tmp_path / "heard.json").write_text('{"segments": []}')
+    row = db.get(BotUpload, "up1")
+    assert bot_takes.snapshot_language(db, row, workdir=str(tmp_path)) == "ru"
+    assert (tmp_path / "heard.json").exists()
+    assert json.loads(row.result_json)["language_source"] == "legacy_cache_default"
+
+
+def test_bot_worker_passes_saved_language_to_paid_service(db, monkeypatch):
+    from app import worker_tasks
+    db.get(ScriptBook, "b1").language = "en"
+    db.commit()
+    @contextlib.contextmanager
+    def session():
+        yield db
+    monkeypatch.setattr(worker_tasks, "SessionLocal", session)
+    seen = []
+    monkeypatch.setattr(asr_run, "_transcribe_with_service", lambda path, **kw: seen.append(kw["language"]) or {})
+    def process(db, upload_id, **kw):
+        assert kw["language"] == "en"
+        kw["transcribe_part"]("unused")
+        return "done"
+    monkeypatch.setattr(bot_takes, "process", process)
+    worker_tasks.perform_bot_take_task("up1", language="en")
+    assert seen == ["en"]
+
+
 @pytest.fixture()
 def whole(tmp_path):
     return _wav(tmp_path / "Yumkuba_vse.wav", DURATION)
@@ -151,7 +218,7 @@ def test_whole_role_becomes_six_takes(db, tmp_path, whole):
     assert db.query(AuditLog).filter(AuditLog.action == "bot_take_stored", AuditLog.entity_id == "up1").count() == 1
     # Диктору — один отчёт, владельцу — одна сводка.
     assert len(run.dictor) == 1 and run.dictor[0][0] == "41"
-    assert run.dictor[0][1].startswith("Принято — «Юмкуба», «Карта Приозерья», 6 глав:")
+    assert run.dictor[0][1].startswith("Received — «Юмкуба», «Карта Приозерья», 6 chapters:")
     assert len(run.owner) == 1 and "Ветрова Ольга" in run.owner[0] and "Юмкуба" in run.owner[0]
     # Временные файлы убраны: обработка закончена.
     assert not (tmp_path / "work" / "up1").exists()
@@ -170,9 +237,9 @@ def test_report_lists_missing_lines(db, tmp_path, whole, lines):
     assert run() == "done"
     text = run.dictor[0][1]
     assert "Этой реплики диктор не читал вовсе" in text
-    assert "гл. 47 — " in text and " из 37, не нашли: «" in text
-    assert text.rstrip().endswith("Если реплика записана, но не нашлась, ничего делать не нужно — студия проверит.")
-    assert "гл. 47" in run.owner[0]
+    assert "ch. 47 — " in text and " of 37, missing: «" in text
+    assert text.rstrip().endswith("If a recorded line was not found, no action is needed; the studio will review it.")
+    assert "ch. 47" in run.owner[0]
 
 
 def test_take_report_wording():
@@ -183,19 +250,19 @@ def test_take_report_wording():
         {"index": 47, "found": 29, "total": 36, "missing": [f"реплика {n}" for n in range(1, 8)]},
     ])
     assert text.splitlines() == [
-        "Принято — «Юмкуба», «Карта Приозерья», 4 главы:",
-        "гл. 1 — единственная реплика",
-        "гл. 12 — все 3 реплики",
-        "гл. 14 — все 21 реплика",
-        "гл. 47 — 29 из 36, не нашли: «реплика 1», «реплика 2», «реплика 3», «реплика 4», «реплика 5» "
-        "и ещё 2",
-        "Если реплика записана, но не нашлась, ничего делать не нужно — студия проверит.",
+        "Received — «Юмкуба», «Карта Приозерья», 4 chapters:",
+        "ch. 1 — the only line",
+        "ch. 12 — all 3 lines",
+        "ch. 14 — all 21 lines",
+        "ch. 47 — 29 of 36, missing: «реплика 1», «реплика 2», «реплика 3», «реплика 4», «реплика 5» "
+        "and 2 more",
+        "If a recorded line was not found, no action is needed; the studio will review it.",
     ]
     one = bot_takes.take_report("Юмкуба", "КП", [{"index": 5, "found": 7, "total": 7, "missing": []}])
-    assert one.splitlines() == ["Принято — «Юмкуба», «КП», 1 глава:", "гл. 5 — все 7 реплик"]
+    assert one.splitlines() == ["Received — «Юмкуба», «КП», 1 chapter:", "ch. 5 — all 7 lines"]
     many = bot_takes.take_report("Юмкуба", "КП", [{"index": i, "found": 2, "total": 2, "missing": []}
                                                   for i in range(5)])
-    assert many.splitlines()[0] == "Принято — «Юмкуба», «КП», 5 глав:"
+    assert many.splitlines()[0] == "Received — «Юмкуба», «КП», 5 chapters:"
 
 
 def test_single_chapter_file_is_stored_uncut(db, tmp_path):
@@ -215,7 +282,7 @@ def test_name_mismatch_is_told_to_the_owner(db, tmp_path):
     run = Run(db, tmp_path, source, heard=slice_transcript(DATA["segments"], 22.2, 62.0))
     assert run("up2") == "done"
     assert db.query(AudioFile).one().chapter == "Глава 12"
-    assert "В имени файла глава 55, а по записи — глава 12; положил по записи." in run.owner[0]
+    assert "The filename says chapter 55, but the recording matches chapter 12; saved under the chapter found in the recording." in run.owner[0]
 
 
 def test_nothing_found_goes_to_unsorted_not_audition(db, tmp_path, whole):
@@ -227,7 +294,7 @@ def test_nothing_found_goes_to_unsorted_not_audition(db, tmp_path, whole):
     assert row.stored_key == "KP/Unsorted/up1_Yumkuba_vse.wav"
     stored = audio_storage.resolve_path(row.stored_key)
     assert os.path.exists(stored) and _md5(stored) == _md5(whole)
-    assert run.dictor == [("41", "Не нашёл в файле реплик роли «Юмкуба». Передал студии, с вами свяжутся.")]
+    assert run.dictor == [("41", "No lines were found in the file for role «Юмкуба». The studio has been notified and will contact you.")]
     assert len(run.owner) == 1 and row.stored_key in run.owner[0] and "Ветрова Ольга" in run.owner[0]
     # Копия файла убрана (он в «не разобрано»), оплаченное услышанное — осталось.
     assert os.listdir(tmp_path / "work" / "up1") == ["heard.json"]
@@ -238,7 +305,7 @@ def test_failure_after_download_keeps_file(db, tmp_path, whole):
     assert run() == "unsorted"
     row = db.get(BotUpload, "up1")
     assert row.state == "unsorted" and _md5(audio_storage.resolve_path(row.stored_key)) == _md5(whole)
-    assert run.dictor == [("41", "Не получилось обработать файл — студия разберётся, присылать заново не нужно.")]
+    assert run.dictor == [("41", "The file could not be processed. The studio will review it; you do not need to send it again.")]
     assert "azure 500" in run.owner[0] and row.stored_key in run.owner[0]
     assert db.query(AudioFile).count() == 0
 
@@ -261,9 +328,9 @@ def test_chapters_out_of_order_go_to_unsorted(db, tmp_path, whole, monkeypatch):
     run = Run(db, tmp_path, whole)
     assert run() == "unsorted"
     assert db.query(AudioFile).count() == 0
-    assert "не по порядку" in run.owner[0]
+    assert "out of order" in run.owner[0]
     # Реплики в файле есть — диктору нельзя сказать, что их не нашли.
-    assert run.dictor == [("41", "Не получилось обработать файл — студия разберётся, присылать заново не нужно.")]
+    assert run.dictor == [("41", "The file could not be processed. The studio will review it; you do not need to send it again.")]
 
 
 def test_unsorted_write_failure_is_failed(db, tmp_path, whole, monkeypatch):
@@ -279,7 +346,7 @@ def test_download_failure_is_failed(db, tmp_path):
     assert run() == "failed"
     assert db.get(BotUpload, "up1").state == "failed"
     assert run.calls == 0 and len(run.owner) == 1
-    assert run.dictor == [("41", "Не получилось обработать файл — студия разберётся, присылать заново не нужно.")]
+    assert run.dictor == [("41", "The file could not be processed. The studio will review it; you do not need to send it again.")]
 
 
 def test_recognition_failure_keeps_paid_parts(db, tmp_path, whole, monkeypatch):
@@ -309,7 +376,7 @@ def test_same_file_twice_is_not_paid_twice(db, tmp_path, whole):
     assert run("up2") == "skip"
     assert run.calls == 1
     assert db.get(BotUpload, "up2").state == "cancelled"
-    assert run.dictor[-1] == ("41", "Этот файл уже принят 28.10.")
+    assert run.dictor[-1] == ("41", "This file was already received on 28.10.")
 
 
 def test_same_content_by_md5_is_not_paid_twice(db, tmp_path, whole):
@@ -318,7 +385,7 @@ def test_same_content_by_md5_is_not_paid_twice(db, tmp_path, whole):
     assert run("up1") == "done"
     assert run("up2") == "skip"
     assert run.calls == 1 and db.get(BotUpload, "up2").state == "cancelled"
-    assert run.dictor[-1] == ("41", "Этот файл уже принят 28.10.")
+    assert run.dictor[-1] == ("41", "This file was already received on 28.10.")
 
 
 def test_no_missing_line_letters(db, tmp_path, whole, lines, monkeypatch):
@@ -358,8 +425,8 @@ def test_owner_summary_wording():
         {"index": 1, "found": 5, "total": 5, "missing": []},
         {"index": 47, "found": 30, "total": 36, "missing": ["a"] * 6},
     ])
-    assert "Ветрова Ольга" in text and "«Юмкуба»" in text and "главы 1, 47." in text
-    assert "гл. 47 — 6" in text and "гл. 1 " not in text
+    assert "Ветрова Ольга" in text and "«Юмкуба»" in text and "chapters 1, 47." in text
+    assert "ch. 47 — 6" in text and "ch. 1 " not in text
 
 
 def test_owner_summary_names_the_chapter_so_two_files_do_not_look_like_a_repeat():
@@ -367,7 +434,7 @@ def test_owner_summary_names_the_chapter_so_two_files_do_not_look_like_a_repeat(
     поэтому их можно было принять за повтор одного сообщения."""
     one = bot_takes.owner_summary("Гленто Гарсин", "Саяху", [{"index": 5, "found": 4, "total": 4, "missing": []}])
     other = bot_takes.owner_summary("Гленто Гарсин", "Саяху", [{"index": 9, "found": 3, "total": 3, "missing": []}])
-    assert "«Саяху», гл. 5." in one and "«Саяху», гл. 9." in other
+    assert "«Саяху», ch. 5." in one and "«Саяху», ch. 9." in other
     assert one != other
 
 
@@ -446,7 +513,7 @@ def test_partial_store_runs_chapter_steps_for_stored_pieces(db, tmp_path, whole,
     assert sorted(seen) == sorted(["ch1", "ch12", "ch14"]) and sorted(_verify_queue) == sorted(seen)
     stored = json.loads(db.get(BotUpload, "up1").result_json)["stored"]
     assert [item["chapter"] for item in stored] == [1, 12, 14]
-    assert "гл. 1, 12, 14" in run.owner[0]
+    assert "ch. 1, 12, 14" in run.owner[0]
     assert all(item["audio_id"] in run.owner[0] for item in stored)
 
 
@@ -464,7 +531,7 @@ def test_retry_after_partial_store_does_not_duplicate(db, tmp_path, whole, monke
     assert len(takes) == 6 and len({take.chapter for take in takes}) == 6
     assert all(next(t.id for t in takes if t.chapter == label) == audio_id for label, audio_id in first.items())
     assert run.calls == 1
-    assert run.dictor[-1][1].startswith("Принято — «Юмкуба», «Карта Приозерья», 6 глав:")
+    assert run.dictor[-1][1].startswith("Received — «Юмкуба», «Карта Приозерья», 6 chapters:")
 
 
 def test_unexpected_exception_does_not_leave_the_row_in_flight(db, tmp_path, whole, monkeypatch):
@@ -528,7 +595,7 @@ def test_unsorted_with_heard_is_not_paid_again(db, tmp_path, whole):
     _row(db, upload_id="up2", unique="OTHER", created=NOW + timedelta(minutes=1))
     assert run("up2") == "skip"
     assert run.calls == 1 and db.get(BotUpload, "up2").state == "cancelled"
-    assert run.dictor[-1] == ("41", "Этот файл уже передан студии.")
+    assert run.dictor[-1] == ("41", "This file has already been sent to the studio.")
 
 
 def test_report_counts_paragraphs_not_pieces(db, tmp_path, lines, monkeypatch):
@@ -548,10 +615,10 @@ def test_report_counts_paragraphs_not_pieces(db, tmp_path, lines, monkeypatch):
         db.add(V2Attribution(id=str(uuid.uuid4()), segment_id=segment_id, span_start=start, span_end=end,
                              speaker=speaker, confidence=0.9, source="llm", version=1))
     db.commit()
-    def expected(db_, chapter_id, role):
-        # Настоящие реплики для гл. 1 (из разметки выше), фикстура — для остальных глав.
+    def expected(db_, chapter_id, role, **kw):
+        # Настоящие реплики для ch. 1 (из разметки выше), фикстура — для остальных глав.
         if chapter_id == "ch1":
-            return REAL_EXPECTED_LINES(db_, chapter_id, role)
+            return REAL_EXPECTED_LINES(db_, chapter_id, role, **kw)
         return list(lines.get(chapter_id, []))
     monkeypatch.setattr(asr_run, "expected_lines", expected)
     monkeypatch.setattr(asr_replay, "expected_lines", expected)
@@ -560,7 +627,7 @@ def test_report_counts_paragraphs_not_pieces(db, tmp_path, lines, monkeypatch):
     source = _wav(tmp_path / "ch1.wav", 22.2)
     run = Run(db, tmp_path, source, heard=slice_transcript(DATA["segments"], 0, 22.2))
     assert run() == "done"
-    assert run.dictor[0][1].splitlines()[1] == "гл. 1 — все 2 реплики"
+    assert run.dictor[0][1].splitlines()[1] == "ch. 1 — all 2 lines"
 
 
 # --- ревью, раунд 2 ------------------------------------------------------------------------------
@@ -600,7 +667,7 @@ def test_failed_row_with_heard_is_not_paid_again(db, tmp_path, whole, monkeypatc
     assert (tmp_path / "work" / "up1" / "heard.json").exists()
     _row(db, upload_id="up2", unique="OTHER", created=NOW + timedelta(minutes=1))
     assert run("up2") == "skip"
-    assert run.calls == 1 and run.dictor[-1] == ("41", "Этот файл уже передан студии.")
+    assert run.calls == 1 and run.dictor[-1] == ("41", "This file has already been sent to the studio.")
 
 
 def test_retry_aligns_a_stored_take_whose_alignment_crashed(db, tmp_path, whole, monkeypatch):
@@ -630,3 +697,18 @@ def test_workdir_is_outside_the_audio_root_that_gets_backed_up():
     root = os.path.abspath(audio_storage.local_root())
     assert os.path.commonpath([path, root]) != root
     assert os.sep + os.path.join("data", "spool", "bot_takes", "up1") in path
+
+
+@pytest.mark.parametrize('system_narrator', [False, True])
+def test_typed_bot_paid_path_uses_authoritative_character_or_system_ref(db, tmp_path, whole, system_narrator):
+    from app.services.role_identity import NARRATOR_REF
+    db.get(ScriptBook, 'b1').role_identity_mode = 'typed_v1'
+    if system_narrator:
+        db.get(Character, 'c1').name = 'Рассказчик'
+        db.get(BotUpload, 'up1').role_name = 'Рассказчик'
+    db.commit()
+    run = Run(db, tmp_path, whole)
+    assert run() == 'done' and run.calls == 1
+    files = db.query(AudioFile).all()
+    assert len(files) == 6 and {row.role_book_id for row in files} == {'b1'}
+    assert {row.role_ref for row in files} == {NARRATOR_REF if system_narrator else 'character:c1'}

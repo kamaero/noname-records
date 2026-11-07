@@ -50,7 +50,7 @@ def caption(db, audio: AudioFile) -> str:
     book, ch = pair_of(db, audio)
     role = str(ch.name if ch is not None else audio.role or "")
     title = str(getattr(book, "title", "") or "")
-    voice = " · голосовое" if _is_voice(audio) else ""
+    voice = " · voice message" if _is_voice(audio) else ""
     scores = scores_by_pair(db, book.id).get((str(audio.role or ""), str(audio.actor_name or ""))) if book else None
     scores = scores or {}
 
@@ -58,15 +58,15 @@ def caption(db, audio: AudioFile) -> str:
         row = scores.get(lane)
         return str(row["score"]) if row else "—"
 
-    return (f"🎙 Проба «{role}» («{title}») — {audio.actor_name}{voice}\n"
-            f"Автор: {value('author')}   Студия: {value('studio')}")
+    return (f"🎙 Audition «{role}» («{title}») — {audio.actor_name}{voice}\n"
+            f"Author: {value('author')}   Studio: {value('studio')}")
 
 
 def keyboard(audio_id: str, *, approve: bool = True) -> dict:
     rows = [[{"text": str(n), "callback_data": f"{AC_PREFIX}s{n}:{audio_id}"} for n in range(1, 6)],
             [{"text": str(n), "callback_data": f"{AC_PREFIX}s{n}:{audio_id}"} for n in range(6, 11)]]
     if approve:
-        rows.append([{"text": "✅ Утвердить на роль", "callback_data": f"{AC_PREFIX}a:{audio_id}"}])
+        rows.append([{"text": "✅ Approve for role", "callback_data": f"{AC_PREFIX}a:{audio_id}"}])
     return {"inline_keyboard": rows}
 
 
@@ -129,7 +129,7 @@ def send_card(db, audio_id: str, *, send_audio, send_text, file_id: str = "", tr
         # сайта; NAS не отвечает — ссылка вместо аудио, а не упавшая задача.
         location = str(getattr(audio, "location", None) or "local")
         if storage_unavailable_for(location):
-            fallback = f"{text}\n\nФайл сейчас недоступен (хранилище на NAS не отвечает) — слушать на сайте: {link}"
+            fallback = f"{text}\n\nThe file is unavailable because NAS storage is not responding. Listen on the website: {link}"
         else:
             try:
                 path = resolve_path(audio.stored_key, location=location)
@@ -138,10 +138,10 @@ def send_card(db, audio_id: str, *, send_audio, send_text, file_id: str = "", tr
                 size = os.path.getsize(path) if copy else int(audio.size_bytes or 0)
             except Exception as exc:  # noqa: BLE001 — битый файл не должен прятать пробу
                 log.warning("Карточка пробы %s: файл не подготовлен: %s", audio.id, type(exc).__name__)
-                fallback = f"{text}\n\nФайл не получилось подготовить — слушать на сайте: {link}"
+                fallback = f"{text}\n\nCould not prepare the file. Listen on the website: {link}"
             else:
                 if size > MAX_UPLOAD_BYTES:
-                    fallback = f"{text}\n\nФайл больше 50 МБ — слушать и оценивать на сайте: {link}"
+                    fallback = f"{text}\n\nThe file exceeds 50 MB. Listen and rate on the website: {link}"
     ext = ".ogg" if voice and not copy else os.path.splitext(path or str(audio.original_filename or ""))[1] or ".mp3"
     # имя трека в плеере Telegram — роль и актёр, а не временный файл («tmpab12.mp3»)
     filename = f"{role} — {audio.actor_name}{ext}"
@@ -153,7 +153,7 @@ def send_card(db, audio_id: str, *, send_audio, send_text, file_id: str = "", tr
                 ok = send_audio(chat, caption=text, reply_markup=keyboard(audio.id), file_id=file_id, path=path,
                                 voice=voice and not copy, filename=filename)
             if not ok:
-                ok = send_text(chat, fallback or f"{text}\n\nАудио не дошло — слушать на сайте: {link}")
+                ok = send_text(chat, fallback or f"{text}\n\nThe audio could not be delivered. Listen on the website: {link}")
             delivered += bool(ok)
     finally:
         if copy and os.path.exists(copy):
@@ -175,9 +175,9 @@ def enqueue_card(audio_id: str, file_id: str = "") -> str | None:
 
 #: После низкой оценки поясняем, что голос может быть хорошим, но не подходить герою:
 #: без этого кнопка причины воспринималась как приговор качеству голоса.
-WHY_LOW = "Чем не этот герой? Голос может быть прекрасным — речь о том, как должен звучать персонаж."
-WHY_HIGH = "Пара слов для студии — каким слышите героя? Диктору это не уйдёт."
-COMMENT_BUTTON = "✍️ Своими словами"
+WHY_LOW = "What does not fit this character? The voice may be excellent; this is about how the character should sound."
+WHY_HIGH = "A few words for the studio: how should the character sound? This will not be sent to the actor."
+COMMENT_BUTTON = "✍️ In your own words"
 #: сколько бот ждёт текст после «Своими словами»; дольше — сообщение уже не про пробу
 COMMENT_TTL = timedelta(minutes=30)
 
@@ -221,17 +221,17 @@ def take_comment(db, *, tid: str, chat_id, text: str, user, roles: set[str], now
     audio = db.get(AudioFile, wait.audio_id)
     book, ch = pair_of(db, audio) if audio is not None else (None, None)
     if not lane or user is None or book is None:
-        return [send(chat_id, "Проба уже удалена — комментарий не сохранён.")]
+        return [send(chat_id, "The audition has been deleted; the comment was not saved.")]
     pair = {"book_id": book.id, "role": str(audio.role or ""), "actor_name": str(audio.actor_name or "")}
     try:
         set_comment(db, **pair, lane=lane, comment=text, voter_uid=str(user.id), voter_name=str(user.display_name or ""))
     except ScoreError as error:
         if error.code == "comment_too_long":
-            return [send(chat_id, f"Слишком длинно — уложитесь в {COMMENT_MAX_CHARS} знаков.")]
-        return [send(chat_id, "Сначала поставьте оценку пробе — комментарий живёт рядом с ней.")]
+            return [send(chat_id, f"The comment is too long. Use at most {COMMENT_MAX_CHARS} characters.")]
+        return [send(chat_id, "Rate the audition first; comments are attached to a rating.")]
     _audit(db, audio.id, "bot_audition_comment", user, now, lane=lane)
     role_title = str(ch.name if ch is not None else audio.role or "")
-    out = [send(chat_id, "Записал. Увидит только студия.")]
+    out = [send(chat_id, "Saved. Only the studio will see this.")]
     return out + (_owner_notice(db, tid=tid, pair=pair, role_title=role_title) if lane == "author" else [])
 
 
@@ -261,10 +261,10 @@ def press(db, *, chat_id, message_id, data: str, user, roles: set[str], now, tid
     action, _, audio_id = data[len(AC_PREFIX):].partition(":")
     audio = db.get(AudioFile, audio_id)
     if audio is None:
-        return [send(chat_id, "Проба удалена.")]
+        return [send(chat_id, "Audition deleted.")]
     book, ch = pair_of(db, audio)
     if book is None:
-        return [send(chat_id, "Книга пробы не найдена.")]
+        return [send(chat_id, "Audition book not found.")]
     pair = {"book_id": book.id, "role": str(audio.role or ""), "actor_name": str(audio.actor_name or "")}
     role_title = str(ch.name if ch is not None else audio.role or "")
     tid = str(tid or chat_id or "")  # в личке id чата и есть id человека
@@ -288,7 +288,7 @@ def press(db, *, chat_id, message_id, data: str, user, roles: set[str], now, tid
             set_score(db, **pair, lane=lane, score=score, voter_uid=str(user.id),
                       voter_name=str(user.display_name or ""))
         except ScoreError:
-            return [send(chat_id, "Оценку не сохранить — пробы этой пары больше нет.")]
+            return [send(chat_id, "The rating cannot be saved because this audition no longer exists.")]
         # Оба ниже 7 — отказ через 15 минут, как на сайте; одновременное нажатие второго — повтор.
         try:
             sync_rejection_with_scores(db, **pair)
@@ -306,23 +306,23 @@ def press(db, *, chat_id, message_id, data: str, user, roles: set[str], now, tid
     if action == "c":
         current = scores_by_pair(db, book.id).get((pair["role"], pair["actor_name"]), {}).get(lane)
         if not current:
-            return [send(chat_id, "Сначала поставьте оценку — комментарий живёт рядом с ней.")]
+            return [send(chat_id, "Rate the audition first; comments are attached to a rating.")]
         drop_comment_wait(db, tid)
         db.add(BotCommentWait(tid=tid, audio_id=audio.id, created_at=now))
         db.flush()
-        prompt = (f"Напишите одним сообщением, каким слышите героя «{role_title}». "
-                  "Увидит только студия — диктору не уйдёт.")
-        return [send(chat_id, prompt, {"force_reply": True, "input_field_placeholder": "Например: звонче, моложе"})]
+        prompt = (f"Describe in one message how the character «{role_title}» should sound. "
+                  "Only the studio will see this; it will not be sent to the actor.")
+        return [send(chat_id, prompt, {"force_reply": True, "input_field_placeholder": "For example: brighter, younger"})]
     if action.startswith("r") and action[1:] in REASON_LABELS:
         if lane != "author":
             return []
         current = scores_by_pair(db, book.id).get((pair["role"], pair["actor_name"]), {}).get("author")
         if not current or int(current["score"]) > REASON_MAX_SCORE:
-            return [send(chat_id, "Причина нужна только при оценке ниже 7.")]
+            return [send(chat_id, "A reason is only needed for a rating below 7.")]
         set_score(db, **pair, lane="author", score=int(current["score"]), voter_uid=str(user.id),
                   voter_name=str(user.display_name or ""), reason=action[1:])
-        out = [send(chat_id, f"Записано: {REASON_LABELS[action[1:]].lower()}. "
-                             f"Каким должен звучать герой — можно рассказать кнопкой «{COMMENT_BUTTON}».")]
+        out = [send(chat_id, f"Saved: {REASON_LABELS[action[1:]].lower()}. "
+                             f"Describe how the character should sound with «{COMMENT_BUTTON}».")]
         return out + _owner_notice(db, tid=tid, pair=pair, role_title=role_title)
     if action in ("a", "A", "x"):
         return _approve(db, chat_id=chat_id, message_id=message_id, audio=audio, character=ch, user=user,
@@ -337,13 +337,13 @@ def _approve(db, *, chat_id, message_id, audio, character, user, roles, confirme
     from app.v2.cast_ops import parse_actor_name
 
     if declined:
-        return [send(chat_id, "Хорошо, не утверждаю.")]
+        return [send(chat_id, "No approval has been made.")]
     if character is None:
-        return [send(chat_id, "Роль не найдена в касте.")]
+        return [send(chat_id, "Role not found in the cast.")]
     actor = str(audio.actor_name or "").strip()
     holder, tentative = parse_actor_name(str(character.actor_name or ""))
     if holder and not tentative and same_person(holder, actor):
-        return [send(chat_id, f"Роль уже утверждена: {holder}.")]
+        return [send(chat_id, f"The role is already approved: {holder}.")]
     if not confirmed:
         busy = sorted(
             str(other.name or "") for other in db.query(Character).filter(Character.book_id == character.book_id)
@@ -351,11 +351,11 @@ def _approve(db, *, chat_id, message_id, audio, character, user, roles, confirme
                 parse_actor_name(str(other.actor_name or "")))
         )
         if busy:
-            ask = {"inline_keyboard": [[{"text": "Да", "callback_data": f"{AC_PREFIX}A:{audio.id}"},
-                                        {"text": "Нет", "callback_data": f"{AC_PREFIX}x:{audio.id}"}]]}
+            ask = {"inline_keyboard": [[{"text": "Yes", "callback_data": f"{AC_PREFIX}A:{audio.id}"},
+                                        {"text": "No", "callback_data": f"{AC_PREFIX}x:{audio.id}"}]]}
             on = ", ".join(f"«{name}»" for name in busy)
-            return [send(chat_id, f"На {on} уже стоит {actor}. Утвердить и на «{character.name}»? "
-                                  "Мы стремимся к одной роли на актёра.", ask)]
+            return [send(chat_id, f"For {on}, {actor} is already assigned. Also approve for «{character.name}»? "
+                                  "We aim for one role per actor.", ask)]
     result = assign_actor(db, character=character, actor_name=actor, voter_uid=str(user.id),
                           voter_name=str(user.display_name or ""), roles=roles)
     _audit(db, audio.id, "bot_audition_approve", user, now, character_id=character.id)
@@ -363,5 +363,5 @@ def _approve(db, *, chat_id, message_id, audio, character, user, roles, confirme
     vote = result["vote"]
     won, _ = parse_actor_name(str(vote["actor_name"] or ""))
     if not (won and same_person(won, actor)):
-        return [send(chat_id, f"Не утверждено: перевешивает голос — {vote.get('overridden_by') or 'другой участник'}.")]
-    return [refreshed(approve=False), send(chat_id, f"Утверждено: {actor} — «{character.name}».")]
+        return [send(chat_id, f"Not approved: the deciding vote belongs to {vote.get('overridden_by') or 'another participant'}.")]
+    return [refreshed(approve=False), send(chat_id, f"Approved: {actor} — «{character.name}».")]

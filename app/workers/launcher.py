@@ -200,6 +200,8 @@ def enqueue_tracked_task(
     run_key: str | None = None,
     meta: dict[str, Any] | None = None,
     dedupe: bool = True,
+    profile_book_id: str = "",
+    profile_chapter_id: str = "",
     **kwargs
 ) -> str | None:
     """
@@ -209,6 +211,14 @@ def enqueue_tracked_task(
     effective_key = (run_key or job_kind).strip() or job_kind
     
     with session_factory() as db:
+        if profile_book_id or profile_chapter_id:
+            from app.v2.job_profile import lock_book_profile
+
+            book = lock_book_profile(db, profile_book_id, chapter_id=profile_chapter_id)
+            if book is None:
+                return None
+            meta = dict(meta or {}, language=book.language, book_id=book.id)
+            kwargs = dict(kwargs, language=book.language)
         if dedupe:
             existing = db.query(background_run_cls).filter(
                 background_run_cls.run_key == effective_key,
@@ -228,7 +238,7 @@ def enqueue_tracked_task(
                 existing.status = "failed"
                 existing.error_message = "stale_background_run_replaced_by_queue"
                 existing.finished_at = utcnow_naive()
-                db.commit()
+                db.flush()
 
         run = background_run_cls(
             run_key=effective_key,

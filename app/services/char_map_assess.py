@@ -2,7 +2,7 @@
 
 Classifies the freshly-extracted map after char_extraction so the pipeline can
 decide whether to auto-continue (clean) or pause for human review (dirty). Canon
-books (Примеродин) get known/new from canon_reconcile; others degrade gracefully
+books (Примеров) get known/new from canon_reconcile; others degrade gracefully
 (canon_available=False — known/new are 0, only structural signals apply). No
 writes — this only reports.
 """

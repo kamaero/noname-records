@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -23,6 +23,9 @@ class AudioFile(Base):
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     chapter: Mapped[str] = mapped_column(String(60), nullable=False)
     role: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: Имя файла остаётся читаемым; идентичность новой роли переживает переименование.
+    role_book_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
+    role_ref: Mapped[str] = mapped_column(String(80), nullable=False, default="", server_default="")
     actor_name: Mapped[str] = mapped_column(String(120), nullable=True, default="")
     line_index: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     canonical_filename: Mapped[str] = mapped_column(String(255), nullable=False, default="")
@@ -88,6 +91,7 @@ class PendingMirrorDeletion(Base):
 class AsrJob(Base):
     __tablename__ = "asr_jobs"
     __table_args__ = (
+        CheckConstraint("language IN ('ru', 'en')", name="ck_asr_jobs_language"),
         Index("ix_asr_jobs_audio_file_id", "audio_file_id"),
         Index("ix_asr_jobs_chapter_id", "chapter_id"),
         Index("ix_asr_jobs_status", "status"),
@@ -98,8 +102,12 @@ class AsrJob(Base):
     chapter_id: Mapped[str] = mapped_column(String(36), nullable=False, default="")
     provider: Mapped[str] = mapped_column(String(40), nullable=False, default="openai")
     model: Mapped[str] = mapped_column(String(120), nullable=False, default="whisper-1")
+    #: Профиль фиксируется в задании, чтобы повторная сверка не зависела от правок книги.
+    language: Mapped[str] = mapped_column(String(2), nullable=False, default="ru", server_default="ru")
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="queued")
     decision: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    #: Снимок идентичности роли платного транскрипта не зависит от её подписи.
+    role_ref: Mapped[str] = mapped_column(String(80), nullable=False, default="", server_default="")
     expected_role: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     detected_role: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     expected_chapter_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -126,20 +134,27 @@ class AsrJob(Base):
 
 class ScriptBook(Base):
     __tablename__ = "script_books"
+    __table_args__ = (CheckConstraint("language IN ('ru', 'en')", name="ck_script_books_language"),
+                      CheckConstraint("role_identity_mode IN ('legacy', 'typed_v1')", name="ck_script_books_role_identity_mode"))
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     #: Чистое название произведения. Из него выводится код книги, который актёры
     #: пишут в именах файлов (`app.services.audio_uploads.derive_book_code`), —
     #: поэтому автору тут не место, для него есть `author_label`.
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    #: Автор так, как его показывают («Примеродины»). Витрина, а не канон: канонический
-    #: `Author` («Александр Примеродин») висит на `author_id` и тянет ростер и цвета.
+    #: Автор так, как его показывают. Витрина, а не канон: канонический
+    #: `Author` висит на `author_id` и тянет ростер и цвета.
     author_label: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     #: Собранная витрина «Автор - "Название"» — её читают все экраны и бот.
     #: Собирается при записи в `app.services.book_title.apply_book_title`.
     display_title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     source_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     source_format: Mapped[str] = mapped_column(String(20), nullable=False)
+    #: Старые установки и клиенты импортировали русские книги без выбора языка.
+    #: Язык книги независим от языка интерфейса и применяется к будущим заданиям.
+    language: Mapped[str] = mapped_column(String(2), nullable=False, default="ru", server_default="ru")
+    #: Язык не меняет семантику старых ролей: только новые EN-книги выбирают typed_v1.
+    role_identity_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="legacy", server_default="legacy")
     total_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     author_sheets_x1000: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     chapter_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -196,6 +211,7 @@ class AsrAudit(Base):
     """
     __tablename__ = "asr_audits"
     __table_args__ = (
+        CheckConstraint("language IN ('ru', 'en')", name="ck_asr_audits_language"),
         Index("ix_asr_audits_chapter_id", "chapter_id"),
         Index("ix_asr_audits_status", "status"),
     )
@@ -203,6 +219,8 @@ class AsrAudit(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     chapter_id: Mapped[str] = mapped_column(String(36), nullable=False, default="")
     audio_file_id: Mapped[str] = mapped_column(String(36), nullable=False, default="")
+    #: Прежний аудит использовал русский профиль; будущие прогоны сохраняют свой.
+    language: Mapped[str] = mapped_column(String(2), nullable=False, default="ru", server_default="ru")
     #: queued → running → done | failed | skipped (нет дубля рассказчика)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="queued")
     model: Mapped[str] = mapped_column(String(120), nullable=False, default="")
@@ -827,6 +845,14 @@ class AuthorPronunciation(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
 
+class StudioCalendarProfile(Base):
+    """Пояс фиксируется один раз: обновление не меняет исторические месяцы и сроки."""
+
+    __tablename__ = "studio_calendar_profile"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default="default")
+    timezone: Mapped[str] = mapped_column(String(100), nullable=False, default="", server_default="")
+
+
 class StudioSettings(Base):
     """Studio-wide defaults, one row (`id == "default"`).
 
@@ -1097,6 +1123,8 @@ class AmbientTrack(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     song_id: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    # Прежние треки относятся к русскому профилю; смена книги не переименовывает их.
+    language_snapshot: Mapped[str] = mapped_column(String(2), nullable=False, default="ru", server_default="ru")
     #: 'pending' | 'done' | 'failed' | 'replaced'
     status: Mapped[str] = mapped_column(String(12), nullable=False, default="pending")
     error: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -1107,9 +1135,9 @@ class AmbientTrack(Base):
 class LoreArticle(Base):
     """Статья авторской энциклопедии — шпаргалка диктору о мире книги.
 
-    Привязана к АВТОРУ, а не к книге: у Примеродиных «Карта» хронологически стоят между
-    четвёртой и пятой «Семьёй волшебников», арки и персонажи сквозные, и делить лор по
-    книгам значило бы прятать от актёра половину мира, который он озвучивает.
+    Привязана к АВТОРУ, а не к книге: арки и персонажи могут проходить через
+    несколько произведений, и деление лора по книгам скрывало бы от актёра
+    часть мира, который он озвучивает.
 
     Тело статьи здесь целиком (крупнейшая — «Магия», 131 КБ), поэтому список статей и
     их тела ходят разными ручками: оглавление лёгкое, тело приходит по клику.

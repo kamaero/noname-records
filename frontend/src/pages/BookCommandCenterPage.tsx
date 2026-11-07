@@ -34,7 +34,7 @@ import { describeNextStep } from "./CommandCenterPage";
 
 // Publishing messages the actors, so it takes two clicks: the first arms, the second sends.
 const PUBLISH_ARM_MS = 6000;
-const WAIT_HINT = "Сначала остановите прогон";
+const WAIT_HINT = "Stop the run first";
 
 export function BookCommandCenterPage() {
   const { bookId = "" } = useParams();
@@ -82,9 +82,9 @@ export function BookCommandCenterPage() {
     onSuccess: (_, voiced) => {
       void queryClient.invalidateQueries({ queryKey: ["books"] });
       if (voiced) setThanksOpen(true); // сразу к благодарственному письму, как по ?thanks=1
-      pushToast({ tone: "success", title: voiced ? "Книга переведена в «Озвучена»" : "Книга возвращена в работу" });
+      pushToast({ tone: "success", title: voiced ? "Book marked as recorded" : "Book reopened" });
     },
-    onError: (err) => pushToast({ tone: "error", title: "Не получилось", detail: describeApiError(err, "сервер не ответил") }),
+    onError: (err) => pushToast({ tone: "error", title: "Could not complete the action", detail: describeApiError(err, "the server did not respond") }),
   });
   // Task 5 ведёт сюда после «Озвучена» с ?thanks=1: открываем окно и убираем параметр,
   // чтобы обновление страницы не открывало его снова.
@@ -116,8 +116,8 @@ export function BookCommandCenterPage() {
     return (
       <div className="hub">
         <div className="ui-note ui-note--error hub-error" role="alert">
-          <span>Не удалось загрузить книгу: {describeApiError(booksQuery.error, "сервер не ответил")}.</span>
-          <Button size="sm" variant="secondary" onClick={() => booksQuery.refetch()} loading={booksQuery.isFetching}>Повторить</Button>
+          <span>Could not load book: {describeApiError(booksQuery.error, "the server did not respond")}.</span>
+          <Button size="sm" variant="secondary" onClick={() => booksQuery.refetch()} loading={booksQuery.isFetching}>Retry</Button>
         </div>
       </div>
     );
@@ -125,9 +125,9 @@ export function BookCommandCenterPage() {
   if (!book) {
     return (
       <div className="hub">
-        <PageHeader title="Книга не найдена" back={{ to: "/", label: "Библиотека" }} />
+        <PageHeader title="Book not found" back={{ to: "/", label: "Library" }} />
         <div className="panel">
-          <EmptyState icon="books" text="Такой книги нет: её удалили или ссылка устарела." action={<LinkButton to="/" variant="secondary">Открыть библиотеку</LinkButton>} />
+          <EmptyState icon="books" text="This book was deleted or the link has expired." action={<LinkButton to="/" variant="secondary">Open library</LinkButton>} />
         </div>
       </div>
     );
@@ -165,7 +165,7 @@ export function BookCommandCenterPage() {
   const voiced = Boolean(book.voiced_at);
   const recordedChapters = recordingQuery.data?.chapters ?? [];
   const allReleased = recordedChapters.length > 0 && recordedChapters.every((c) => Boolean(c.released_at));
-  const voicedDate = voiced ? new Date(book.voiced_at as string).toLocaleDateString("ru-RU") : "";
+  const voicedDate = voiced ? new Date(book.voiced_at as string).toLocaleDateString("en-US") : "";
 
   const rerun = (step: HubStepKey) => {
     actions.run.mutate({ steps: [step], force: true });
@@ -173,10 +173,10 @@ export function BookCommandCenterPage() {
 
   const menu: HubMenuItem[] = [
     ...(primary.kind !== "run" && primary.kind !== "resume"
-      ? [{ key: "run", label: "Запустить разметку заново", onSelect: () => actions.run.mutate({ force: true }), disabled: runActive, hint: WAIT_HINT }]
+      ? [{ key: "run", label: "Restart annotation", onSelect: () => actions.run.mutate({ force: true }), disabled: runActive, hint: WAIT_HINT }]
       : []),
     ...(book?.status === "published_to_dictor"
-      ? [{ key: "unpublish", label: "Вернуть на проверку", onSelect: () => actions.unpublish.mutate(), disabled: actions.unpublish.isPending, hint: "" }]
+      ? [{ key: "unpublish", label: "Return to review", onSelect: () => actions.unpublish.mutate(), disabled: actions.unpublish.isPending, hint: "" }]
       : []),
     // Раньше это была кнопка «Собрать персонажей заново» на отдельном экране
     // приёмки. Извлечение ничего не удаляет и не переписывает правки человека:
@@ -185,21 +185,21 @@ export function BookCommandCenterPage() {
     // дубли, которые потом разбирают в карте персонажей.
     {
       key: "cast",
-      label: "Собрать персонажей заново",
+      label: "Extract characters again",
       onSelect: () => rerun("cast"),
       disabled: runActive,
       hint: WAIT_HINT,
-      note: "Не удаляет и не перезаписывает правки: совпавшую роль дополняет, а несовпавшую добавляет второй строкой — дубли потом разбирают в карте персонажей.",
+      note: "Keeps your edits: matching roles receive missing details; unmatched roles are added as new entries. Review duplicates in the cast.",
     },
-    { key: "attribute", label: "Повторить роли", onSelect: () => rerun("attribute"), disabled: runActive, hint: WAIT_HINT },
-    { key: "stress", label: "Повторить ударения", onSelect: () => rerun("stress"), disabled: runActive, hint: WAIT_HINT },
+    { key: "attribute", label: "Repeat attribution", onSelect: () => rerun("attribute"), disabled: runActive, hint: WAIT_HINT },
+    { key: "stress", label: "Repeat word stress", onSelect: () => rerun("stress"), disabled: runActive, hint: WAIT_HINT },
   ];
 
   return (
     <div className="hub">
       {spendBanner}
       <PageHeader
-        back={{ to: "/", label: "Библиотека" }}
+        back={{ to: "/", label: "Library" }}
         title={
           <span className="hub-title">
             {title}
@@ -209,14 +209,14 @@ export function BookCommandCenterPage() {
         subtitle={hubSubtitle(author, book.chapter_count, roles) || book.source_filename}
         actions={
           <>
-            {voiced ? <span className="hub-voiced">Озвучена · {voicedDate}</span> : null}
+            {voiced ? <span className="hub-voiced">Recorded · {voicedDate}</span> : null}
             {isAdmin && !voiced && allReleased ? (
-              <Button variant="secondary" loading={voiceMutation.isPending} onClick={() => voiceMutation.mutate(true)}>Перевести в «Озвучена»</Button>
+              <Button variant="secondary" loading={voiceMutation.isPending} onClick={() => voiceMutation.mutate(true)}>Mark as recorded</Button>
             ) : null}
             {isAdmin && voiced ? (
               <>
-                <Button variant="secondary" onClick={() => setThanksOpen(true)}>Благодарственное письмо</Button>
-                <Button variant="secondary" loading={voiceMutation.isPending} onClick={() => voiceMutation.mutate(false)}>Вернуть в работу</Button>
+                <Button variant="secondary" onClick={() => setThanksOpen(true)}>Thank-you message</Button>
+                <Button variant="secondary" loading={voiceMutation.isPending} onClick={() => voiceMutation.mutate(false)}>Reopen book</Button>
               </>
             ) : null}
             <PrimaryButton kind={primary.kind} label={primary.label} readerTo={readerTo} actions={actions} waiting={chaptersQuery.isLoading} publishArmed={publishArmed} onPublish={publishClick} />
@@ -227,7 +227,7 @@ export function BookCommandCenterPage() {
 
       {progressQuery.isError ? (
         <p className="ui-note ui-note--error" role="alert">
-          Ход работы недоступен: {describeApiError(progressQuery.error, "сервер не ответил")}. Шаги показаны без состояния.
+          Progress unavailable: {describeApiError(progressQuery.error, "the server did not respond")}. Step status is unavailable.
         </p>
       ) : null}
 
@@ -303,8 +303,8 @@ function PrimaryButton({ kind, label, readerTo, actions, waiting, publishArmed, 
   if (kind === "publish") {
     return (
       <Button variant="primary" loading={actions.publish.isPending} icon={<Icon name="mic" />} onClick={onPublish}
-        title={publishArmed ? "Дикторы получат уведомление" : "Первый клик — проверить, второй — отправить"}>
-        {publishArmed ? "Подтвердить: уведомить дикторов" : label}
+        title={publishArmed ? "Voice actors will be notified" : "Click once to review, again to send"}>
+        {publishArmed ? "Confirm: notify voice actors" : label}
       </Button>
     );
   }
@@ -325,7 +325,7 @@ function HubSkeleton() {
         <div className="panel hub-card hub-col"><div className="hub-skel"><span /><span /><span /><span /></div></div>
         <div className="panel hub-card hub-col"><div className="hub-skel"><span /><span /><span /></div></div>
       </div>
-      <span className="hub-sr">Загрузка книги</span>
+      <span className="hub-sr">Loading book</span>
     </div>
   );
 }

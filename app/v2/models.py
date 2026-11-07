@@ -47,6 +47,8 @@ class V2Attribution(Base):
     span_start: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     span_end: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     speaker: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    #: Служебный рассказчик и персонаж Narrator имеют разные неизменяемые ссылки.
+    role_ref: Mapped[str] = mapped_column(String(80), nullable=False, default="", server_default="")
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     # llm | llm_review | operator | import
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="llm")
@@ -89,6 +91,8 @@ class V2Run(Base):
     book_id: Mapped[str] = mapped_column(String(36), nullable=False)
     # queued | running | done | failed | stopped
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+    # NULL у прежних заданий: исходный профиль нельзя восстановить по живой книге.
+    language_snapshot: Mapped[str | None] = mapped_column(String(2), nullable=True)
     # segment | cast | attribute | stress — the step being worked on, or the last one.
     step: Mapped[str] = mapped_column(String(20), nullable=False, default="")
     chapters_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

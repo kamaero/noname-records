@@ -72,11 +72,10 @@ def notify_takes_in_released(db, items: list[AudioFile], *, send=None) -> bool:
             continue
         book, _chapter = found
         link = _take_link(audio.id)
-        lines.append(f"• {book.title}, {audio.chapter}, роль «{audio.role}», диктор {audio.actor_name}: "
-                     f"{audio.canonical_filename}" + (f"\n  {link}" if link else ""))
+        lines.append(f'• {book.title}, {audio.chapter}, role «{audio.role}», actor {audio.actor_name}: {audio.canonical_filename}' + (f"\n  {link}" if link else ""))
     if not lines:
         return False
-    return _deliver(db, "В сданную главу пришёл дубль:\n" + "\n".join(lines), send)
+    return _deliver(db, 'A take was uploaded to a completed chapter:\n' + "\n".join(lines), send)
 
 
 def notify_recast_in_released(db, character: Character, *, old_actor: str, new_actor: str, send=None) -> bool:
@@ -93,9 +92,7 @@ def notify_recast_in_released(db, character: Character, *, old_actor: str, new_a
         return False
     book = db.get(ScriptBook, character.book_id)
     labels = ", ".join(chapters[int(ch.chapter_index)] for ch in sorted(released, key=lambda c: c.chapter_index))
-    text = (f"Рекаст в сданных главах: роль «{character.name}» («{getattr(book, 'title', '')}») — "
-            f"{old_actor or 'без актёра'} → {new_actor or 'без актёра'}. "
-            f"Роль говорит в сданных главах: {labels}.")
+    text = (f'Recast in completed chapters: role «{character.name}» («{getattr(book, 'title', '')}») — {old_actor or 'no actor'} → {new_actor or 'no actor'}. The role speaks in completed chapters: {labels}.')
     return _deliver(db, text, send)
 
 
@@ -112,7 +109,7 @@ def missing_alert_text(db, chapter_id: str, new_missing: dict[str, list[str]]) -
     if chapter is None or chapter.released_at is None:
         return ""
     book = db.get(ScriptBook, chapter.book_id)
-    parts = [f"Новые пропуски в сданной главе «{chapter.chapter_title}» («{getattr(book, 'title', '')}»):"]
+    parts = [f'New missing lines in completed chapter «{chapter.chapter_title}» («{getattr(book, 'title', '')}»):']
     for role, texts in new_missing.items():
         parts.append(f"• {role}: " + " / ".join(texts))
     return "\n".join(parts)

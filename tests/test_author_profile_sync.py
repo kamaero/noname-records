@@ -2,13 +2,13 @@
 
 Today the profile only ever hands data DOWN: the author roster seeds char_extraction.
 Nothing goes back up, so «Карта переправы» sits with 221 characters — 48 with an
-assigned actor, all with a colour — while Примеродин's profile holds 1741 characters and
+assigned actor, all with a colour — while Примеров's profile holds 1741 characters and
 only 62 colours, and zero pronunciations. The link column characters.author_character_id
 exists in the schema and is empty on every row.
 
 That matters right now: the author is about to spend days validating this book. Every
 stress mark and colour he sets would land on the book alone and be gone by the next
-one. The second Primerodin book has nothing to inherit unless this loop closes first.
+one. The second primerov book has nothing to inherit unless this loop closes first.
 
 Conflict rule, per the owner: the profile wins. A colour already agreed there is the
 through-line and a book may not overwrite it — it only fills blanks. set_color and
@@ -38,7 +38,7 @@ def _session():
 
 
 def _seed(db, *, notes="", characters=()):
-    db.add(Author(id=AUTHOR, name="Александр Примеродин", slug="primerodin"))
+    db.add(Author(id=AUTHOR, name="Алексей Примеров", slug="primerov"))
     db.add(ScriptBook(
         id=BOOK, title="Карта", display_title="Карта", source_filename="x.docx",
         source_format="docx", total_chars=0, author_sheets_x1000=0, chapter_count=1,

@@ -15,7 +15,7 @@ from typing import Callable
 
 from app.pipeline.consilium_prompts import (
     ARBITER_SCHEMA, ARBITER_SYSTEM, ARBITER_WINDOW, NARRATOR, READER_CHUNK, READER_SCHEMA,
-    READER_SYSTEM, UNSURE, arbiter_user_prompt, as_pair, reader_user_prompt,
+    READER_SYSTEM, READER_SYSTEM_EN, ARBITER_SYSTEM_EN, UNSURE, arbiter_user_prompt, as_pair, reader_user_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class StopRun(Exception):
 
 def read_chapter(*, model: str, cast_lines: list[str], paragraphs: list[tuple[int, str]],
                  ask: Ask, checkpoint: Callable[[], None] = lambda: None,
-                 pause: float = RETRY_PAUSE_SECONDS) -> tuple[dict[int, str], bool]:
+                 pause: float = RETRY_PAUSE_SECONDS, language: str = "ru") -> tuple[dict[int, str], bool]:
     """Ответы чтеца по главе и признак полноты.
 
     Кусок, не разобранный после двух попыток, оставляет свои абзацы без ответа — и глава
@@ -50,7 +50,8 @@ def read_chapter(*, model: str, cast_lines: list[str], paragraphs: list[tuple[in
         lines: list = []
         for attempt in range(1, READER_ATTEMPTS + 1):
             try:
-                payload = ask(model, READER_SYSTEM, reader_user_prompt(cast_lines, piece, order),
+                payload = ask(model, READER_SYSTEM_EN if language == "en" else READER_SYSTEM,
+                              reader_user_prompt(cast_lines, piece, order, language=language),
                               READER_SCHEMA)
                 lines = (payload or {}).get("lines") or []
                 break
@@ -81,7 +82,7 @@ def _flat(text: str) -> str:
 
 def derive_verdict(*, ordinal: int, current: str, speaker: str, evidence_kind: str,
                    evidence_para: int, evidence_quote: str, texts: dict[int, str],
-                   canon: Callable[[str], str]) -> dict:
+                   canon: Callable[[str], str], language: str = "ru") -> dict:
     """Вердикт выводит машина: модель лишь называет говорящего и приносит цитату."""
     quote = str(evidence_quote or "").strip()
     para = int(evidence_para if evidence_para is not None else -1)
@@ -98,13 +99,15 @@ def derive_verdict(*, ordinal: int, current: str, speaker: str, evidence_kind: s
         verdict = "change"
     if verdict == "change" and name == NARRATOR:
         verdict, proven, note = "undecidable", False, NARRATOR_NOTE
+        if language == "en":
+            note = "[automatic check: a narrator attribution cannot be proved by a quote; a human must decide]"
     return {"verdict": verdict, "speaker": name, "evidence_kind": str(evidence_kind or ""),
             "evidence_para": para, "evidence_quote": quote, "proven": proven, "note": note}
 
 
 def arbitrate_place(*, chapter_index: int, ordinal: int, current: str, opus: str, sol: str,
                     texts: dict[int, str], speakers: dict[int, str], races: dict[str, str],
-                    ask: Ask, canon: Callable[[str], str], model: str) -> dict:
+                    ask: Ask, canon: Callable[[str], str], model: str, language: str = "ru") -> dict:
     """Третий голос по месту. Отказ модели — место без вердикта, следующий прогон доразберёт."""
     window = [(n, texts[n]) for n in range(ordinal - ARBITER_WINDOW, ordinal + ARBITER_WINDOW + 1)
               if n in texts]
@@ -120,7 +123,8 @@ def arbitrate_place(*, chapter_index: int, ordinal: int, current: str, opus: str
     no_verdict = {"verdict": "", "speaker": "", "evidence_kind": "", "evidence_para": 0,
                   "evidence_quote": "", "proven": False, "note": "", "reason": ""}
     try:
-        payload = ask(model, ARBITER_SYSTEM, arbiter_user_prompt(scene_lines, window, ordinal, versions),
+        payload = ask(model, ARBITER_SYSTEM_EN if language == "en" else ARBITER_SYSTEM,
+                      arbiter_user_prompt(scene_lines, window, ordinal, versions, language=language),
                       ARBITER_SCHEMA)
     except StopRun:
         raise
@@ -133,7 +137,7 @@ def arbitrate_place(*, chapter_index: int, ordinal: int, current: str, opus: str
                          evidence_kind=str(payload.get("evidence_kind") or ""),
                          evidence_para=int(payload["evidence_para"]) if str(payload.get("evidence_para", "")).lstrip("-").isdigit() else -1,
                          evidence_quote=str(payload.get("evidence_quote") or ""),
-                         texts=texts, canon=canon)
+                         texts=texts, canon=canon, language=language)
     reason = str(payload.get("reason") or "")
     out["reason"] = f"{out['note']} {reason}".strip() if out["note"] else reason
     return out

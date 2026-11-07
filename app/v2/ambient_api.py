@@ -73,7 +73,7 @@ def _not_enqueued(chapter_id: str) -> JSONResponse:
     if running is not None:
         return error_response("already_running", status_code=409)
     return error_response("queue_unavailable", status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                          detail="Очередь недоступна, попробуйте позже")
+                          detail="The queue is unavailable. Try again later.")
 
 
 def _refusal(code: str) -> JSONResponse:
@@ -103,7 +103,7 @@ def api_v2_ambient_chapter(request: Request, chapter_id: str):
         gate = None
         if not blocked:
             estimate, unknown = spend.estimate_ambient(db, items)
-            gate = limit_gate(db, request, estimate_rub=estimate, unknown_price=unknown, what="эмбиент главы")
+            gate = limit_gate(db, request, estimate_rub=estimate, unknown_price=unknown, what='chapter ambient music')
         found_id = chapter.id
         db.commit()  # мёртвый прогон, отмеченный проверкой, отмечается и в базе
     if gate is not None:
@@ -211,7 +211,7 @@ async def api_v2_ambient_scene(request: Request, marker_id: str):
                     estimate, unknown = spend.estimate_ambient(db, [{"seconds": scene["seconds"],
                                                                      "prompt": prompt.strip()}])
                     blocked = limit_gate(db, request, estimate_rub=estimate, unknown_price=unknown,
-                                         what="эмбиент сцены") or ""
+                                         what='scene ambient music') or ""
             db.commit()
             return (chapter.id, marker.id), blocked
 

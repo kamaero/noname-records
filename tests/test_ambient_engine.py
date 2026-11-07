@@ -50,9 +50,12 @@ def _record(db, last_line_matched: bool = True):
 
     Таймлайн по `_place_by_script`: абзац 0 — 0.0, абзац 1 — 3.7, абзац 2 — 5.55, конец — 6.55.
     """
+    from app.models import ScriptBook
+    from app.services.audio_uploads import derive_book_code
+    code = derive_book_code(db.get(ScriptBook, BOOK).title)
     for role in ("Гамук", "Рассказчик", "Тупуг"):
         item = AudioFile(
-            book_code="B1", original_filename=f"{role}.wav", stored_key=f"uploads/{role}.wav",
+            book_code=code, original_filename=f"{role}.wav", stored_key=f"uploads/{role}.wav",
             canonical_filename=f"B1_Ch1_{role}.wav", mime_type="audio/wav", size_bytes=100,
             chapter="1", role=role, kind=TAKE, duration_seconds=12.0,
         )
@@ -274,7 +277,7 @@ class TestRunGeneratesEveryScene:
             run = db.get(BackgroundRun, run_id)
             assert run.status == "done"
             assert json.loads(run.meta_json)["result"]["tracks_done"] == 3
-        assert notes == ["Г1: эмбиент 3 из 3"]
+        assert notes == ["Chapter 1: ambience 3 of 3"]
 
     def test_a_second_run_generates_nothing(self, factory):
         _scenes(factory)
@@ -323,7 +326,7 @@ class TestFailures:
         assert [t.status for t in _tracks(factory)] == ["done", "done"]
         with factory() as db:
             assert db.get(BackgroundRun, run_id).status == "done", "квота — не сбой прогона"
-        assert notes == ["Г1: эмбиент 2 из 3, квота исчерпана"]
+        assert notes == ["Chapter 1: ambience 2 of 3, quota exhausted"]
 
     def test_two_failures_mark_the_track_failed_and_the_rest_go_on(self, factory):
         ids = _scenes(factory)
@@ -339,7 +342,7 @@ class TestFailures:
         assert tracks[ids[1]].status == "failed" and "503" in tracks[ids[1]].error
         assert tracks[ids[1]].audio_file_id is None
         assert tracks[ids[0]].status == tracks[ids[2]].status == "done"
-        assert notes == ["Г1: эмбиент 2 из 3, ошибок 1"]
+        assert notes == ["Chapter 1: ambience 2 of 3, failed tracks 1"]
 
     def test_a_failed_scene_is_retried_by_the_next_run(self, factory):
         ids = _scenes(factory)
@@ -394,7 +397,7 @@ class TestFailures:
         with factory() as db:
             run = db.query(BackgroundRun).one()
             assert run.status == "failed"
-        assert notes and "упал" in notes[0]
+        assert notes and "failed" in notes[0]
 
 
 class TestRegeneration:
@@ -510,7 +513,7 @@ class TestDiskBeforeMoney:
         assert result["status"] == "disk_full" and result["tracks_done"] == 0
         with factory() as db:
             assert db.get(BackgroundRun, run_id).status == "done"
-        assert "не хватило места на диске" in notes[0]
+        assert "insufficient disk space" in notes[0]
 
     def test_the_preflight_asks_for_the_upper_bound_of_the_track(self, factory, monkeypatch):
         from app.services import audio_mirror
@@ -543,7 +546,7 @@ class TestDiskBeforeMoney:
         assert (result["tracks_done"], result["tracks_failed"]) == (2, 1)
         tracks = {t.marker_id: t for t in _tracks(factory)}
         assert tracks[ids[0]].status == "failed"
-        assert "не хватило места на диске — трек оплачен, но не сохранён" in tracks[ids[0]].error
+        assert "insufficient disk space — the track was billed but could not be saved" in tracks[ids[0]].error
         assert tracks[ids[0]].song_id == "song-1", "оплаченный трек можно найти по song_id"
         with factory() as db:
             assert db.get(BackgroundRun, run_id).status == "done"
@@ -600,7 +603,7 @@ class TestSceneFailuresStayLocal:
 
         assert result["status"] == "not_found"
         assert compose.calls == []
-        assert "сцена не найдена" in notes[0]
+        assert "scene not found" in notes[0]
 
     def test_an_orphan_file_on_disk_is_logged_and_not_overwritten(self, factory, caplog):
         from app.config import settings  # noqa: F401
@@ -632,8 +635,8 @@ class TestNoDoublePayment:
         assert (result["tracks_done"], result["tracks_failed"]) == (2, 1)
         failed = next(t for t in _tracks(factory) if t.marker_id == ids[0])
         assert failed.status == "failed" and failed.audio_file_id is None
-        assert failed.error == ("ответ ElevenLabs оборвался — трек мог быть оплачен; "
-                                "проверьте историю в ElevenLabs")
+        assert failed.error == ("The ElevenLabs response was interrupted. The track may have been billed; "
+                                "check your ElevenLabs history")
 
     def test_a_request_that_never_left_is_retried(self, factory):
         _scenes(factory, places=("Таверна",))
@@ -665,7 +668,7 @@ class TestNoDoublePayment:
 
         assert (result["tracks_done"], result["tracks_failed"]) == (0, 1)
         assert [t.status for t in _tracks(factory)] == ["failed"]
-        assert "пустой ответ" in _tracks(factory)[0].error
+        assert "Empty audio response" in _tracks(factory)[0].error
 
 
 class TestBadKey:
@@ -681,8 +684,8 @@ class TestBadKey:
         assert result["tracks_done"] == 1
         with factory() as db:
             run = db.get(BackgroundRun, run_id)
-            assert run.status == "done" and run.error_message == "Ключ ElevenLabs отклонён"
-        assert notes == ["Г1: эмбиент 1 из 3, ключ ElevenLabs отклонён"]
+            assert run.status == "done" and run.error_message == "ElevenLabs key rejected"
+        assert notes == ["Chapter 1: ambience 1 of 3, elevenLabs key rejected"]
 
 
 class TestTheCardStopsWaiting:
@@ -704,7 +707,7 @@ class TestTheCardStopsWaiting:
         assert result["status"] == "quota"
         rows = [t for t in _tracks(factory) if t.marker_id == ids[0]]
         assert [t.status for t in rows] == ["done", "failed"]
-        assert rows[1].error == "квота исчерпана" and rows[1].audio_file_id is None
+        assert rows[1].error == "quota exhausted" and rows[1].audio_file_id is None
         after = self._scene_view(factory, ids[0])
         assert after != before and after["status"] == "failed"
         assert after["audio_file_id"] == before["audio_file_id"], "прежний трек слушается"
@@ -723,14 +726,14 @@ class TestTheCardStopsWaiting:
 
         assert result["status"] == "disk_full"
         rows = _tracks(factory)
-        assert [(t.marker_id, t.status, t.error) for t in rows] == [(ids[1], "failed", "не хватило места на диске")]
+        assert [(t.marker_id, t.status, t.error) for t in rows] == [(ids[1], "failed", "insufficient disk space")]
 
     def test_a_bad_key_on_one_scene_leaves_a_failed_row(self, factory):
         ids = _scenes(factory)
 
         _go(factory, marker_id=ids[2], compose=Compose([BadKey("401", status=401)]))
 
-        assert [(t.status, t.error) for t in _tracks(factory)] == [("failed", "Ключ ElevenLabs отклонён")]
+        assert [(t.status, t.error) for t in _tracks(factory)] == [("failed", "ElevenLabs key rejected")]
 
     def test_a_missing_scene_leaves_a_failed_row(self, factory):
         _scenes(factory)
@@ -790,7 +793,7 @@ class TestStop:
         assert len(compose.calls) == 1, "текущий трек доделан, следующий не начат"
         with factory() as db:
             assert db.get(BackgroundRun, run_id).status == "stopped"
-        assert notes == ["Г1: эмбиент 1 из 3, остановлен вручную"]
+        assert notes == ["Chapter 1: ambience 1 of 3, stopped by the user"]
 
 
 def test_a_store_failure_is_logged_with_the_traceback(factory, monkeypatch, caplog):
@@ -809,7 +812,7 @@ def test_a_store_failure_is_logged_with_the_traceback(factory, monkeypatch, capl
     with caplog.at_level(logging.ERROR, logger="app.services.ambient_engine"):
         _go(factory)
 
-    records = [r for r in caplog.records if "не сохранён" in r.getMessage()]
+    records = [r for r in caplog.records if "could not be saved" in r.getMessage()]
     assert records and records[0].exc_info is not None
 
 
@@ -887,3 +890,25 @@ def test_ambient_text_and_music_are_booked(factory, monkeypatch):
     with factory() as db:
         rows = db.query(SpendEntry).filter(SpendEntry.step == "ambient_audio").all()
     assert len(rows) == result["tracks_done"] and all(r.unit == "seconds" and r.input_units > 0 for r in rows)
+
+
+def test_english_book_uses_english_ambient_prompt_without_reusing_a_track(factory):
+    from app.models import ScriptBook
+    with factory() as db:
+        db.get(ScriptBook, BOOK).language = "en"
+        db.commit()
+    _scenes(factory, places=("Forest", "Tower"))
+    prompts = []
+
+    def ask(model, system, user, schema):
+        assert "English audiobook scene" in system
+        assert "Location:" in user and "Track duration:" in user
+        prompts.append(user)
+        number = len(prompts)
+        return {"prompt": f"quiet instrumental track {number}", "summary": f"distinct texture {number}"}
+
+    compose = Compose()
+    result, _ = _go(factory, ask=ask, compose=compose)
+    assert result["tracks_done"] == 2 and len(prompts) == 2 and len(compose.calls) == 2
+    assert [prompt for prompt, _ in compose.calls] == ["quiet instrumental track 1", "quiet instrumental track 2"]
+    assert "distinct texture 1" in prompts[1]

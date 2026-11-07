@@ -52,8 +52,8 @@ const DEFAULT_DIR: Record<CastSortKey, "asc" | "desc"> = { role: "asc", actor: "
  * остаются под прежним именем. Двум местам врозь сочинять третий текст нельзя:
  * это одно и то же обещание владельцу.
  */
-function audioStaysBehindNote(name: string, operation: "Слияние" | "Переименование"): string {
-  return `У «${name}» есть записи диктора. ${operation} их не переносит — дубли останутся под именем «${name}».`;
+function audioStaysBehindNote(name: string, operation: "Merge" | "Rename"): string {
+  return `«${name}» has voice recordings. ${operation} does not move them: takes will remain under «${name}».`;
 }
 
 /** `RoleIntersection` знает пару целиком (`role_a`/`role_b`); колонка каста смотрит на
@@ -66,8 +66,8 @@ export type RoleIntersectionForRole = RoleIntersection & { partner: string };
 function describeVote(vote: RoleVoteResult | undefined): string {
   if (!vote || !vote.overridden_by) return "";
   return vote.actor_name
-    ? `Роль остаётся за «${vote.actor_name}» — так решил ${vote.overridden_by}, его голос весит больше.`
-    : `Роль остаётся ничьей — так решил ${vote.overridden_by}, его голос весит больше.`;
+    ? `Role remains assigned to «${vote.actor_name}» as chosen by ${vote.overridden_by}, whose decision takes priority.`
+    : `Role remains unassigned as chosen by ${vote.overridden_by}, whose decision takes priority.`;
 }
 
 /** Дошло ли до диктора «ты утверждён на роль» или «вас зовут на пробу». Молчание тут
@@ -78,22 +78,22 @@ function describeApproval(approval: RoleApproval | undefined): string {
   if (!approval) return "";
   // Неоднозначное имя — общий случай для назначения и для пробы: `names_match`
   // нечёткий, и писать напрямую нельзя, не разобравшись, кто из подошедших имелся в виду.
-  if (approval.reason === "ambiguous") return `${approval.actor_name}: имя подходит нескольким людям — переслали вам и агентам`;
+  if (approval.reason === "ambiguous") return `${approval.actor_name}: this name matches several people; forwarded to you and the agents`;
   if (approval.kind === "audition") {
-    if (approval.notified) return `Позвали на пробу: ${approval.actor_name}`;
-    if (approval.reason === "no_telegram") return `${approval.actor_name}: учётки нет — переслали вам и агентам`;
-    if (approval.reason === "not_sent") return `${approval.actor_name}: бот не может написать — пусть откроет бота и нажмёт Start`;
+    if (approval.notified) return `Invited to audition: ${approval.actor_name}`;
+    if (approval.reason === "no_telegram") return `${approval.actor_name}: no account found; forwarded to you and the agents`;
+    if (approval.reason === "not_sent") return `${approval.actor_name}: the bot cannot reach them; ask them to open it and press Start`;
     return "";
   }
-  if (approval.notified) return `${approval.actor_name} получил уведомление в Telegram.`;
-  if (approval.reason === "no_telegram") return `${approval.actor_name} не получил уведомления: у него не привязан Telegram.`;
-  if (approval.reason === "not_sent") return `${approval.actor_name} не получил уведомления: Telegram не принял сообщение.`;
+  if (approval.notified) return `${approval.actor_name} was notified in Telegram.`;
+  if (approval.reason === "no_telegram") return `${approval.actor_name} was not notified: no Telegram account linked.`;
+  if (approval.reason === "not_sent") return `${approval.actor_name} was not notified: Telegram rejected the message.`;
   return "";
 }
 
 /** `title` предполагает назначение; при `kind: "audition"` актёра не назначили, а только предложили. */
 function resolveActorToastTitle(title: string, approval: RoleApproval | undefined): string {
-  return approval?.kind === "audition" ? "Актёр предложен" : title;
+  return approval?.kind === "audition" ? "Voice actor suggested" : title;
 }
 
 /**
@@ -103,12 +103,12 @@ function resolveActorToastTitle(title: string, approval: RoleApproval | undefine
  * `onRename` отдельно.
  */
 const RENAME_ERRORS: Record<string, string> = {
-  placeholder: "Это служебная метка разметки, а не роль: её имя не правят.",
-  empty_name: "Имя не может быть пустым.",
-  same_name: "Имя не изменилось.",
-  name_taken: "Такая роль уже есть. Два имени в одно — это слияние: у него своя цена и свои проверки.",
-  narrator_is_not_a_role: "Это синоним рассказчика. В карте он один — второго заводить нельзя.",
-  not_found: "Эта роль уже не в карте — обновите страницу.",
+  placeholder: "This is an annotation marker. Its name cannot be edited.",
+  empty_name: "Name cannot be empty.",
+  same_name: "Name has not changed.",
+  name_taken: "This role already exists. Use Merge to combine roles and review its impact first.",
+  narrator_is_not_a_role: "This is an alias of the narrator. Only one narrator is allowed.",
+  not_found: "This role no longer exists. Refresh the page.",
 };
 
 function describeRenameError(error: unknown, fallback: string): string {
@@ -181,7 +181,7 @@ function CastBookPage() {
       void queryClient.invalidateQueries({ queryKey: auditionsQueryKey });
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Не удалено", detail: describeApiError(error, "Не удалось удалить пробу.") });
+      pushToast({ tone: "error", title: "Not deleted", detail: describeApiError(error, "Could not delete the audition.") });
     },
   });
   // Оценку 1–10 ставят автор (верхняя шкала) и студия (нижняя); после неё лист
@@ -193,7 +193,7 @@ function CastBookPage() {
       void queryClient.invalidateQueries({ queryKey: auditionsQueryKey });
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Реакция не сохранена", detail: describeApiError(error, "Не удалось сохранить реакцию.") });
+      pushToast({ tone: "error", title: "Reaction not saved", detail: describeApiError(error, "Could not save the reaction.") });
     },
   });
   const rows = useMemo<CastRow[]>(
@@ -359,7 +359,7 @@ function CastBookPage() {
       markSaving(row.character_id, true);
       try {
         const result = await apiPostJson<SaveBudgetCharacterResponse>(`/api/budget/character/${encodeURIComponent(row.character_id)}`, payload);
-        if (!result.ok) throw new Error(result.error || "Сервер ответил без подробностей.");
+        if (!result.ok) throw new Error(result.error || "The server returned no details.");
         return result;
       } finally {
         markSaving(row.character_id, false);
@@ -370,13 +370,13 @@ function CastBookPage() {
       const notice = [describeApproval(result.approval), outvoted].filter(Boolean).join(" ");
       pushToast({
         tone: outvoted || (result.approval && !result.approval.notified) ? "info" : "success",
-        title: outvoted ? "Ваш голос учтён" : resolveActorToastTitle(title, result.approval),
+        title: outvoted ? "Your vote was saved" : resolveActorToastTitle(title, result.approval),
         detail: notice ? `${row.name}. ${notice}` : row.name,
       });
       await invalidate();
     },
     onError: (error, { row }) => {
-      pushToast({ tone: "error", title: `${row.name}: не сохранено`, detail: describeApiError(error, "Не удалось сохранить строку.") });
+      pushToast({ tone: "error", title: `${row.name}: not saved`, detail: describeApiError(error, "Could not save the row.") });
     },
   });
 
@@ -392,7 +392,7 @@ function CastBookPage() {
         ...patch,
       };
       const result = await apiPostJson<SaveBookBudgetResponse>(`/api/budget/${encodeURIComponent(bookId)}`, payload);
-      if (!result.ok) throw new Error(result.error || "Сервер ответил без подробностей.");
+      if (!result.ok) throw new Error(result.error || "The server returned no details.");
       return result;
     },
     onMutate: ({ savingId }) => {
@@ -411,7 +411,7 @@ function CastBookPage() {
       await invalidate();
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Смета не сохранена", detail: describeApiError(error, "Не удалось сохранить смету.") });
+      pushToast({ tone: "error", title: "Budget not saved", detail: describeApiError(error, "Could not save the budget.") });
     },
   });
 
@@ -421,15 +421,15 @@ function CastBookPage() {
         default_rate_rub_per_min: rate,
         usd_rub_rate: usdRate,
       });
-      if (!result.ok) throw new Error(result.error || "Сервер ответил без подробностей.");
+      if (!result.ok) throw new Error(result.error || "The server returned no details.");
       return result;
     },
     onSuccess: async () => {
-      pushToast({ tone: "success", title: "Настройки студии сохранены", detail: "Роли без своей ставки пересчитаны." });
+      pushToast({ tone: "success", title: "Studio settings saved", detail: "Roles without a custom rate were recalculated." });
       await invalidate();
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Ставка не сохранена", detail: describeApiError(error, "Не удалось сохранить ставку.") });
+      pushToast({ tone: "error", title: "Rate not saved", detail: describeApiError(error, "Could not save the rate.") });
     },
   });
 
@@ -448,14 +448,14 @@ function CastBookPage() {
     onSuccess: async (changed) => {
       setPaletteFix(false);
       if (changed > 0) {
-        pushToast({ tone: "success", title: "Палитра разведена", detail: `Перекрашено ролей: ${changed}.` });
+        pushToast({ tone: "success", title: "Palette updated", detail: `Roles recolored: ${changed}.` });
       } else {
-        pushToast({ tone: "info", title: "Замен не нашлось", detail: "Свободных контрастных сочетаний для этих ролей нет. Задайте цвет вручную через свотч." });
+        pushToast({ tone: "info", title: "No alternatives found", detail: "No available contrasting colors for these roles. Choose a color manually using the swatch." });
       }
       await invalidate();
     },
     onError: (error) => {
-      pushToast({ tone: "error", title: "Конфликты не исправлены", detail: describeApiError(error, "Не удалось перекрасить роли.") });
+      pushToast({ tone: "error", title: "Conflicts not resolved", detail: describeApiError(error, "Could not recolor the roles.") });
     },
   });
 
@@ -463,7 +463,7 @@ function CastBookPage() {
 
   const onSaveActor = useCallback(
     (row: CastRow, actor: string) => {
-      const title = actor ? "Актёр назначен" : "Актёр снят";
+      const title = actor ? "Voice actor assigned" : "Voice actor removed";
       if (row.is_narrator) {
         bookBudgetMutation.mutate({ patch: { narrator_actor_name: actor }, title, savingId: row.character_id });
         return;
@@ -497,14 +497,14 @@ function CastBookPage() {
       // Бота в этой установке нет — звать некуда, письма о ролях дикторы не получат.
       if (!authConfig.data?.telegram_bot_username) return;
       if (!chosen.has_telegram) {
-        pushToast({ tone: "info", title: `${chosen.name}: Telegram не привязан`, detail: "Письмо от бота не дойдёт — сообщите сами.", durationMs: 9000 });
+        pushToast({ tone: "info", title: `${chosen.name}: Telegram is not linked`, detail: "The bot cannot deliver the message. Contact them directly.", durationMs: 9000 });
         return;
       }
       try {
         await navigator.clipboard.writeText(inviteText(authConfig.data?.telegram_bot_username || "", authConfig.data?.studio_name || "", { role: row.name, book: bookTitle }));
-        pushToast({ tone: "info", title: `${chosen.name} пока не на связи с ботом`, detail: "Приглашение с ролью скопировано — отправьте его в личный чат.", durationMs: 9000 });
+        pushToast({ tone: "info", title: `${chosen.name} cannot be reached by the bot yet`, detail: "Role invitation copied. Send it in a private chat.", durationMs: 9000 });
       } catch {
-        pushToast({ tone: "info", title: `${chosen.name} пока не на связи с ботом`, detail: "Пригласите его: «Дикторы» → «Скопировать приглашение».", durationMs: 9000 });
+        pushToast({ tone: "info", title: `${chosen.name} cannot be reached by the bot yet`, detail: "Invite them from Voice actors → Copy invitation.", durationMs: 9000 });
       }
     },
     [authConfig.data, bookTitle, pushToast],
@@ -529,9 +529,9 @@ function CastBookPage() {
             await apiPostJson("/api/dictors", { name });
             await queryClient.invalidateQueries({ queryKey: ["dictors-picker"] });
             onSaveActor(row, name);
-            pushToast({ tone: "success", title: `Диктор заведён: ${name}`, detail: "Пароль и Telegram — в «Дикторах»." });
+            pushToast({ tone: "success", title: `Voice actor created: ${name}`, detail: "Manage their password and Telegram in Voice actors." });
           } catch (error) {
-            pushToast({ tone: "error", title: "Диктор не заведён", detail: describeApiError(error, "") });
+            pushToast({ tone: "error", title: "Voice actor not created", detail: describeApiError(error, "") });
           }
         },
         onRecast: (row) => setRecastRow(row),
@@ -540,14 +540,14 @@ function CastBookPage() {
 
   const onSaveRate = useCallback(
     (row: CastRow, rate: number) => {
-      characterMutation.mutate({ row, payload: { manual_rate_rub_per_min: rate }, title: "Ставка сохранена" });
+      characterMutation.mutate({ row, payload: { manual_rate_rub_per_min: rate }, title: "Rate saved" });
     },
     [characterMutation],
   );
 
   const onSaveNarratorFixed = useCallback(
     (fixed: number) => {
-      bookBudgetMutation.mutate({ patch: { narrative_cost_rub: fixed }, title: "Фикс рассказчика сохранён", savingId: narratorRow?.character_id });
+      bookBudgetMutation.mutate({ patch: { narrative_cost_rub: fixed }, title: "Narrator fee saved", savingId: narratorRow?.character_id });
     },
     [bookBudgetMutation, narratorRow?.character_id],
   );
@@ -567,9 +567,9 @@ function CastBookPage() {
     onSuccess: async (result, { row, next }) => {
       pushToast({
         tone: "success",
-        title: "Роль переименована",
+        title: "Role renamed",
         detail: result.lines
-          ? `«${row.name}» → «${next}». Переехало реплик: ${result.lines}.`
+          ? `«${row.name}» → «${next}». Lines moved: ${result.lines}.`
           : `«${row.name}» → «${next}».`,
       });
       // Переименование переписывает разметку по всем главам — того же класса
@@ -600,7 +600,7 @@ function CastBookPage() {
     async (row: CastRow, next: string) => {
       if (!row.lines_count && row.has_audio) {
         const ok = window.confirm(
-          `Переименовать «${row.name}» в «${next}»?\n\n${audioStaysBehindNote(row.name, "Переименование")}`,
+          `Rename «${row.name}» to «${next}»?\n\n${audioStaysBehindNote(row.name, "Rename")}`,
         );
         if (!ok) return;
       }
@@ -608,25 +608,25 @@ function CastBookPage() {
         await renameMutation.mutateAsync({ row, next, moveLines: false });
       } catch (error) {
         if (!(error instanceof ApiError) || error.errorCode !== "needs_consent") {
-          pushToast({ tone: "error", title: "Не переименовано", detail: describeRenameError(error, "Сервер отказал.") });
+          pushToast({ tone: "error", title: "Not renamed", detail: describeRenameError(error, "The server rejected the request.") });
           return;
         }
         const chapters = (row.appears_in_chapters || []).length;
         // Про записи диктора спрашивающий обязан знать до «да», а не после:
         // `AudioFile.role` — строка, переименование её не трогает, и дубли
         // остаются на старом имени.
-        const audioWarning = row.has_audio ? `\n\n${audioStaysBehindNote(row.name, "Переименование")}` : "";
+        const audioWarning = row.has_audio ? `\n\n${audioStaysBehindNote(row.name, "Rename")}` : "";
         const ok = window.confirm(
-          `У роли «${row.name}» ${row.lines_count} ${pluralRu(row.lines_count, "реплика", "реплики", "реплик")}`
-            + ` в ${chapters} ${pluralRu(chapters, "главе", "главах", "главах")}.\n\n`
-            + `Перенести их на «${next}»? Реплики переедут новой версией разметки — откат останется.`
+          `Role «${row.name}» ${row.lines_count} ${pluralRu(row.lines_count, "line", "lines", "lines")}`
+            + ` in ${chapters} ${pluralRu(chapters, "chapter", "chapters", "chapters")}.\n\n`
+            + `Move them to «${next}»? A new annotation version will be created; you can undo it.`
             + audioWarning,
         );
         if (!ok) return;
         try {
           await renameMutation.mutateAsync({ row, next, moveLines: true });
         } catch (secondError) {
-          pushToast({ tone: "error", title: "Не переименовано", detail: describeRenameError(secondError, "Сервер отказал.") });
+          pushToast({ tone: "error", title: "Not renamed", detail: describeRenameError(secondError, "The server rejected the request.") });
         }
       }
     },
@@ -638,14 +638,14 @@ function CastBookPage() {
   const aboutMutation = useMutation({
     mutationFn: ({ row, patch }: { row: CastRow; patch: CharacterAbout }) => saveCharacterAbout(row.character_id, patch),
     onSuccess: () => {
-      pushToast({ tone: "success", title: "Сохранено", detail: "Диктор видит это в касте главы и в списке своих реплик." });
+      pushToast({ tone: "success", title: "Saved", detail: "The voice actor sees this in the chapter cast and their lines." });
       void queryClient.invalidateQueries({ queryKey: ["book-budget", bookId] });
       void queryClient.invalidateQueries({ queryKey: ["v2", "book-cast", bookId] });
       // Возраст живёт только в ответе карты (`mergeRoleFacts`) — без этой строки
       // сохранённое значение не попадёт в строку до следующей полной перезагрузки.
       void invalidateMap();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не сохранено", detail: describeApiError(error, "") }),
+    onError: (error) => pushToast({ tone: "error", title: "Not saved", detail: describeApiError(error, "") }),
   });
   const onSaveAbout = useCallback(
     (row: CastRow, patch: CharacterAbout) => {
@@ -665,10 +665,10 @@ function CastBookPage() {
       apiPostJson<CharacterMapAcknowledgeResponse>(`/api/v2/books/${encodeURIComponent(bookId)}/character-map/acknowledge`,
                   { role_a: row.name, role_b: partner, reason }),
     onSuccess: async () => {
-      pushToast({ tone: "success", title: "Пересечение принято", detail: "Больше не спросим." });
+      pushToast({ tone: "success", title: "Overlap accepted", detail: "This overlap will no longer be flagged." });
       await invalidateMap();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не сохранено", detail: describeApiError(error, "Не удалось запомнить причину.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Not saved", detail: describeApiError(error, "Could not save the reason.") }),
   });
   const onAcknowledge = useCallback(
     (row: CastRow, partner: string, reason: string) => acknowledgeMutation.mutate({ row, partner, reason }),
@@ -686,14 +686,14 @@ function CastBookPage() {
   const forgetMutation = useMutation({
     mutationFn: async (pair: { role_a: string; role_b: string }) => {
       const result = await apiPostJson<CharacterMapForgetResponse>(`/api/v2/books/${encodeURIComponent(bookId)}/character-map/forget`, pair);
-      if (!result.ok) throw new Error(result.error || "Сервер ответил без подробностей.");
+      if (!result.ok) throw new Error(result.error || "The server returned no details.");
       return result;
     },
     onSuccess: async () => {
-      pushToast({ tone: "info", title: "Решение отменено", detail: "Предупреждение про пару вернётся в список." });
+      pushToast({ tone: "info", title: "Decision reverted", detail: "The overlap warning will return to the list." });
       await invalidateMap();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не отменено", detail: describeApiError(error, "Сервер не ответил.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Not reverted", detail: describeApiError(error, "The server did not respond.") }),
   });
   const onForget = useCallback(
     (pair: { role_a: string; role_b: string }) => forgetMutation.mutate(pair),
@@ -709,14 +709,14 @@ function CastBookPage() {
   const markChecked = useMutation({
     mutationFn: async () => {
       const result = await apiPostJson<CharacterMapCheckedResponse>(`/api/v2/books/${encodeURIComponent(bookId)}/character-map/checked`, {});
-      if (!result.ok) throw new Error(result.error || "Сервер ответил без подробностей.");
+      if (!result.ok) throw new Error(result.error || "The server returned no details.");
       return result;
     },
     onSuccess: async () => {
-      pushToast({ tone: "success", title: "Отмечено: карта проверена" });
+      pushToast({ tone: "success", title: "Cast marked as reviewed" });
       await invalidateMap();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Не отмечено", detail: describeApiError(error, "Сервер не ответил.") }),
+    onError: (error) => pushToast({ tone: "error", title: "Not marked", detail: describeApiError(error, "The server did not respond.") }),
   });
 
   // Слить / удалить — те же коды отказа, что были на отдельном экране карты
@@ -728,7 +728,7 @@ function CastBookPage() {
       // Снимок утраченной строки `delete_character` пишет в журнал вмешательств —
       // значит «отката не будет» было неправдой. Из таблицы отката и вправду нет,
       // так это и формулирует лист слияния рядом.
-      if (!window.confirm(`Удалить роль «${row.name}» из карты? Отката из таблицы не будет.`)) return;
+      if (!window.confirm(`Delete role «${row.name}» from the cast? This cannot be undone from the table.`)) return;
       cardActions.deleteRow.mutate(row.name, { onSuccess: () => void invalidateMap() });
     },
     [cardActions, invalidateMap],
@@ -740,8 +740,8 @@ function CastBookPage() {
   return (
     <div className="cast">
       <PageHeader
-        back={{ to: `/books/${encodeURIComponent(bookId)}`, label: "К книге" }}
-        title={loading ? "Каст" : `Каст · ${title}`}
+        back={{ to: `/books/${encodeURIComponent(bookId)}`, label: "Back to book" }}
+        title={loading ? "Cast" : `Cast · ${title}`}
         actions={
           <>
             <CastCheckedControl
@@ -752,7 +752,7 @@ function CastBookPage() {
             />
             {conflicts.length ? (
               <Button variant="secondary" onClick={() => setPaletteFix(true)}>
-                Развести цвета
+                Adjust colors
               </Button>
             ) : null}
             <label className="cast-search">
@@ -760,8 +760,8 @@ function CastBookPage() {
               <input
                 type="search"
                 value={query}
-                placeholder="Роль, алиас или актёр"
-                aria-label="Найти роль, алиас или актёра"
+                placeholder="Role, alias or voice actor"
+                aria-label="Find role, alias or voice actor"
                 onChange={(event) => setQuery(event.target.value)}
               />
             </label>
@@ -773,7 +773,7 @@ function CastBookPage() {
         budget={budgetQuery.data}
         summaryText={formatCastSubtitle(summary)}
         saving={bookBudgetMutation.isPending}
-        onSave={(next) => bookBudgetMutation.mutateAsync({ patch: next, title: "Статьи сохранены" })}
+        onSave={(next) => bookBudgetMutation.mutateAsync({ patch: next, title: "Profiles saved" })}
         rate={budgetQuery.data?.default_rate_rub_per_min || DEFAULT_RATE_FALLBACK}
         usdRate={budgetQuery.data?.usd_rub_rate || 0}
         savingRate={rateMutation.isPending}
@@ -787,7 +787,7 @@ function CastBookPage() {
           <Icon name="books" />
           <select
             value={bookId}
-            aria-label="Книга, чей каст показан"
+            aria-label="Book shown in the cast"
             onChange={(event) => navigate(`/books/${encodeURIComponent(event.target.value)}/cast`)}
           >
             {(booksQuery.data?.items ?? []).some((book) => book.id === bookId) ? null : (
@@ -807,7 +807,7 @@ function CastBookPage() {
           icon={<Icon name="filter" />}
           onClick={() => setOnlyUnassigned((v) => !v)}
         >
-          Только без актёра
+          Unassigned only
         </Button>
         <Button
           size="sm"
@@ -816,10 +816,10 @@ function CastBookPage() {
           aria-pressed={onlyAuditions}
           disabled={auditionCounts.size === 0}
           icon={<Icon name="mic" />}
-          title={auditionCounts.size ? undefined : "На эту книгу ещё не присылали проб"}
+          title={auditionCounts.size ? undefined : "No auditions submitted for this book yet"}
           onClick={() => setOnlyAuditions((v) => !v)}
         >
-          {auditionCounts.size ? `Пробы · ${auditionCounts.size}` : "Пробы"}
+          {auditionCounts.size ? `Auditions · ${auditionCounts.size}` : "Auditions"}
         </Button>
         <Button
           size="sm"
@@ -828,10 +828,10 @@ function CastBookPage() {
           aria-pressed={onlyCrossing}
           disabled={crossingCount === 0}
           icon={<Icon name="flag" />}
-          title={crossingCount ? undefined : "Пересечений ролей одного актёра в этой книге нет"}
+          title={crossingCount ? undefined : "No overlapping roles assigned to the same voice actor"}
           onClick={() => setOnlyCrossing((v) => !v)}
         >
-          {crossingCount ? `Пересечения · ${crossingCount}` : "Пересечения"}
+          {crossingCount ? `Overlaps · ${crossingCount}` : "Overlaps"}
         </Button>
         <Button
           size="sm"
@@ -839,10 +839,10 @@ function CastBookPage() {
           className="cast-toggle"
           aria-pressed={onlyMismatch}
           icon={<Icon name="filter" />}
-          title="Роли, у которых разметка и извлечение назвали разное число глав"
+          title="Roles whose chapter counts differ between annotation and extraction"
           onClick={() => setOnlyMismatch((v) => !v)}
         >
-          Расхождения глав
+          Chapter mismatches
         </Button>
         {acknowledgedPairs.length > 0 ? (
           <Button
@@ -855,17 +855,17 @@ function CastBookPage() {
             icon={<Icon name="check" />}
             onClick={() => setAcknowledgedOpen(true)}
           >
-            Признано · {acknowledgedPairs.length}
+            Accepted · {acknowledgedPairs.length}
           </Button>
         ) : null}
         {!loading && filtered ? (
           <span className="cast-toolbar-count num" aria-live="polite">
-            {visible.length} из {rows.length}
+            {visible.length} of {rows.length}
           </span>
         ) : null}
         {filtered ? (
           <Button size="sm" variant="ghost" onClick={resetFilters}>
-            Сбросить
+            Clear
           </Button>
         ) : null}
       </div>
@@ -884,9 +884,9 @@ function CastBookPage() {
       <div ref={tableAnchor} />
       {budgetQuery.isError ? (
         <div className="ui-note ui-note--error cast-error" role="alert">
-          <span>Не удалось загрузить каст: {describeApiError(budgetQuery.error, "сервер не ответил")}.</span>
+          <span>Could not load cast: {describeApiError(budgetQuery.error, "the server did not respond")}.</span>
           <Button size="sm" variant="secondary" onClick={() => budgetQuery.refetch()} loading={budgetQuery.isFetching}>
-            Повторить
+            Retry
           </Button>
         </div>
       ) : (
@@ -925,15 +925,15 @@ function CastBookPage() {
             filtered ? (
               <EmptyState
                 icon="search"
-                text="По этому запросу ролей нет."
+                text="No roles match your search."
                 action={
                   <Button variant="secondary" onClick={resetFilters}>
-                    Показать все роли
+                    Show all roles
                   </Button>
                 }
               />
             ) : (
-              <EmptyState icon="cast" text="Каст пуст: персонажи ещё не собраны. Запустите подготовку книги, и роли появятся здесь." />
+              <EmptyState icon="cast" text="No cast yet. Prepare the book to extract its characters." />
             )
           }
         />
@@ -946,7 +946,7 @@ function CastBookPage() {
           onClose={() => setRecastRow(null)}
           onDone={(summary) => {
             setRecastRow(null);
-            pushToast({ tone: "success", title: `Переназначено: «${recastRow.name}»`, detail: summary, durationMs: 9000 });
+            pushToast({ tone: "success", title: `Reassigned: «${recastRow.name}»`, detail: summary, durationMs: 9000 });
             void invalidate();
             void queryClient.invalidateQueries({ queryKey: ["dictors-picker"] });
           }}
@@ -984,8 +984,8 @@ function CastBookPage() {
 
       {acknowledgedOpen ? (
         <Sheet
-          title={`Признанные пересечения — ${acknowledgedPairs.length}`}
-          subtitle="Пары, которые автор уже разрешил оставить одному актёру."
+          title={`Accepted overlaps — ${acknowledgedPairs.length}`}
+          subtitle="Role pairs approved by the author for the same voice actor."
           onClose={closeAcknowledged}
         >
           <AcknowledgedPairsList
@@ -1024,8 +1024,8 @@ type CastCheckedControlProps = { checkedAt: string; checkedBy: string; onCheck: 
     персонажей — он исчезает, отметка остаётся тут. */
 function CastCheckedControl({ checkedAt, checkedBy, onCheck, pending }: CastCheckedControlProps) {
   const title = checkedAt
-    ? `Автор проверил карту: ${checkedBy || "без подписи"}, ${formatWhen(checkedAt)}`
-    : "Автор ещё не проверял карту целиком.";
+    ? `Cast reviewed by author: ${checkedBy || "unsigned"}, ${formatWhen(checkedAt)}`
+    : "The author has not reviewed the full cast yet.";
   return (
     <div className="cast-check-control">
       <span
@@ -1034,10 +1034,10 @@ function CastCheckedControl({ checkedAt, checkedBy, onCheck, pending }: CastChec
         aria-live="polite"
       >
         <Icon name={checkedAt ? "check" : "flag"} />
-        {checkedAt ? "Карта проверена" : "Карта не проверена"}
+        {checkedAt ? "Cast reviewed" : "Cast not reviewed"}
       </span>
       <Button size="sm" variant={checkedAt ? "ghost" : "primary"} loading={pending} onClick={onCheck}>
-        {checkedAt ? "Обновить" : "Я проверил карту"}
+        {checkedAt ? "Refresh" : "Mark as reviewed"}
       </Button>
     </div>
   );
@@ -1060,13 +1060,13 @@ function AcknowledgedPairsList({ pairs, onForget, forgetPending, forgetVariables
         const isPending = forgetPending && forgetVariables?.role_a === item.role_a && forgetVariables?.role_b === item.role_b;
         return (
           <li key={`${item.role_a}::${item.role_b}`} className="cast-ack-item">
-            <div className="cast-ack-pair">«{item.role_a}» и «{item.role_b}» <span className="cast-muted">— {item.actor}</span></div>
-            <div className="cast-ack-reason">{item.reason || "без причины"}</div>
+            <div className="cast-ack-pair">«{item.role_a}» and «{item.role_b}» <span className="cast-muted">— {item.actor}</span></div>
+            <div className="cast-ack-reason">{item.reason || "no reason given"}</div>
             <span className="cast-muted cast-ack-source">
-              {item.acknowledged_by || "без подписи"}{item.acknowledged_at ? `, ${formatWhen(item.acknowledged_at)}` : ""}
+              {item.acknowledged_by || "unsigned"}{item.acknowledged_at ? `, ${formatWhen(item.acknowledged_at)}` : ""}
             </span>
             <Button size="sm" variant="ghost" loading={isPending} onClick={() => onForget({ role_a: item.role_a, role_b: item.role_b })}>
-              Забыть решение
+              Remove decision
             </Button>
           </li>
         );
@@ -1105,26 +1105,26 @@ function RoleMergeSheet({ source, rows, pending, onMerge, onClose }: RoleMergeSh
   };
 
   return (
-    <Sheet title={`Слить «${source.name}»`} subtitle="Реплики переедут на выбранную роль, исходная уйдёт из карты" onClose={onClose}>
+    <Sheet title={`Merge «${source.name}»`} subtitle="Lines will move to the selected role; the original role will be removed" onClose={onClose}>
       <p className="cast-merge-cost">
-        Переедет: <strong>{source.lines_count.toLocaleString("ru-RU")}</strong> {pluralRu(source.lines_count, "реплика", "реплики", "реплик")}{" "}
-        из <strong>{chapters.toLocaleString("ru-RU")}</strong> {pluralRu(chapters, "глава", "главы", "глав")}.
+        Lines to move: <strong>{source.lines_count.toLocaleString("en-US")}</strong> {pluralRu(source.lines_count, "line", "lines", "lines")}{" "}
+        of <strong>{chapters.toLocaleString("en-US")}</strong> {pluralRu(chapters, "chapter", "chapters", "chapters")}.
       </p>
       {source.actor_name ? (
         <p className="ui-note ui-note--error">
-          На «{source.name}» назначен диктор «{source.actor_name}». После слияния строка карты исчезнет вместе с назначением.
+          «{source.name}» is assigned to voice actor «{source.actor_name}». Merging will remove this role and its assignment.
         </p>
       ) : null}
       {source.has_audio ? (
-        <p className="ui-note ui-note--error">{audioStaysBehindNote(source.name, "Слияние")}</p>
+        <p className="ui-note ui-note--error">{audioStaysBehindNote(source.name, "Merge")}</p>
       ) : null}
       {targets.length === 0 ? (
-        <p className="cast-muted">Слить не с кем: в касте больше нет подходящих ролей.</p>
+        <p className="cast-muted">No eligible roles to merge into.</p>
       ) : (
-        <Field label="Слить с">
+        <Field label="Merge into">
           {(props) => (
             <select {...props} className="ui-input" value={targetName} onChange={(event) => chooseTarget(event.target.value)}>
-              <option value="">выберите роль…</option>
+              <option value="">choose a role…</option>
               {targets.map((row) => <option key={row.character_id} value={row.name}>{row.name}</option>)}
             </select>
           )}
@@ -1132,25 +1132,24 @@ function RoleMergeSheet({ source, rows, pending, onMerge, onClose }: RoleMergeSh
       )}
       {targetName && confirmMerge ? (
         <p className="ui-note ui-note--error">
-          Переедет {source.lines_count.toLocaleString("ru-RU")} {pluralRu(source.lines_count, "реплика", "реплики", "реплик")}{" "}
-          из {chapters.toLocaleString("ru-RU")} {pluralRu(chapters, "глава", "главы", "глав")} на «{targetName}»,
-          роль «{source.name}» уйдёт из карты. Отката из таблицы не будет.
+          Moving {source.lines_count.toLocaleString("en-US")} {pluralRu(source.lines_count, "line", "lines", "lines")}{" "}
+          of {chapters.toLocaleString("en-US")} {pluralRu(chapters, "chapter", "chapters", "chapters")} to «{targetName}», role «{source.name}» will be removed. This cannot be undone from the table.
         </p>
       ) : null}
       <div className="cast-merge-actions">
         {targetName && confirmMerge ? (
           <>
             <Button variant="danger" loading={pending} onClick={() => onMerge(targetName)}>
-              Да, слить с «{targetName}»
+              Yes, merge into «{targetName}»
             </Button>
-            <Button variant="ghost" disabled={pending} onClick={() => setConfirmMerge(false)}>Отмена</Button>
+            <Button variant="ghost" disabled={pending} onClick={() => setConfirmMerge(false)}>Cancel</Button>
           </>
         ) : (
           <>
             <Button variant="primary" disabled={!targetName} onClick={() => setConfirmMerge(true)}>
-              {targetName ? `Слить с «${targetName}»` : "Слить"}
+              {targetName ? `Merge into «${targetName}»` : "Merge"}
             </Button>
-            <Button variant="ghost" onClick={onClose}>Отмена</Button>
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
           </>
         )}
       </div>

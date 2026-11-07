@@ -206,7 +206,7 @@ class TestTheExactSameContentAgain:
         )
 
         assert status == 400
-        assert body["message"] == "KP_Ch11_Gamuk_again.wav: этот же файл уже загружен в эту роль и главу"
+        assert body["message"] == "KP_Ch11_Gamuk_again.wav: this file has already been uploaded for this role and chapter"
 
 
 class TestTwoDifferentFilesOfOneRoleInOneBatch:
@@ -239,7 +239,7 @@ class TestTwoIdenticalFilesInOneBatch:
         errors = {item["error"] for item in body["items"]}
         assert "duplicate_in_batch" in errors
         assert stored == {}
-        assert body["message"] == "копия1.wav: в пачке два одинаковых файла; копия2.wav: в пачке два одинаковых файла"
+        assert body["message"] == "копия1.wav: the batch contains duplicate files; копия2.wav: the batch contains duplicate files"
 
 
 class TestTheSameRecordingSentForAnotherRole:

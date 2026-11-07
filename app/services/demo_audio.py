@@ -63,6 +63,6 @@ def demo_title(file_title: str, speaker_name: str) -> str:
     drop = {"демо", "demo"} | {w.lower() for w in str(speaker_name or "").split()}
     words = [w for w in words if w.lower() not in drop]
     title = " ".join(words).strip()
-    return title or "демо"
+    return title or "Demo"
 
 

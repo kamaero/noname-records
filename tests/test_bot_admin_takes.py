@@ -34,7 +34,7 @@ def test_admin_unknown_file_offers_own_and_other_roles(db):
     _admin(db)
     out = handle_update(db, _take_audio("Untitled.wav"), now=NOW)
     row = db.query(BotUpload).one()
-    assert _text(out) == "Это дубль или проба?"
+    assert _text(out) == "Is this a take or an audition?"
     out = handle_update(db, _press(f"at:t:{row.id}"), now=NOW)
     buttons = _buttons(out)
     assert ("Афыл — Ортель Орвис", f"at:r:{row.id}:c2") in buttons
@@ -57,7 +57,7 @@ def test_admin_can_finish_the_mp3_audition_flow(db):
     _admin(db)
     out = handle_update(db, _audio(), now=NOW)
     row = db.query(BotUpload).one()
-    assert _text(out) == "Чья это проба?"
+    assert _text(out) == "Whose audition is this?"
     handle_update(db, _press(f"ba:w:{row.id}:0"), now=NOW)
     out = handle_update(db, _press(f"ba:r:{row.id}:c1"), now=NOW)
     assert out[-1].method == "enqueue_bot_upload" and row.state == "queued"

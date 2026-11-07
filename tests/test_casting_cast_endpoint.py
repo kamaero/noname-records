@@ -21,7 +21,7 @@ def cast_env():
     SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
     with SessionLocal() as db:
         build_cycle(db)
-    who = {"uid": "u-author", "roles": {"author"}, "name": "Примеродин"}
+    who = {"uid": "u-author", "roles": {"author"}, "name": "Примеров"}
     handlers = build_budget_api_handlers({
         "is_authenticated": lambda _r: True,
         "has_workspace_full_access": lambda _r: True,
@@ -116,7 +116,7 @@ def test_a_losing_vote_is_not_carried_across_the_cycle(monkeypatch, cast_env):
     sent = []
     monkeypatch.setattr("app.api.budget_api.notify_role_approved", lambda db, **kw: sent.append(kw) or {})
     with cast_env.sessions() as db:
-        cast_role_vote(db, character=db.get(Character, "c1"), voter_uid="u-author", voter_name="Примеродин",
+        cast_role_vote(db, character=db.get(Character, "c1"), voter_uid="u-author", voter_name="Примеров",
                        weight=2, actor_name="Сомов Роман")
         db.commit()
     cast_env.as_owner()
@@ -132,7 +132,7 @@ def test_an_unchanged_book_still_announces_the_books_the_cycle_changed(monkeypat
     sent = []
     monkeypatch.setattr("app.api.budget_api.notify_role_approved", lambda db, **kw: sent.append(kw) or {})
     with cast_env.sessions() as db:
-        cast_role_vote(db, character=db.get(Character, "c1"), voter_uid="u-author", voter_name="Примеродин",
+        cast_role_vote(db, character=db.get(Character, "c1"), voter_uid="u-author", voter_name="Примеров",
                        weight=2, actor_name="Сомов Роман")
         db.commit()
     body = cast_env.save("c1", actor_name="Сомов Роман")

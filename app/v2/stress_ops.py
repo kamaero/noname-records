@@ -19,7 +19,7 @@ import re
 
 from sqlalchemy import func, select
 
-from app.models import ScriptChapter
+from app.models import ScriptBook, ScriptChapter
 from app.pronunciation import _strip_stress, parse_pronunciation_notes
 from app.services.author_profile import upsert_pronunciation
 from app.services.stress_review import append_stress_term
@@ -360,8 +360,17 @@ def stress_queue(db, book_id: str, *, limit: int = 200, offset: int = 0, scope: 
     lowercased word, most frequent first, and cut at `limit` each; the counts are
     occurrence totals before the cut.
     """
-    lookup = dict_lookup or default_dict_lookup
     scope = str(scope or "all").strip().lower()
+    if getattr(db.get(ScriptBook, book_id), "language", "ru") == "en":
+        return {
+            "scope": scope, "unresolved": [], "homographs": [],
+            "has_more": {"unresolved": False, "homographs": False},
+            "counts": dict.fromkeys(("unprocessed_segments", "marked", "unresolved", "homographs",
+                                     "unresolved_words", "homograph_words", "author_words",
+                                     "common_words", "name_words", "skipped_words"), 0),
+            "reason": "not_applicable_for_english",
+        }
+    lookup = dict_lookup or default_dict_lookup
     skipped = _skipped_words(db, book_id)
     chapter_index = _chapter_index_by_id(db, book_id)
     counts = _effective_mark_counts(db, book_id)

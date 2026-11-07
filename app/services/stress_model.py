@@ -55,7 +55,7 @@ def ruaccent_package_dir():
 
     spec = find_spec("ruaccent")
     if spec is None or not spec.origin:
-        raise RuntimeError("В сборке программы нет RUAccent — напишите разработчику.")
+        raise RuntimeError('This application build does not include RUAccent. Contact the developer.')
     return Path(spec.origin).parent
 
 
@@ -64,8 +64,7 @@ def _default_loader(workdir: str) -> None:
     # импортирует их оттуда. В установленной программе пакет только для чтения, поэтому
     # koziev приходит со сборкой (проект 3); здесь только проверка — писать в пакет нельзя.
     if not (ruaccent_package_dir() / "koziev").is_dir():
-        raise RuntimeError("В сборке программы нет словарей лемматизатора RUAccent (koziev) — "
-                           "это ошибка сборки, а не сети. Напишите разработчику.")
+        raise RuntimeError('This application build is missing RUAccent lemmatizer dictionaries (koziev). This is a packaging issue; contact the developer.')
     from ruaccent import RUAccent
 
     from app.v2.stress_ruaccent import OMOGRAPH_MODEL_SIZE

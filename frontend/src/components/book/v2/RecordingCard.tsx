@@ -37,25 +37,25 @@ export function RecordingCard({ bookId }: { bookId: string }) {
   return (
     <section className="panel hub-card" aria-labelledby="hub-rec-title">
       <header className="hub-card-head">
-        <h2 id="hub-rec-title" className="hub-card-title">В процессе</h2>
+        <h2 id="hub-rec-title" className="hub-card-title">In progress</h2>
         {data?.total_chapters ? (
           <span className="hub-dim num">
-            {data.ready_chapters} из {data.total_chapters}
+            {data.ready_chapters} of {data.total_chapters}
           </span>
         ) : null}
       </header>
 
       {query.isLoading ? (
-        <div className="hub-skel" aria-busy="true" aria-label="Загрузка записи"><span /><span /></div>
+        <div className="hub-skel" aria-busy="true" aria-label="Loading recordings"><span /><span /></div>
       ) : query.isError ? (
-        <p className="ui-note ui-note--error">Не удалось загрузить готовность: {describeApiError(query.error, "сервер не ответил")}.</p>
+        <p className="ui-note ui-note--error">Could not load recording progress: {describeApiError(query.error, "the server did not respond")}.</p>
       ) : live.length ? (
         <>
-          <ul className="hub-chapters" aria-label="Главы в записи">
+          <ul className="hub-chapters" aria-label="Chapters being recorded">
             {shown.map((chapter) => (
               <li key={chapter.chapter_id} className={chapter.ready ? "hub-chapter is-ready" : "hub-chapter"}>
                 <span className="hub-chapter-name">
-                  <span className="num">{chapter.chapter_index}.</span> {chapter.chapter_title || "Без названия"}
+                  <span className="num">{chapter.chapter_index}.</span> {chapter.chapter_title || "Untitled"}
                 </span>
                 <span className="hub-chapter-count num">
                   {chapter.recorded_roles}/{chapter.total_roles}
@@ -64,20 +64,20 @@ export function RecordingCard({ bookId }: { bookId: string }) {
                   <a
                     className="hub-chapter-get"
                     href={`/api/v2/chapters/${encodeURIComponent(chapter.chapter_id)}/archive.zip`}
-                    title="Скачать дубли главы одним архивом"
+                    title="Download chapter takes in one archive"
                   >
-                    Забрать
+                    Download
                   </a>
                 ) : null}
               </li>
             ))}
           </ul>
           {live.length > SHOWN ? (
-            <p className="hub-dim hub-text">…и ещё {live.length - SHOWN} в работе</p>
+            <p className="hub-dim hub-text">…and {live.length - SHOWN} in progress</p>
           ) : null}
         </>
       ) : (
-        <p className="hub-dim hub-text">Записей пока нет. Дикторы получат сценарий после публикации.</p>
+        <p className="hub-dim hub-text">No recordings yet. Voice actors will receive the script after publication.</p>
       )}
 
       {isAdmin ? (
@@ -89,14 +89,14 @@ export function RecordingCard({ bookId }: { bookId: string }) {
               disabled={recordingBook.loading || recordingBook.switching}
               onChange={(event) => recordingBook.set(event.target.checked ? bookId : null)}
             />
-            <span>Сейчас записывается</span>
+            <span>Currently recording</span>
           </label>
-          <p className="hub-dim hub-text">Бот принимает дубли этой книги</p>
+          <p className="hub-dim hub-text">The bot accepts takes for this book</p>
         </div>
       ) : null}
 
       <div className="hub-card-actions">
-        <LinkButton to={recordingTo} size="sm" variant="secondary">Открыть сценарий</LinkButton>
+        <LinkButton to={recordingTo} size="sm" variant="secondary">Open script</LinkButton>
       </div>
     </section>
   );

@@ -1,4 +1,4 @@
-"""Строгая проверка рассказчика: классификатор строк и прогон с подменённой сетью.
+"""Strict narrator check: классификатор строк и прогон с подменённой сетью.
 
 
 
@@ -20,6 +20,62 @@ from app.services.asr_audit import classify_narrator_line, run_asr_audit
 from app.v2.models import V2Attribution, V2Segment
 
 BOOK = "book-asr-audit"
+
+
+@pytest.mark.parametrize(("text", "expected"), [
+    ("Chapter 12. The crossing", "title"), ("Chapter IV", "title"),
+    ("Epilogue", "title"), ("said Aster.", "tag"), ("she whispered.", "tag"),
+    ("Aster said a prayer.", "required"), ("Chapter closed the gate.", "required"),
+    ("said Aster. Then she left.", "required"),
+])
+def test_english_audit_classification_keeps_events_required(text, expected):
+    assert classify_narrator_line(text, language="en") == expected
+
+
+def test_book_language_changes_both_audit_fingerprint_paths(db):
+    chapter_id = _make_ready_chapter(db)
+    before = asr_audit.narrator_input_fingerprint(db, chapter_id)
+    db.get(ScriptBook, BOOK).language = "en"
+    db.commit()
+    after = asr_audit.narrator_input_fingerprint(db, chapter_id)
+    assert after != before
+    assert asr_audit._narrator_fingerprints(db, [chapter_id]) == {chapter_id: after}
+
+
+def test_english_audit_freezes_language_for_first_and_confirmation_transcription(db, monkeypatch):
+    chapter_id = _make_ready_chapter(db)
+    db.get(ScriptBook, BOOK).language = "en"
+    texts = ["There are 21 keys beside the gate.", "The captain waited beside the quiet bridge.",
+             "said Aster.", "Chapter 12. The crossing"]
+    for segment in db.query(V2Segment).filter(V2Segment.chapter_id == chapter_id):
+        segment.text = texts[segment.ordinal]
+        for attr in db.query(V2Attribution).filter(V2Attribution.segment_id == segment.id):
+            attr.span_end = len(segment.text)
+    db.commit()
+    seen, systems = [], []
+    def transcribe(path, *, model, phrases, language):
+        seen.append(language)
+        return _heard_with(texts[0], "The captain beside the quiet bridge."), .5
+    def judge(system, user, schema):
+        systems.append(system)
+        if "results" in json.dumps(schema):
+            return {"results": [{"index": 1, "confirmed": True, "note": "missing waited"}]}
+        return {"verdicts": [{"index": 0, "status": "ok", "missing_words": [], "note": ""},
+                             {"index": 1, "status": "partial", "missing_words": ["waited"], "note": "missing"}]}
+    monkeypatch.setattr(asr_audit, "_transcribe_fresh", transcribe)
+    monkeypatch.setattr(asr_audit, "_cut_window", lambda *a: "unused")
+    audit = run_asr_audit(db, chapter_id, judge=judge)
+    assert audit.status == "done" and audit.language == "en"
+    assert seen == ["en", "en"]
+    assert all("return all notes in English" in system for system in systems)
+    assert json.loads(audit.lines_json)["language"] == "en"
+
+
+def test_changed_queued_audit_language_stops_before_payment(db):
+    chapter_id = _make_ready_chapter(db)
+    audit = run_asr_audit(db, chapter_id, language="en",
+                          transcribe=lambda path: pytest.fail("unexpected paid call"))
+    assert audit.status == "skipped" and audit.error_message == "narrator_input_changed"
 
 @pytest.fixture(autouse=True)
 def audio_sources(tmp_path, monkeypatch):
@@ -201,11 +257,11 @@ def test_audit_done_flags_confirms_and_letters_both(db, monkeypatch):
     # Владельцу — отчёт, рассказчику — письмо (лично, direct).
     assert len(box) == 2
     owner_text = next(m["text"] for m in box if not m["direct"])
-    assert "Строгая проверка рассказчика" in owner_text
-    assert "подтверждено 1" in owner_text
+    assert "Strict narrator check" in owner_text
+    assert "confirmed 1" in owner_text
     letter = next(m for m in box if m["direct"])
     assert letter["chat_ids"] == ["111"]
-    assert "Строгая проверка не нашла дословно" in letter["text"]
+    assert "Lines flagged by the strict word-for-word check" in letter["text"]
     assert "2.00" in owner_text  # цена обоих прогонов STT названа
 
 
@@ -216,7 +272,7 @@ def test_audit_without_confirmation_sends_no_actor_letter(db, monkeypatch):
     assert confirmed_count == 0 and flags[0]["confirmed"] is False
     # Письмо ушло только владельцу — рассказчика без подтверждения не обвиняем.
     assert len(box) == 1
-    assert "нет подтверждения" in box[0]["text"]
+    assert "unconfirmed" in box[0]["text"]
 
 
 def test_audit_failed_keeps_error_and_notifies_owner(db, monkeypatch):
@@ -232,7 +288,7 @@ def test_audit_failed_keeps_error_and_notifies_owner(db, monkeypatch):
     assert audit.status == "failed"
     assert "asr_http_503" in audit.error_message
     assert len(box) == 1 and not box[0]["direct"]
-    assert "Проверка не завершена" in box[0]["text"]
+    assert "Check incomplete" in box[0]["text"]
 
 
 def test_audit_skipped_without_narrator_take(db, monkeypatch):
@@ -342,7 +398,7 @@ def test_invalid_or_incomplete_judge_never_yields_clean_result(db, monkeypatch, 
     assert audit.status == "failed"
     assert audit.transcript_json
     assert audit.stt_cost_rub == 1.5
-    assert len(box) == 1 and "Проверка не завершена" in box[0]["text"]
+    assert len(box) == 1 and "Check incomplete" in box[0]["text"]
 
 
 def _flag(index=0):
@@ -363,7 +419,7 @@ def test_confirmation_requires_exact_index_and_boolean(monkeypatch, answer):
         judge=lambda *a: answer, confirm_transcribe=lambda p: ({"text": "Он выпил чай."}, 0.2))
     assert confirmed == []
     assert flag["confirmed"] is False
-    assert "подтверждение не завершено" in flag["confirm_note"]
+    assert "confirmation incomplete" in flag["confirm_note"]
 
 
 @pytest.mark.parametrize(("transcript", "expected"), [
@@ -443,7 +499,7 @@ def test_unknown_cost_is_not_displayed_as_free(db, monkeypatch):
         judge=lambda *a: {"verdicts": [{"index": i, "status": "ok", "missing_words": [], "note": ""} for i in [0, 1]]})
     assert audit.status == "done"
     assert asr_audit.latest_audits(db, [chapter_id])[chapter_id]["stt_cost_rub"] is None
-    assert "цена STT не подтверждена (без LLM)" in box[0]["text"]
+    assert "STT cost unconfirmed (excluding LLM)" in box[0]["text"]
 
 
 def test_default_transcribe_keeps_real_usage_and_model(monkeypatch, tmp_path):
@@ -625,10 +681,10 @@ def test_latest_audits_reads_durable_queue_and_unknown_outcome(db):
     db.add(run)
     db.flush()
     assert asr_audit.latest_audits(db, [chapter_id])[chapter_id]["status"] == "queued"
-    run.error_message = "queue_outcome_unknown: требуется проверка владельцем"
+    run.error_message = "queue_outcome_unknown: owner review is required владельцем"
     db.flush()
     badge = asr_audit.latest_audits(db, [chapter_id])[chapter_id]
-    assert badge["status"] == "unknown" and "требуется проверка" in badge["error_message"]
+    assert badge["status"] == "unknown" and "owner review is required" in badge["error_message"]
 
 
 def test_mutation_during_paid_audit_keeps_cost_without_actor_accusation(db, monkeypatch):
@@ -650,7 +706,7 @@ def test_mutation_during_paid_audit_keeps_cost_without_actor_accusation(db, monk
     assert asr_audit._audit_findings(audit)[1] == 1
     assert marked == []
     assert len(box) == 1 and not box[0]["direct"]
-    assert "Результат устарел" in box[0]["text"]
+    assert "Stale result" in box[0]["text"]
 
 
 def test_all_source_files_are_checked_before_first_paid_request(db, monkeypatch, audio_sources):
@@ -664,7 +720,7 @@ def test_all_source_files_are_checked_before_first_paid_request(db, monkeypatch,
     assert audit.error_message == "narrator_source_unreadable:fix"
     assert audit.stt_cost_rub == 0.
     assert calls == []
-    assert len(box) == 1 and "Проверка не завершена" in box[0]["text"]
+    assert len(box) == 1 and "Check incomplete" in box[0]["text"]
 
 
 def test_nas_preflight_checks_liveness_before_touching_source(monkeypatch):

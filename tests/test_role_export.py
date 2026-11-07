@@ -110,11 +110,11 @@ def test_an_unknown_book_is_none(db):
 def test_the_text_reads_like_the_screen(db):
     text = render_text(build_role_export(db, BOOK, "Мира"))
 
-    assert text.startswith("Мира — «Тихая гавань»\nАктёр: Анна Тестова\n")
-    assert "Заметка режиссёра: говорит быстро" in text
-    assert "Ударения стоят в редких словах." in text
-    assert "=== Глава 3. Тайна ===\nФайл записи: TG_Ch03_Mira_AnnaTestova.wav" in text
-    assert "  Рассказчик: И тогда дверь открылась.\n▶ Мира: — Я не знала, [— сказала она,] — что ты здесь." in text
+    assert text.startswith("Мира — «Тихая гавань»\nActor: Анна Тестова\n")
+    assert "Director note: говорит быстро" in text
+    assert "Rare words may carry pronunciation marks." in text
+    assert "=== Глава 3. Тайна ===\nRecording file: TG_Ch03_Mira_AnnaTestova.wav" in text
+    assert "  Narrator (system): И тогда дверь открылась.\n▶ Мира: — Я не знала, [— сказала она,] — что ты здесь." in text
     assert "▶ Мира: — Прости\u0301, карли\u0301ца задержала." in text
     assert "  Ярош: — Ты опоздала.\n▶ Мира: — Знаю." in text
 
@@ -122,8 +122,8 @@ def test_the_text_reads_like_the_screen(db):
 def test_a_title_without_the_word_chapter_gets_it(db):
     from app.v2.role_export import Chapter, chapter_heading
 
-    assert chapter_heading(Chapter(index=7, title="Пролог", filename="")) == "Глава 7. Пролог"
-    assert chapter_heading(Chapter(index=7, title="", filename="")) == "Глава 7"
+    assert chapter_heading(Chapter(index=7, title="Пролог", filename="")) == "Chapter 7. Пролог"
+    assert chapter_heading(Chapter(index=7, title="", filename="")) == "Chapter 7"
     assert chapter_heading(Chapter(index=7, title="Глава 7. Тайна", filename="")) == "Глава 7. Тайна"
 
 

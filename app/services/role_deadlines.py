@@ -17,9 +17,10 @@ from datetime import date, datetime, timedelta
 from app.models import AudioFile, Character, RoleDeadline, ScriptBook, ScriptChapter
 from app.services import bot_out, studio
 from app.services.audio_uploads import derive_book_code
-from app.services.shared_runtime import is_narrator_name
+from app.services.role_identity import book_roles
 from app.services.telegram import names_match
 from app.time_utils import utcnow_naive
+from app.services.studio_calendar import end_of_day, local_time, studio_timezone, timezone_label
 from app.v2.cast_ops import parse_actor_name
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ def role_due_date(db) -> datetime:
         day = date.fromisoformat(raw)
     except ValueError:
         day = date.fromisoformat(FALLBACK_ROLE_DATE)
-    return _end_of_msk_day(day)
+    return end_of_day(day, studio_timezone(db))
 
 
 def due_for(db, kind: str, *, now: datetime) -> datetime:
@@ -81,6 +82,30 @@ def wanted_chapters(db, character) -> set[int]:
     (почему не наоборот — см. `role_chapter_map`)."""
     from app.v2.cast_ops import role_chapter_map
 
+    from app.services.role_identity import book_roles, RoleIdentityError
+    identities = book_roles(db, character.book_id)
+    if identities.typed:
+        from app.v2.models import V2Segment
+        from app.v2.reader import effective_attributions
+        rows = db.query(V2Segment.id, ScriptChapter.chapter_index).join(
+            ScriptChapter, ScriptChapter.id == V2Segment.chapter_id).filter(
+            V2Segment.book_id == character.book_id).all()
+        if not rows:
+            return appears_in_chapters(character)
+        expected = identities.character_ref(character)
+        attrs = effective_attributions(db, [sid for sid, _index in rows])
+        wanted = set()
+        for sid, index in rows:
+            for attr in attrs.get(sid, []):
+                ref = str(getattr(attr, "role_ref", "") or "")
+                if not ref:
+                    try:
+                        ref = identities.ref(attr.speaker)
+                    except RoleIdentityError:
+                        continue
+                if ref == expected:
+                    wanted.add(int(index))
+        return wanted
     marked = role_chapter_map(db, str(character.book_id or ""))
     if marked is None:
         return appears_in_chapters(character)
@@ -109,13 +134,14 @@ def role_progress(db, character: Character, actor: str) -> tuple[int, int]:
     book = db.get(ScriptBook, character.book_id)
     code = derive_book_code(str(getattr(book, "title", "") or ""))
     titles = set(chapters.values())
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, character.book_id)
     recorded = {
         str(item.chapter or "").strip()
         for item in db.query(AudioFile).filter(
-            AudioFile.kind == "take", AudioFile.book_code == code,
-            AudioFile.role == str(character.name or ""), AudioFile.chapter.in_(sorted(titles)),
+            AudioFile.kind == "take", AudioFile.chapter.in_(sorted(titles)),
         ).all()
-        if same_person(str(item.actor_name or ""), actor)
+        if identities.matches_character_audio(item, character) and same_person(str(item.actor_name or ""), actor)
     }
     # считаем по номерам глав: две главы с одинаковым названием — всё равно две
     return sum(1 for label in chapters.values() if label in recorded), len(chapters)
@@ -146,8 +172,9 @@ def sync_book(db, book_id: str, *, now: datetime | None = None) -> dict:
     # (ошибся кнопкой, передумал) откроет новый срок.
     declined = {row.character_id: row for row in db.query(RoleDeadline).filter(
         RoleDeadline.book_id == book_id, RoleDeadline.close_reason == "declined")}
+    identity = book_roles(db, str(book_id))
     for ch in db.query(Character).filter(Character.book_id == book_id).all():
-        if is_narrator_name(str(ch.name or "")):
+        if identity.is_narrator(str(ch.name or "")):
             continue
         name, tentative = parse_actor_name(str(ch.actor_name or ""))
         kind = "audition" if tentative else "role"
@@ -193,17 +220,18 @@ def sync_book(db, book_id: str, *, now: datetime | None = None) -> dict:
     return {"opened": opened, "closed": closed}
 
 
-_MONTHS = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября",
-           "октября", "ноября", "декабря")
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September",
+           "October", "November", "December")
 
 
-def format_due(due_at: datetime, *, kind: str) -> str:
+def format_due(due_at: datetime, *, kind: str, timezone: str = "") -> str:
     """Срок для письма: проба — «3 октября, 18:00 МСК (48 часов)», роль — «31 декабря 2026»."""
-    local = due_at + MSK
+    local = local_time(due_at, timezone)
+    label = timezone_label(timezone, due_at)
     if kind == "audition":
-        return f"{local.day} {_MONTHS[local.month - 1]}, {local:%H:%M} МСК ({AUDITION_HOURS} часов)"
+        return f"{local.day} {_MONTHS[local.month - 1]}, {local:%H:%M} {label} ({AUDITION_HOURS} hours)"
     if kind == "time":  # продлённая проба: дата и время, без «48 часов»
-        return f"{local.day} {_MONTHS[local.month - 1]}, {local:%H:%M} МСК"
+        return f"{local.day} {_MONTHS[local.month - 1]}, {local:%H:%M} {label}"
     return f"{local.day} {_MONTHS[local.month - 1]} {local.year}"
 
 
@@ -214,11 +242,12 @@ def _done(db, row: RoleDeadline, character: Character) -> bool:
     if row.kind == "audition":
         book = db.get(ScriptBook, character.book_id)
         code = derive_book_code(str(getattr(book, "title", "") or ""))
+        from app.services.role_identity import book_roles
+        identities = book_roles(db, character.book_id)
         return any(
-            same_person(str(item.actor_name or ""), row.actor_name)
+            identities.matches_character_audio(item, character) and same_person(str(item.actor_name or ""), row.actor_name)
             for item in db.query(AudioFile).filter(
-                AudioFile.kind == "audition", AudioFile.book_code == code,
-                AudioFile.role == str(character.name or ""), AudioFile.uploaded_at >= row.created_at,
+                AudioFile.kind == "audition", AudioFile.uploaded_at >= row.created_at,
             ).all()
         )
     done, total = role_progress(db, character, row.actor_name)
@@ -235,7 +264,7 @@ def _done(db, row: RoleDeadline, character: Character) -> bool:
 def done_notice(*, actor: str, role: str, book_title: str, done: int, total: int) -> str:
     """Владельцу: роль записана целиком, пора платить остаток гонорара. Род по имени не
     угадываем — фраза безличная."""
-    return f"Роль «{role}» («{book_title}») записана полностью — {actor}, {done} из {total} гл. Надо рассчитать."
+    return f"Role «{role}» («{book_title}») is fully recorded: {actor}, {done} of {total} chapters. Payment can be calculated."
 
 
 def chat_for(db, actor: str) -> str:
@@ -248,18 +277,19 @@ def chat_for(db, actor: str) -> str:
 
 
 def recast_notice(*, role: str, book_title: str) -> str:
-    return (f"Здравствуйте! К сожалению, на роль «{role}» («{book_title}») выбран другой исполнитель. "
-            "Извините — это рекаст. Спасибо за работу, надеемся на новые роли.")
+    return (f"Hello. Another actor has been selected for the role «{role}» («{book_title}»). "
+            "This role has been recast. Thank you for your work; we hope to work with you on future roles.")
 
 
-def _reminder(row: RoleDeadline, *, role: str, book_title: str, progress: tuple[int, int], overdue: bool) -> str:
-    what = f"проба на роль «{role}»" if row.kind == "audition" else f"роль «{role}»"
+def _reminder(row: RoleDeadline, *, role: str, book_title: str, progress: tuple[int, int], overdue: bool,
+               timezone: str = "") -> str:
+    what = f"audition for «{role}»" if row.kind == "audition" else f"role «{role}»"
     if overdue:
-        return f"Срок: {what} («{book_title}») — срок вышел. Если нужно больше времени — {studio.write_to()}."
-    lines = [f"Напоминаем: {what} («{book_title}») — до {format_due(row.due_at, kind='role' if row.kind == 'role' else 'time')}."]
+        return f"Deadline: {what} («{book_title}») is overdue. If you need more time, {studio.write_to()}."
+    lines = [f"Reminder: {what} («{book_title}») — due {format_due(row.due_at, kind='role' if row.kind == 'role' else 'time', timezone=timezone)}."]
     done, total = progress
     if row.kind == "role" and total:
-        lines.append(f"Сдано {done} из {total} глав.")
+        lines.append(f"Completed {done} of {total} chapters.")
     return "\n".join(lines)
 
 
@@ -344,20 +374,20 @@ def run_pass(db, *, now: datetime | None = None, send, send_buttons=None) -> dic
             row.reminded_overdue_at = now
             row.reminded_before_at = row.reminded_before_at or now
             db.commit()
-            _push_reminder(row, _reminder(row, role=role, book_title=book_title, progress=(0, 0), overdue=True))
+            _push_reminder(row, _reminder(row, role=role, book_title=book_title, progress=(0, 0), overdue=True, timezone=studio_timezone(db)))
             stats["overdue"] += 1
         elif row.due_at - timedelta(hours=24) <= now < row.due_at and row.reminded_before_at is None:
             row.reminded_before_at = now
             db.commit()
             progress = role_progress(db, character, row.actor_name) if character is not None else (0, 0)
-            _push_reminder(row, _reminder(row, role=role, book_title=book_title, progress=progress, overdue=False))
+            _push_reminder(row, _reminder(row, role=role, book_title=book_title, progress=progress, overdue=False, timezone=studio_timezone(db)))
             stats["before"] += 1
 
-    local = now + MSK
+    local = local_time(now, studio_timezone(db))
     row_settings = studio_settings(db)
     today = local.strftime("%Y-%m-%d")  # день по Москве, не время из базы
     if owner and local.hour == DIGEST_HOUR_MSK and str(row_settings.deadline_digest_day or "") != today:
-        day_end = _end_of_msk_day(local.date())
+        day_end = end_of_day(local.date(), studio_timezone(db))
         due_today, overdue = [], []
         for row in open_rows:
             if row.closed_at is not None:
@@ -367,19 +397,19 @@ def run_pass(db, *, now: datetime | None = None, send, send_buttons=None) -> dic
             if row.kind == "role" and character is not None:
                 done, total = role_progress(db, character, row.actor_name)
                 if total:
-                    label += f", {done}/{total} гл."
+                    label += f", {done}/{total} ch."
             if row.kind == "audition":
-                label += ", проба"
+                label += ", audition"
             if row.due_at < now:
                 overdue.append(label)
             elif row.due_at <= day_end:
                 due_today.append(label)
         if due_today or overdue:
-            parts = ["Сроки на сегодня."]
+            parts = ["Deadlines today."]
             if due_today:
-                parts.append("Истекает сегодня:\n" + "\n".join(f"• {item}" for item in due_today))
+                parts.append("Due today:\n" + "\n".join(f"• {item}" for item in due_today))
             if overdue:
-                parts.append("Просрочено:\n" + "\n".join(f"• {item}" for item in overdue))
+                parts.append("Overdue:\n" + "\n".join(f"• {item}" for item in overdue))
             row_settings.deadline_digest_day = today
             db.commit()
             send(owner, "\n\n".join(parts))
@@ -429,11 +459,18 @@ def extend(db, deadline_id: str, *, days: int | None = None, until: str = "", by
             day = date.fromisoformat(str(until))
         except ValueError as exc:
             raise DeadlineError("bad_date") from exc
-        new_due = _end_of_msk_day(day)
+        new_due = end_of_day(day, studio_timezone(db))
     else:
         if not days or int(days) <= 0 or int(days) > 365:
             raise DeadlineError("bad_days")
-        new_due = max(row.due_at, now) + timedelta(days=int(days))
+        timezone = studio_timezone(db)
+        if timezone and row.kind == "role":
+            # В новой IANA-установке дата роли означает конец местного дня:
+            # прибавление 24 ч в UTC сдвигало бы его на час при переходе DST.
+            day = local_time(max(row.due_at, now), timezone).date() + timedelta(days=int(days))
+            new_due = end_of_day(day, timezone)
+        else:
+            new_due = max(row.due_at, now) + timedelta(days=int(days))
     if new_due <= now:
         raise DeadlineError("bad_date")
     row.due_at = new_due
@@ -453,6 +490,6 @@ def close_manual(db, deadline_id: str, *, now: datetime | None = None) -> RoleDe
     return row
 
 
-def extension_notice(row: RoleDeadline, *, role: str, book_title: str) -> str:
-    what = f"проба на роль «{role}»" if row.kind == "audition" else f"роль «{role}»"
-    return f"Срок продлён: {what} («{book_title}») — до {format_due(row.due_at, kind='role' if row.kind == 'role' else 'time')}."
+def extension_notice(row: RoleDeadline, *, role: str, book_title: str, timezone: str = "") -> str:
+    what = f"audition for «{role}»" if row.kind == "audition" else f"role «{role}»"
+    return f"Deadline extended: {what} («{book_title}») — due {format_due(row.due_at, kind='role' if row.kind == 'role' else 'time', timezone=timezone)}."

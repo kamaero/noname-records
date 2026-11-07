@@ -10,6 +10,8 @@
 """
 from __future__ import annotations
 
+from app.services.studio_calendar import studio_timezone
+
 import calendar
 import json
 from datetime import datetime
@@ -26,9 +28,9 @@ from app.v2.cast_ops import parse_actor_name
 AUDITION_DAYS = (1, 2)
 ROLE_DAYS = (7, 14)
 
-STALE_INVITE = "Приглашение уже неактуально."
-NOT_YOURS = "Эта кнопка не для вас."
-STALE_BUTTON = "Кнопка устарела."
+STALE_INVITE = "This invitation is no longer current."
+NOT_YOURS = "This button is for another person."
+STALE_BUTTON = "This button has expired."
 
 
 def _audit(db, row: RoleDeadline, action: str, tid: str, now: datetime, **extra) -> None:
@@ -40,12 +42,12 @@ def _what(db, row: RoleDeadline, *, accusative: bool = False) -> str:
     """«проба «Дракон» («Карта Приозерья»)» / «роль «Убув» («…»)»; `accusative` — «продлить пробу …»."""
     ch = db.get(Character, row.character_id)
     book = db.get(ScriptBook, row.book_id)
-    kind = ("пробу" if accusative else "проба") if row.kind == "audition" else "роль"
+    kind = ("audition" if accusative else "audition") if row.kind == "audition" else "role"
     return f"{kind} «{getattr(ch, 'name', '')}» («{getattr(book, 'title', '')}»)"
 
 
-def _due(row: RoleDeadline) -> str:
-    return format_due(row.due_at, kind="time" if row.kind == "audition" else "role")
+def _due(db, row: RoleDeadline) -> str:
+    return format_due(row.due_at, kind="time" if row.kind == "audition" else "role", timezone=studio_timezone(db))
 
 
 def _staff_chats(db) -> tuple[str, list[str]]:
@@ -73,38 +75,38 @@ def dictor_press(db, *, tid: str, chat_id, data: str, now: datetime) -> list[Out
         return [send(chat_id, STALE_INVITE)]
     if action == "y":
         if row.accepted_at is not None:
-            return [send(chat_id, f"Вы уже взяли пробу. Ждём до {_due(row)}.")]
+            return [send(chat_id, f"You have already accepted the audition. It is due {_due(db, row)}.")]
         row.accepted_at = now
         _audit(db, row, "bot_accept", tid, now)
         db.flush()
         # срок мог выйти, пока письмо лежало непрочитанным: «ждём до» прошедшей даты — неправда
-        thanks = (f"Спасибо. Ждём пробу до {_due(row)}." if row.due_at > now else
-                  "Спасибо. Срок пробы уже вышел — если нужно время, нажмите «⏳ Нужно больше времени».")
+        thanks = (f"Thank you. The audition is due {_due(db, row)}." if row.due_at > now else
+                  "Thank you. The audition deadline has passed. Select ⏳ Need more time if needed.")
         return [send(chat_id, thanks)] + \
-            _tell_staff(db, f"✅ {row.actor_name} — {_what(db, row)} взята, срок — до {_due(row)}.")
+            _tell_staff(db, f"✅ {row.actor_name} — {_what(db, row)} accepted; due {_due(db, row)}.")
     if action == "n":
         _close(row, "declined", now)
         row.declined_at = now
         _audit(db, row, "bot_decline", tid, now)
         db.flush()
         buttons = {"inline_keyboard": [[
-            {"text": "Снять с роли", "callback_data": f"{DD_PREFIX}r:{character_id}"},
-            {"text": "Оставить", "callback_data": f"{DD_PREFIX}k:{character_id}"}]]}
-        return [send(chat_id, "Спасибо, что предупредили. Роль передадим другому исполнителю.")] + \
-            _tell_staff(db, f"✖️ {row.actor_name} не сможет — {_what(db, row)}.", buttons)
+            {"text": "Reassign role", "callback_data": f"{DD_PREFIX}r:{character_id}"},
+            {"text": "Keep assignment", "callback_data": f"{DD_PREFIX}k:{character_id}"}]]}
+        return [send(chat_id, "Thank you for letting us know. We will reassign the role.")] + \
+            _tell_staff(db, f"✖️ {row.actor_name} cannot record — {_what(db, row)}.", buttons)
     days_allowed = AUDITION_DAYS if row.kind == "audition" else ROLE_DAYS
     if action == "t":
-        word = {1: "+1 день", 2: "+2 дня", 7: "+7 дней", 14: "+14 дней"}
+        word = {1: "+1 day", 2: "+2 days", 7: "+7 days", 14: "+14 days"}
         buttons = {"inline_keyboard": [[{"text": word[d], "callback_data": f"{DL_PREFIX}e{d}:{character_id}"}
                                         for d in days_allowed]]}
-        now_due = f"Сейчас срок — до {_due(row)}." if row.due_at > now else f"Срок вышел {_due(row)}."
-        return [send(chat_id, f"{now_due} На сколько продлить?", buttons)]
+        now_due = f"Current deadline: {_due(db, row)}." if row.due_at > now else f"Deadline passed {_due(db, row)}."
+        return [send(chat_id, f"{now_due} How much more time do you need?", buttons)]
     if action.startswith("e") and action[1:].isdigit():
         days = int(action[1:])
         if days not in days_allowed:
             return [send(chat_id, STALE_BUTTON)]
         if row.extend_request_days:
-            return [send(chat_id, "Запрос уже отправлен — ждите ответа здесь.")]
+            return [send(chat_id, "Your request has already been sent; the reply will arrive here.")]
         row.extend_request_days, row.extend_request_at = days, now
         _audit(db, row, "bot_extend_request", tid, now, days=days)
         db.flush()
@@ -112,13 +114,13 @@ def dictor_press(db, *, tid: str, chat_id, data: str, now: datetime) -> list[Out
         # него — разные; старая кнопка не должна решать новый
         stamp = calendar.timegm(now.timetuple())
         buttons = {"inline_keyboard": [[
-            {"text": f"Продлить на {days} дн.", "callback_data": f"{DX_PREFIX}y:{row.id}:{stamp}"},
-            {"text": "Нет", "callback_data": f"{DX_PREFIX}n:{row.id}:{stamp}"}]]}
+            {"text": f"Extend by {days} {'day' if days == 1 else 'days'}", "callback_data": f"{DX_PREFIX}y:{row.id}:{stamp}"},
+            {"text": "No", "callback_data": f"{DX_PREFIX}n:{row.id}:{stamp}"}]]}
         owner, _ = _staff_chats(db)
-        out = [send(chat_id, "Запрос отправлен — ответим здесь.")]
+        out = [send(chat_id, "Request sent; the reply will arrive here.")]
         if owner:
-            out.append(send(owner, f"⏳ {row.actor_name} просит продлить {_what(db, row, accusative=True)} на {days} дн. "
-                                   f"Сейчас — до {_due(row)}.", buttons))
+            out.append(send(owner, f"⏳ {row.actor_name} asks to extend {_what(db, row, accusative=True)} by {days} {'day' if days == 1 else 'days'}. "
+                                   f"Current deadline: {_due(db, row)}.", buttons))
         return out
     return [send(chat_id, STALE_BUTTON)]
 
@@ -145,26 +147,26 @@ def _decline_decision(db, *, tid, chat_id, message_id, data, user, roles, now) -
     ch = db.get(Character, character_id)
     declined = _latest(db, character_id) if ch is not None else None
     if ch is None or declined is None or declined.close_reason != "declined":
-        return [edit_off(chat_id, message_id), send(chat_id, "Решение уже неактуально.")]
+        return [edit_off(chat_id, message_id), send(chat_id, "This decision is no longer current.")]
     off = edit_off(chat_id, message_id)
     if action == "k":
         _audit(db, declined, "bot_decline_keep", tid, now)
         db.flush()
-        return [off, send(chat_id, "Хорошо, оставляю.")]
+        return [off, send(chat_id, "The assignment has been kept.")]
     if action != "r":
         return [send(chat_id, STALE_BUTTON)]
     holder, _ = parse_actor_name(str(ch.actor_name or ""))
     if not holder:
-        return [off, send(chat_id, f"Роль «{ch.name}» уже свободна.")]
+        return [off, send(chat_id, f"Role «{ch.name}» is already available.")]
     if not same_person(holder, declined.actor_name):
-        return [off, send(chat_id, f"Роль уже у {holder} — ничего не меняю.")]
+        return [off, send(chat_id, f"The role is already assigned to {holder} — no changes made.")]
     was = str(ch.actor_name or "").strip()
     vote = cast_role_vote(db, character=ch, voter_uid=str(user.id), voter_name=str(user.display_name or ""),
                           weight=vote_weight(roles), actor_name="")
     if not vote["changed"]:
         # без слов, выдающих род: перевесить может и автор, и любой проголосовавший
-        return [off, send(chat_id, f"Не снято: перевешивает голос {vote['overridden_by'] or 'другого участника'} — "
-                                   "решает этот голос.")]
+        return [off, send(chat_id, f"Not reassigned: the deciding vote belongs to {vote['overridden_by'] or 'another participant'} — "
+                                   "that vote decides.")]
     # тот же путь, что правка поля «Актёр» на сайте: назначения и сроки — по новому касту
     rebuild_assignments(db, ch.book_id)
     _audit(db, declined, "bot_decline_remove", tid, now)
@@ -180,8 +182,8 @@ def _decline_decision(db, *, tid, chat_id, message_id, data, user, roles, now) -
             notify_role_approved(db, book_id=str(ch.book_id), book_title=str(getattr(book, "title", "") or ""),
                                  role=str(ch.name or ""), actor_name=winner)
         shown, _ = parse_actor_name(winner)
-        return [off, send(chat_id, f"Роль теперь у {shown} — так решили голоса.")]
-    return [off, send(chat_id, f"Снято: роль «{ch.name}» свободна.")]
+        return [off, send(chat_id, f"The role is now assigned to {shown} — based on the votes.")]
+    return [off, send(chat_id, f"Unassigned: role «{ch.name}» is available.")]
 
 
 def _extend_decision(db, *, tid, chat_id, message_id, data, user, roles, now) -> list[Outgoing]:
@@ -192,7 +194,7 @@ def _extend_decision(db, *, tid, chat_id, message_id, data, user, roles, now) ->
     off = edit_off(chat_id, message_id)
     if row is None or row.closed_at is not None or not row.extend_request_days or row.extend_request_at is None \
             or str(calendar.timegm(row.extend_request_at.timetuple())) != stamp:
-        return [off, send(chat_id, "Запрос уже неактуален.")]
+        return [off, send(chat_id, "This request is no longer current.")]
     days = int(row.extend_request_days)
     row.extend_request_days, row.extend_request_at = None, None
     dictor = chat_for(db, row.actor_name)
@@ -202,14 +204,14 @@ def _extend_decision(db, *, tid, chat_id, message_id, data, user, roles, now) ->
         db.flush()
         ch = db.get(Character, row.character_id)
         book = db.get(ScriptBook, row.book_id)
-        out = [off, send(chat_id, f"Продлено до {_due(row)}.")]
+        out = [off, send(chat_id, f"Extended until {_due(db, row)}.")]
         if dictor:
             out.append(send(dictor, extension_notice(row, role=str(getattr(ch, "name", "") or ""),
-                                                     book_title=str(getattr(book, "title", "") or ""))))
+                                                     book_title=str(getattr(book, "title", "") or ""), timezone=studio_timezone(db))))
         return out
     _audit(db, row, "bot_extend_no", tid, now, days=days)
     db.flush()
-    out = [off, send(chat_id, "Отказано.")]
+    out = [off, send(chat_id, "Declined.")]
     if dictor:
-        out.append(send(dictor, f"Продлить срок не получилось. Если нужно обсудить — {studio.write_to()}."))
+        out.append(send(dictor, f"Could not extend the deadline. To discuss it, {studio.write_to()}."))
     return out

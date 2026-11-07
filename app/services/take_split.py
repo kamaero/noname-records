@@ -160,6 +160,7 @@ def _reading_order(takes: list[_Take]) -> set[int]:
 
 def chapter_blocks(
     chapters: list[tuple[int, str, str, list[str]]], segments: list[dict],
+    *, language: str = "ru",
 ) -> list[ChapterBlock]:
     """Блок каждой главы роли в распознанном файле.
 
@@ -178,10 +179,10 @@ def chapter_blocks(
     totals: list[int] = []
     takes: list[_Take] = []
     for position, (_, _, _, expected) in enumerate(chapters):
-        alignment = align_transcript(list(expected or []), segments)
+        alignment = align_transcript(list(expected or []), segments, language=language)
         totals.append(len(alignment["lines"]))
         for line in alignment["lines"]:
-            script = tuple(normalize_words(line.get("text") or ""))
+            script = tuple(normalize_words(line.get("text") or "", language=language))
             for take in line.get("takes") or []:
                 takes.append(_Take(
                     position, line["index"], take["start"], take["end"], len(script), script,
@@ -271,8 +272,8 @@ def plan_cuts(
     for before, after in zip(ordered, ordered[1:]):
         if after.start < before.end:
             raise OutOfOrder(
-                f"глава {after.chapter_index} начинается ({after.start:.2f} с) раньше, "
-                f"чем кончается глава {before.chapter_index} ({before.end:.2f} с)"
+                f"chapter {after.chapter_index} starts ({after.start:.2f} s) before "
+                f"chapter {before.chapter_index} ends ({before.end:.2f} s)"
             )
     # Граница — середина паузы между главами: так ни один кусок не начинается и не
     # кончается вплотную к слову, и обрезанного вдоха не слышно ни с одной стороны.

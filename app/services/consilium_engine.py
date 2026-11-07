@@ -8,6 +8,7 @@ import logging
 
 import hashlib
 import json
+import glob
 import math
 import os
 import threading
@@ -62,6 +63,8 @@ class ChapterState:
     # (`name_in_narration`): поиск по всей книге занимал минуту сметы.
     narration: dict[int, str]
     speakers: dict[int, str] = field(default_factory=dict)
+    language: str = "ru"
+    profile: str = ""
 
 
 @dataclass
@@ -71,11 +74,15 @@ class BookState:
     canon: Callable[[str], str]
     races: dict[str, str]
     index: dict[str, str] = field(default_factory=dict)  # каст: нормализованный ярлык → имя
+    language: str = "ru"
 
 
 def name_in_narration(state: BookState, chapter: ChapterState, ordinal: int) -> str:
     """Имя, названное в авторских словах абзаца, — или `""`."""
-    return find_name_in_narration([chapter.narration.get(ordinal, "")], state.index)
+    parts = [chapter.narration.get(ordinal, "")]
+    if state.language == "ru":
+        return find_name_in_narration(parts, state.index)
+    return find_name_in_narration(parts, state.index, language=state.language)
 
 
 class _LazyNarrationNames:
@@ -95,13 +102,17 @@ class _LazyNarrationNames:
         return self._memo[key]
 
 
-def load_book_state(db, book_id: str) -> BookState:
-    from app.models import Character, ScriptChapter
+def load_book_state(db, book_id: str, *, language: str | None = None) -> BookState:
+    from app.models import Character, ScriptBook, ScriptChapter
     from app.pipeline.attribution_resolve import build_cast_index
     from app.pipeline.attribution_triage import normalize_label
     from app.v2.reader import effective_attributions
     from app.v2.store import load_chapter_segments
+    from app.services.role_identity import book_roles
 
+    book = db.get(ScriptBook, book_id)
+    language = language or str(getattr(book, "language", "ru") or "ru")
+    roles = book_roles(db, book_id)
     cast = db.query(Character).filter(Character.book_id == book_id).all()
     index = build_cast_index([(c.name, [a.strip() for a in (c.aliases or "").split(",") if a.strip()])
                               for c in cast])
@@ -129,25 +140,31 @@ def load_book_state(db, book_id: str) -> BookState:
         for segment in segments:
             number = int(segment.ordinal)
             spans = rows.get(segment.id, [])
-            seen |= {str(s.speaker) for s in spans}
-            character = [s for s in spans if s.speaker != NARRATOR]
+            resolved = {id(s): roles.name(str(s.role_ref or ""), s.speaker) for s in spans}
+            seen |= set(resolved.values())
+            character = [s for s in spans if not roles.is_narrator(resolved[id(s)], s.role_ref)]
             longest = max(character, key=lambda s: s.span_end - s.span_start, default=None)
-            current[number] = longest.speaker if longest is not None else NARRATOR
+            current[number] = resolved[id(longest)] if longest is not None else NARRATOR
             speakers[number] = current[number]
             where[number] = (segment.id,
                              int(longest.span_start) if longest is not None else 0,
                              int(longest.span_end) if longest is not None else len(segment.text or ""))
             narration[number] = " ".join(segment.text[int(s.span_start):int(s.span_end)]
-                                         for s in spans if s.speaker == NARRATOR)
+                                         for s in spans if roles.is_narrator(resolved[id(s)], s.role_ref))
         # Каст главы — как в калибровке: персонажи, звучащие в разметке главы.
         cast_lines = [f"- {c.name}" + (f" — {c.race}" if c.race else "")
                       for c in sorted(cast, key=lambda c: c.name)
                       if c.name in seen and c.name != NARRATOR]
+        # Переименование typed-роли меняет словарь, который видел чтец. Его старый
+        # ответ сохраняется, но не подменяет чтение с нынешними именами в recheck.
+        profile = (hashlib.sha256(json.dumps(cast_lines, ensure_ascii=False).encode()).hexdigest()
+                   if roles.typed else "")
         chapters.append(ChapterState(index=int(chapter.chapter_index), id=str(chapter.id),
                                      paragraphs=[(int(s.ordinal), s.text or "") for s in segments],
                                      cast_lines=cast_lines, current=current, where=where,
-                                     narration=narration, speakers=speakers))
-    return BookState(book_id=book_id, chapters=chapters, canon=canon, races=races, index=index)
+                                     narration=narration, speakers=speakers, language=language, profile=profile))
+    return BookState(book_id=book_id, chapters=chapters, canon=canon, races=races,
+                     index=index, language=language)
 
 
 def text_fingerprint(paragraphs: list[tuple[int, str]]) -> str:
@@ -157,35 +174,55 @@ def text_fingerprint(paragraphs: list[tuple[int, str]]) -> str:
     return digest.hexdigest()
 
 
-def artifact_path(book_id: str, chapter_index: int, reader: str, root: str | None = None) -> str:
-    return os.path.join(root or str(artifact_root()), book_id, "consilium", f"ch{int(chapter_index):02d}-{reader}.json")
+def artifact_path(book_id: str, chapter_index: int, reader: str, root: str | None = None,
+                  *, language: str = "ru", profile: str = "") -> str:
+    suffix = f".{language}-{profile}" if profile else (".en" if language == "en" else "")
+    return os.path.join(root or str(artifact_root()), book_id, "consilium", f"ch{int(chapter_index):02d}-{reader}{suffix}.json")
 
 
 def load_answers(book_id: str, chapter: ChapterState, reader: str,
                  root: str | None = None) -> dict[int, str] | None:
     """Ответы чтеца, если они ещё верны: полные и прочитаны по нынешнему тексту главы."""
-    path = artifact_path(book_id, chapter.index, reader, root)
+    path = artifact_path(book_id, chapter.index, reader, root, language=chapter.language, profile=chapter.profile)
     try:
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
     except (OSError, ValueError):
         return None
-    if not data.get("complete") or data.get("text_sha256") != text_fingerprint(chapter.paragraphs):
+    if (not data.get("complete") or data.get("text_sha256") != text_fingerprint(chapter.paragraphs)
+            or data.get("language", "ru") != chapter.language or data.get("profile", "") != chapter.profile):
         return None
     return {int(k): str(v) for k, v in (data.get("answers") or {}).items()}
 
 
 def save_answers(book_id: str, chapter: ChapterState, reader: str, model: str,
                  answers: dict[int, str], complete: bool, root: str | None = None) -> None:
-    path = artifact_path(book_id, chapter.index, reader, root)
+    path = artifact_path(book_id, chapter.index, reader, root, language=chapter.language, profile=chapter.profile)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     payload = {"chapter": chapter.index, "reader": reader, "model": model,
+               "language": chapter.language, "profile": chapter.profile,
                "text_sha256": text_fingerprint(chapter.paragraphs), "complete": bool(complete),
                "answers": {str(k): v for k, v in sorted(answers.items())}}
     tmp = f"{path}.tmp"
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False)
     os.replace(tmp, path)
+
+
+def stale_answers(book_id: str, chapter: ChapterState, reader: str, root: str | None = None) -> bool:
+    """Отдельная метка для сметы: прежняя оплата хранится, новый профиль не прочитан."""
+    base = artifact_path(book_id, chapter.index, reader, root)
+    fingerprint = text_fingerprint(chapter.paragraphs)
+    for path in glob.glob(base[:-5] + "*.json"):
+        try:
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError):
+            continue
+        if (data.get("complete") and data.get("text_sha256") == fingerprint
+                and (data.get("language", "ru") != chapter.language or data.get("profile", "") != chapter.profile)):
+            return True
+    return False
 
 
 def findings_for(state: BookState, answers: dict[str, dict[tuple[int, int], str]]) -> dict[tuple, dict]:
@@ -232,9 +269,11 @@ def estimate(db, book_id: str, root: str | None = None, state: BookState | None 
     known: dict[str, dict[tuple[int, int], str]] = {reader: {} for reader, _ in READER_SLOTS}
     unread_paragraphs = 0
     unread_chapters = 0
+    stale_chapters = 0
     for chapter in state.chapters:
         got = {reader: load_answers(book_id, chapter, reader, root) for reader, _ in READER_SLOTS}
         if any(value is None for value in got.values()):
+            stale_chapters += int(any(stale_answers(book_id, chapter, reader, root) for reader, _ in READER_SLOTS))
             unread_chapters += 1
             unread_paragraphs += len(chapter.paragraphs)
             continue
@@ -249,6 +288,8 @@ def estimate(db, book_id: str, root: str | None = None, state: BookState | None 
     reread_places = math.ceil(total_paragraphs * PLACES_PER_PARAGRAPH)
     return {
         "chapters_total": len(state.chapters),
+        "language": state.language,
+        "profile_stale_chapters": stale_chapters,
         "chapters_to_read": {"recheck": unread_chapters, "reread": len(state.chapters)},
         "arbiter_places": {"recheck": recheck_places, "reread": reread_places},
         "estimate_rub": {
@@ -268,11 +309,11 @@ MIN_CREDITS_RUB = 50
 # Прогон пишет ход после каждого куска главы и каждого места арбитра — это минуты. Час тишины
 # у строки `running` значит, что воркер умер (рестарт, OOM, выкатка), а не что он думает.
 STALE_RUN_MINUTES = 60
-DEAD_RUN_TEXT = "воркер остановился — прогон можно продолжить"
+DEAD_RUN_TEXT = "The worker stopped; you can resume the run"
 STOP_TEXT = {
-    "stopped_by_user": "остановлен вручную",
-    "over_budget": "превышена смета вдвое",
-    "no_credits": "кончились деньги на балансе RouterAI",
+    "stopped_by_user": "stopped by the user",
+    "over_budget": "cost exceeded twice the estimate",
+    "no_credits": "insufficient RouterAI credit",
 }
 
 
@@ -303,7 +344,7 @@ def routed_ask(providers: dict[str, str]):
             provider = providers.get(model, "routerai")
         api_key, base_url, mode = _resolve_provider(provider)
         if not api_key:
-            raise RuntimeError(f"нет ключа провайдера {provider}")
+            raise RuntimeError(f'No API key for provider {provider}')
         out = call_chat(base_url, api_key, model, system, user, mode=mode, force_json=True, json_schema=schema)
         content = (out or {}).get("content") if isinstance(out, dict) else out
         if isinstance(content, str):
@@ -343,12 +384,19 @@ def checkpoint_run(session_factory, run_id: str, meta: dict) -> bool:
                 if run is None:
                     return False
                 seen = run.meta_json
-                stop = bool(_meta(run).get("stop_requested"))
+                stored = _meta(run)
+                stop = bool(stored.get("stop_requested"))
+                snapshot = stored.get("language")
+                written_meta = dict(meta, stop_requested=stop)
+                if snapshot in ("ru", "en"):
+                    if meta.get("language", snapshot) != snapshot:
+                        raise ValueError("language_snapshot_mismatch")
+                    written_meta["language"] = snapshot
                 now = utcnow_naive()
                 written = db.execute(
                     update(BackgroundRun)
                     .where(BackgroundRun.id == run_id, BackgroundRun.meta_json == seen)
-                    .values(meta_json=json.dumps(dict(meta, stop_requested=stop), ensure_ascii=False),
+                    .values(meta_json=json.dumps(written_meta, ensure_ascii=False),
                             heartbeat_at=now, updated_at=now)
                     .execution_options(synchronize_session=False)
                 ).rowcount
@@ -369,8 +417,12 @@ def _finish(session_factory, run_id: str, status: str, meta: dict, message: str)
         if run is None:
             return
         run.status = status
-        stop = bool(_meta(run).get("stop_requested"))
-        run.meta_json = json.dumps(dict(meta, stop_requested=stop), ensure_ascii=False)
+        stored = _meta(run)
+        stop = bool(stored.get("stop_requested"))
+        final_meta = dict(meta, stop_requested=stop)
+        if stored.get("language") in ("ru", "en"):
+            final_meta["language"] = stored["language"]
+        run.meta_json = json.dumps(final_meta, ensure_ascii=False)
         run.error_message = message[:255]
         run.finished_at = utcnow_naive()
         run.updated_at = utcnow_naive()
@@ -484,6 +536,7 @@ def enqueue_consilium(book_id: str, mode: str) -> str | None:
         meta={"mode": mode, "phase": "queued"},
         book_id=book_id,
         mode=mode,
+        profile_book_id=book_id,
     )
 
 
@@ -497,7 +550,7 @@ def _book_title(session_factory, book_id: str) -> str:
 
 def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=None,
                   read_credits=read_credits, notify: Callable[[str], None] | None = None,
-                  root: str | None = None, arbiter_workers: int = 6) -> dict:
+                  root: str | None = None, arbiter_workers: int = 6, language: str | None = None) -> dict:
     from app.pipeline.consilium_run import Budget, StopRun, arbitrate_place, plan_places, read_chapter
     from app.services.consilium_store import apply_run
     from app.services.step_models import MissingKeyError, require_key_for, step_model
@@ -581,7 +634,8 @@ def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=
         # Подготовка — внутри `try`: упавшая смета или база иначе оставили бы строку `running`
         # без причины и без уведомления.
         with session_factory() as db:
-            state = load_book_state(db, book_id)
+            state = load_book_state(db, book_id, language=language)
+            meta["language"] = state.language
             plan = estimate(db, book_id, root=root, state=state)
         budget = Budget(plan["estimate_rub"][key], plan["estimate_calls"][key])
         credits_before = read_credits()
@@ -601,7 +655,7 @@ def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=
                 with spend.context(dict(READER_SLOTS)[reader], book_id=book_id, run_id=run_id):
                     read, complete = read_chapter(model=model, cast_lines=chapter.cast_lines,
                                                   paragraphs=chapter.paragraphs, ask=counted_ask,
-                                                  checkpoint=checkpoint)
+                                                  checkpoint=checkpoint, language=state.language)
                 if not complete:
                     # Перечитка с отказом куска не затирает полный ответ по тому же тексту:
                     # недочитанные абзацы берутся из него, и глава остаётся прочитанной.
@@ -649,7 +703,8 @@ def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=
                 verdict = arbitrate_place(chapter_index=chapter.index, ordinal=item["ordinal"],
                                           current=item["current"], opus=item["opus"], sol=item["sol"],
                                           texts=dict(chapter.paragraphs), speakers=chapter.speakers,
-                                          races=state.races, ask=counted_ask, canon=state.canon, model=arbiter_model)
+                                          races=state.races, ask=counted_ask, canon=state.canon, model=arbiter_model,
+                                          language=state.language)
             return place, verdict
 
         # Отмена очереди мест — явно, а не через финализацию генератора `map`: остановка не должна
@@ -692,7 +747,7 @@ def run_consilium(*, session_factory, book_id: str, run_id: str, mode: str, ask=
                     db.commit()
                 result.update(added=saved["added"], updated=saved["updated"], arbitrated=len(verdicts))
             except Exception as exc:  # noqa: BLE001 — остановка всё равно фиксируется
-                message = f"{message}; вердикты не записаны: {type(exc).__name__}: {exc}"
+                message = f"{message}; verdicts could not be saved: {type(exc).__name__}: {exc}"
         now_spent = spent(stop_when_empty=False)  # остановка — не повод показывать старую трату
         if now_spent is not None:
             meta["spent_rub"] = now_spent
@@ -716,15 +771,15 @@ def _notify_owner(session_factory, notify, book_id: str, result: dict) -> None:
     except Exception:  # noqa: BLE001 — сбой базы не должен подменять собой исходную ошибку прогона
         title = book_id
     if result["status"] == "done":
-        incomplete = (f"; неполных глав: {result['chapters_incomplete']} — пересверка их дочитает"
+        incomplete = (f"; incomplete chapters: {result['chapters_incomplete']} — a recheck will finish them"
                       if result.get("chapters_incomplete") else "")
-        text = (f"Консилиум «{title}»: находок {result['findings']}, новых {result['added']}, "
-                f"обновлено {result['updated']}, снято {result['gone']}{incomplete}; "
-                f"потрачено ≈ {result['spent_rub']:.0f} ₽.")
+        text = (f"Review «{title}»: findings {result['findings']}, new {result['added']}, "
+                f"updated {result['updated']}, resolved {result['gone']}{incomplete}; "
+                f"spent ≈ {result['spent_rub']:.0f} ₽.")
     elif result["status"] == "stopped":
-        text = f"Консилиум «{title}» остановлен: {STOP_TEXT.get(result['reason'], result['reason'])}; потрачено ≈ {result['spent_rub']:.0f} ₽."
+        text = f"Review «{title}» stopped: {STOP_TEXT.get(result['reason'], result['reason'])}; spent ≈ {result['spent_rub']:.0f} ₽."
     else:
-        text = f"Консилиум «{title}» упал: {result['reason']}"
+        text = f"Review «{title}» failed: {result['reason']}"
     try:
         if notify is not None:
             notify(text)

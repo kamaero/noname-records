@@ -16,7 +16,7 @@ from app.services.studio_settings import set_active_book
 
 NOW = datetime(2026, 10, 6, 9, 0, 0)
 CHATS = {"Ветрова Ольга": "41", "Иванов Пётр": "42"}
-QUEUED = "Принял файл, распознаю и разложу по главам — пришлю отчёт через несколько минут."
+QUEUED = "File received. I will transcribe it, split it into chapters and send a report in a few minutes."
 
 
 @pytest.fixture(autouse=True)
@@ -103,9 +103,9 @@ def test_several_roles_ask_with_buttons(db):
     out = handle_update(db, _audio(name="zapis.wav"), now=NOW)
     row = db.query(BotUpload).one()
     assert row.state == "choose" and row.purpose == "take" and not _enqueued(out)
-    assert out[0].payload["text"] == "Какая это роль?"
+    assert out[0].payload["text"] == "Which role is this?"
     assert sorted(_buttons(out[0].payload)) == sorted([
-        ("Сэкле", f"bt:c:{row.id}:c1"), ("Лымэли", f"bt:c:{row.id}:c2"), ("Отмена", f"bt:x:{row.id}")])
+        ("Сэкле", f"bt:c:{row.id}:c1"), ("Лымэли", f"bt:c:{row.id}:c2"), ("Cancel", f"bt:x:{row.id}")])
     picked = handle_update(db, _press(f"bt:c:{row.id}:c2"), now=NOW)
     assert db.get(BotUpload, row.id).state == "queued" and db.get(BotUpload, row.id).role_name == "Лымэли"
     assert picked[1].payload["text"] == QUEUED and _enqueued(picked) == [{"id": row.id}]
@@ -119,7 +119,7 @@ def test_cancel_and_foreign_press(db):
     assert [o.method for o in handle_update(db, _press(f"bt:c:{row.id}:c1", tid="42"), now=NOW)] == \
         ["answerCallbackQuery"]
     out = handle_update(db, _press(f"bt:x:{row.id}"), now=NOW)
-    assert db.get(BotUpload, row.id).state == "cancelled" and "Отменено" in out[1].payload["text"]
+    assert db.get(BotUpload, row.id).state == "cancelled" and "Cancelled" in out[1].payload["text"]
 
 
 def test_no_active_book_falls_through_to_auditions(db):
@@ -129,7 +129,7 @@ def test_no_active_book_falls_through_to_auditions(db):
     db.commit()
     out = handle_update(db, _audio(), now=NOW)
     row = db.query(BotUpload).one()
-    assert row.purpose == "audition" and "Проба на «Дракон»" in out[0].payload["text"]
+    assert row.purpose == "audition" and "Audition for «Дракон»" in out[0].payload["text"]
 
 
 def test_role_and_invitation_ask_take_or_audition(db):
@@ -139,8 +139,8 @@ def test_role_and_invitation_ask_take_or_audition(db):
     row = db.query(BotUpload).one()
     assert row.state == "choose" and not _enqueued(out)
     assert sorted(_buttons(out[0].payload)) == sorted([
-        ("Дубль: «Лымэли»", f"bt:c:{row.id}:c1"), ("Проба: «Дракон»", f"bu:c:{row.id}:c9"),
-        ("Отмена", f"bt:x:{row.id}")])
+        ("Take: «Лымэли»", f"bt:c:{row.id}:c1"), ("Audition: «Дракон»", f"bu:c:{row.id}:c9"),
+        ("Cancel", f"bt:x:{row.id}")])
     picked = handle_update(db, _press(f"bu:c:{row.id}:c9"), now=NOW)
     row = db.get(BotUpload, row.id)
     assert (row.state, row.purpose, row.character_id) == ("queued", "audition", "c9")
@@ -170,7 +170,7 @@ def test_same_file_twice_is_refused(db):
     _role(db, "c1", "Лымэли")
     handle_update(db, _audio(unique="SAME"), now=NOW)
     out = handle_update(db, _audio(unique="SAME"), now=NOW + timedelta(hours=1))
-    assert out[0].payload["text"] == "Этот файл уже принят 06.10." and not _enqueued(out)
+    assert out[0].payload["text"] == "This file was already received on 06.10." and not _enqueued(out)
     assert db.query(BotUpload).count() == 1
     # тот же файл от другого человека — не повтор этого
     _role(db, "c5", "Сэкле", actor="Иванов Пётр")
@@ -182,14 +182,14 @@ def test_tentative_role_is_not_a_take(db):
     _role(db, "c1", "Лымэли", actor="Ветрова Ольга?")
     assert bot_takes.my_roles(db, tid="41", user=db.get(User, "u41"), book=db.get(ScriptBook, "b1")) == []
     out = handle_update(db, _audio(), now=NOW)
-    assert "только по приглашению" in out[0].payload["text"] and db.query(BotUpload).count() == 0
+    assert "by invitation" in out[0].payload["text"] and db.query(BotUpload).count() == 0
 
 
 def test_a_big_file_is_refused_with_its_limit(db, monkeypatch):
     _role(db, "c1", "Лымэли")
     monkeypatch.setattr(bot_takes, "max_download_bytes", lambda: 2 * 1024 * 1024)
     out = handle_update(db, _audio(), now=NOW)
-    assert "больше 2 МБ" in out[0].payload["text"] and db.query(BotUpload).count() == 0
+    assert "larger than 2 MB" in out[0].payload["text"] and db.query(BotUpload).count() == 0
 
 
 def test_migration_adds_columns_twice_safely():
@@ -233,7 +233,7 @@ def test_webhook_queues_take_and_reports_failure(db, monkeypatch):
     monkeypatch.setattr(telegram_webhook, "call_bot_api", lambda method, payload: api.append(payload))
     telegram_webhook.process_update({"update_id": 1})
     assert queued == [row.id] and db.get(BotUpload, row.id).state == "failed"
-    assert api == [{"chat_id": "41", "text": "Не получилось взять файл в работу — пришлите его ещё раз."}]
+    assert api == [{"chat_id": "41", "text": "Could not queue the file. Please send it again."}]
 
 
 def _message(tid="41", **attachment):
@@ -266,7 +266,7 @@ def test_no_active_book_tells_an_approved_dictor(db):
     _role(db, "c1", "Лымэли")
     _no_book(db)
     out = handle_update(db, _audio(), now=NOW)
-    assert out[0].payload["text"] == "Сейчас студия не записывает ни одну книгу. Если это ошибка, напишите в студию."
+    assert out[0].payload["text"] == "The studio is not currently recording a book. If this is an error, contact the studio."
     assert db.query(BotUpload).count() == 0
 
 
@@ -298,18 +298,18 @@ def test_no_active_book_invited_only_gets_auditions(db):
     _invite(db)
     _no_book(db)
     out = handle_update(db, _audio(), now=NOW)
-    assert "Проба на «Дракон»" in out[0].payload["text"]
+    assert "Audition for «Дракон»" in out[0].payload["text"]
 
 
 def test_no_active_book_unknown_person_unchanged(db):
     _no_book(db)
     out = handle_update(db, _audio(tid="42"), now=NOW)
-    assert "только по приглашению" in out[0].payload["text"] and db.query(BotUpload).count() == 0
+    assert "by invitation" in out[0].payload["text"] and db.query(BotUpload).count() == 0
 
 
-@pytest.mark.parametrize("state, text", [("done", "Этот файл уже обработан."),
-                                         ("failed", "Этот файл уже передан студии."),
-                                         ("unsorted", "Этот файл уже передан студии.")])
+@pytest.mark.parametrize("state, text", [("done", "This file has already been processed."),
+                                         ("failed", "This file has already been sent to the studio."),
+                                         ("unsorted", "This file has already been sent to the studio.")])
 def test_cancel_after_processing_names_the_state(db, state, text):
     _role(db, "c1", "Лымэли")
     handle_update(db, _audio(), now=NOW)

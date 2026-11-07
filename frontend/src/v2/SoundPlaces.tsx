@@ -25,7 +25,7 @@ type SoundPlacesProps = {
   onClose: () => void;
 };
 
-const KIND_WORD: Record<SoundMarker["kind"], string> = { scene: "Сцена", transition: "Переход", sound: "Звук" };
+const KIND_WORD: Record<SoundMarker["kind"], string> = { scene: "Scene", transition: "Transition", sound: "Sound" };
 
 function useRefresh(bookId: string, chapterId: string) {
   const queryClient = useQueryClient();
@@ -44,20 +44,20 @@ function PairRow({ pair, bookId, chapterId }: { pair: SoundPair; bookId: string;
     onSuccess: async (_, merge) => {
       pushToast({
         tone: "success",
-        title: merge ? `Склеено: «${pair.a.name}»` : "Оставлены разными",
-        detail: merge ? `Сцены «${pair.b.name}» теперь в «${pair.a.name}».` : "Следующий прогон эту пару не предложит.",
+        title: merge ? `Merged: «${pair.a.name}»` : "Kept separate",
+        detail: merge ? `Scenes from «${pair.b.name}» now belong to «${pair.a.name}».` : "Future runs will not suggest this pair again.",
       });
       await refresh();
     },
     onError: async (error) => {
-      pushToast({ tone: "error", title: "Решение не сохранилось", detail: describeSoundError(error) });
+      pushToast({ tone: "error", title: "Decision not saved", detail: describeSoundError(error) });
       await refresh();
     },
   });
   return (
     <li className="snd-pair">
       <div className="snd-pair-names">
-        <strong>{pair.a.name}</strong> <span aria-label="или">↔</span> <strong>{pair.b.name}</strong>
+        <strong>{pair.a.name}</strong> <span aria-label="or">↔</span> <strong>{pair.b.name}</strong>
       </div>
       {pair.reason ? <p className="snd-pair-reason">{pair.reason}</p> : null}
       <div className="snd-card-actions">
@@ -65,15 +65,15 @@ function PairRow({ pair, bookId, chapterId }: { pair: SoundPair; bookId: string;
           type="button"
           className="btn btn-sm btn-primary"
           disabled={decide.isPending}
-          title={`Одно место: остаётся имя «${pair.a.name}», сцены второго переходят к нему`}
+          title={`Same location: keep name «${pair.a.name}» and move the other location's scenes to it`}
           onClick={() => decide.mutate(true)}
         >
-          склеить
+          merge
         </button>
         <button type="button" className="btn btn-sm v2r-btn" disabled={decide.isPending} onClick={() => decide.mutate(false)}>
-          разные
+          separate
         </button>
-        <span className="snd-card-hint">склеить — останется «{pair.a.name}»</span>
+        <span className="snd-card-hint">merge; keep «{pair.a.name}»</span>
       </div>
     </li>
   );
@@ -96,11 +96,11 @@ function PlaceRow({
     mutationFn: () =>
       editSoundPlace(place.id, { name: draft.name.trim(), description: draft.description.trim(), ambience_queries: splitQueries(draft.queries) }),
     onSuccess: async () => {
-      pushToast({ tone: "success", title: `Место сохранено: «${draft.name.trim()}»` });
+      pushToast({ tone: "success", title: `Location saved: «${draft.name.trim()}»` });
       setEditing(false);
       await refresh();
     },
-    onError: (error) => pushToast({ tone: "error", title: "Место не сохранилось", detail: describeSoundError(error) }),
+    onError: (error) => pushToast({ tone: "error", title: "Location not saved", detail: describeSoundError(error) }),
   });
   const byIndex = new Map(chapters.map((chapter) => [chapter.index, chapter]));
 
@@ -109,13 +109,13 @@ function PlaceRow({
       <div className="snd-place-head">
         <strong className="snd-place-name">{place.name}</strong>
         {!editing ? (
-          <button type="button" className="snd-edit" aria-label={`Править место «${place.name}»`} title="Править" onClick={startEdit}>
+          <button type="button" className="snd-edit" aria-label={`Edit location «${place.name}»`} title="Edit" onClick={startEdit}>
             ✎
           </button>
         ) : null}
       </div>
       {place.chapters.length > 0 ? (
-        <div className="snd-place-chapters" aria-label="Главы, где встречается место">
+        <div className="snd-place-chapters" aria-label="Chapters featuring this location">
           {place.chapters.map((index) => {
             const chapter = byIndex.get(index);
             const here = chapter?.id === chapterId;
@@ -124,24 +124,24 @@ function PlaceRow({
                 key={index}
                 to={`/reader/${encodeURIComponent(chapter.id)}`}
                 className="snd-place-ch"
-                title={chapter.title ? `Глава ${index}: ${chapter.title}` : `Глава ${index}`}
+                title={chapter.title ? `Chapter ${index}: ${chapter.title}` : `Chapter ${index}`}
                 onClick={(event) => {
                   if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
                   event.preventDefault();
                   onGoChapter(chapter.id);
                 }}
               >
-                гл. {index}
+                ch. {index}
               </Link>
             ) : (
-              <span key={index} className={here ? "snd-place-ch is-here" : "snd-place-ch"} title={here ? "Эта глава" : undefined}>
-                гл. {index}
+              <span key={index} className={here ? "snd-place-ch is-here" : "snd-place-ch"} title={here ? "This chapter" : undefined}>
+                ch. {index}
               </span>
             );
           })}
         </div>
       ) : (
-        <span className="snd-card-hint">сейчас ни в одной сцене</span>
+        <span className="snd-card-hint">not currently used in any scene</span>
       )}
       {!editing ? (
         <>
@@ -155,17 +155,17 @@ function PlaceRow({
               ))}
             </div>
           ) : (
-            <span className="snd-card-hint">запросов фона нет</span>
+            <span className="snd-card-hint">no ambience queries</span>
           )}
         </>
       ) : (
         <div className="snd-card-subform">
           <label className="snd-card-field">
-            <span className="snd-card-label">Имя</span>
+            <span className="snd-card-label">Name</span>
             <input className="ui-input" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} disabled={save.isPending} autoFocus />
           </label>
           <label className="snd-card-field">
-            <span className="snd-card-label">Описание</span>
+            <span className="snd-card-label">Description</span>
             <textarea
               className="ui-input snd-card-text"
               rows={2}
@@ -175,16 +175,16 @@ function PlaceRow({
             />
           </label>
           <label className="snd-card-field">
-            <span className="snd-card-label">Фон — запросы</span>
+            <span className="snd-card-label">Ambience queries</span>
             <input className="ui-input" value={draft.queries} onChange={(e) => setDraft((d) => ({ ...d, queries: e.target.value }))} disabled={save.isPending} />
-            <span className="snd-card-hint">До трёх, через запятую, по-английски. Встают во все сцены этого места.</span>
+            <span className="snd-card-hint">Up to three comma-separated queries in English. Used in all scenes at this location.</span>
           </label>
           <div className="snd-card-actions">
             <button type="button" className="btn btn-sm btn-primary" disabled={save.isPending || !draft.name.trim()} onClick={() => save.mutate()}>
-              {save.isPending ? "Сохраняю…" : "Сохранить"}
+              {save.isPending ? "Saving…" : "Save"}
             </button>
             <button type="button" className="btn btn-sm btn-ghost" disabled={save.isPending} onClick={() => setEditing(false)}>
-              Отмена
+              Cancel
             </button>
           </div>
         </div>
@@ -199,20 +199,20 @@ export function SoundPlaces({ bookId, chapterId, chapters, lost, onOpenMarker, o
   const places = data?.places ?? [];
   const pairs = data?.pairs ?? [];
   const subtitle = data
-    ? `${places.length} ${plural(places.length, "место", "места", "мест")}${pairs.length ? ` · на решение ${pairs.length}` : ""}`
+    ? `${places.length} ${plural(places.length, "location", "locations", "locations")}${pairs.length ? ` · to review ${pairs.length}` : ""}`
     : book.isLoading
-      ? "Загружаю…"
+      ? "Loading…"
       : null;
 
   return (
-    <Sheet title="Места книги" subtitle={subtitle} onClose={onClose}>
-      {book.isError ? <p className="v2r-sheet-error">{describeApiError(book.error, "Не удалось загрузить места.")}</p> : null}
+    <Sheet title="Book locations" subtitle={subtitle} onClose={onClose}>
+      {book.isError ? <p className="v2r-sheet-error">{describeApiError(book.error, "Could not load locations.")}</p> : null}
       {pairs.length > 0 ? (
         <section className="v2r-sheet-section">
           <h3 className="v2r-sheet-h">
-            Одно место или разные? <span className="v2r-legend-count num">{pairs.length}</span>
+            Same location or different? <span className="v2r-legend-count num">{pairs.length}</span>
           </h3>
-          <p className="v2r-sheet-note">ИИ подозревает, что это одно и то же место под разными именами. Решаете вы.</p>
+          <p className="v2r-sheet-note">AI suggests these names may refer to the same location. You decide.</p>
           <ul className="snd-list">
             {pairs.map((pair) => (
               <PairRow key={pair.id} pair={pair} bookId={bookId} chapterId={chapterId} />
@@ -223,9 +223,9 @@ export function SoundPlaces({ bookId, chapterId, chapters, lost, onOpenMarker, o
       {lost.length > 0 ? (
         <section className="v2r-sheet-section">
           <h3 className="v2r-sheet-h">
-            Потерялись в этой главе <span className="v2r-legend-count num">{lost.length}</span>
+            Unplaced in this chapter <span className="v2r-legend-count num">{lost.length}</span>
           </h3>
-          <p className="v2r-sheet-note">Текст главы поменялся, и эти маркеры не нашли свой абзац — откройте и поставьте руками.</p>
+          <p className="v2r-sheet-note">The chapter text changed and these markers lost their paragraphs. Open them to place them manually.</p>
           <ul className="snd-lost-list">
             {lost.map((item) => (
               <li key={item.id} className="snd-lost">
@@ -240,10 +240,10 @@ export function SoundPlaces({ bookId, chapterId, chapters, lost, onOpenMarker, o
       {data ? (
         <section className="v2r-sheet-section">
           <h3 className="v2r-sheet-h">
-            Все места <span className="v2r-legend-count num">{places.length}</span>
+            All locations <span className="v2r-legend-count num">{places.length}</span>
           </h3>
           {places.length === 0 ? (
-            <p className="v2r-sheet-empty">Мест пока нет — они появятся после звуковой разметки.</p>
+            <p className="v2r-sheet-empty">No locations yet. They will appear after sound annotation.</p>
           ) : (
             <ul className="snd-list">
               {places.map((place) => (

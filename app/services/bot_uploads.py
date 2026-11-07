@@ -20,8 +20,8 @@ from app.services.telegram import max_download_bytes, size_text
 BU_PREFIX = "bu:"
 #: предел скачивания файла ботом (Bot API `getFile`)
 CHOICE_TTL = timedelta(hours=24)
-ONLY_INVITED = ("Проба — только по приглашению. Когда понадобится ваш голос, бот пришлёт приглашение: "
-                "роль, книгу и срок.")
+ONLY_INVITED = ("Auditions are by invitation. The bot will send the role, book and deadline "
+                "when your voice is needed.")
 
 
 def _site_link() -> str:
@@ -71,24 +71,24 @@ def receive(db, *, tid: str, chat_id, user, info: dict, now: datetime) -> list[O
     if not invited:
         return None if info.get("bad") else [send(chat_id, ONLY_INVITED)]
     if info.get("bad"):
-        return [send(chat_id, "Пришлите пробу аудиофайлом или голосовым.")]
+        return [send(chat_id, "Send the audition as an audio file or voice message.")]
     limit = max_download_bytes()
     if info["file_size"] > limit:
-        return [send(chat_id, f"Файл больше {size_text(limit)} — загрузите пробу на сайте, "
-                              f"раздел «Загрузка»: {_site_link()}")]
+        return [send(chat_id, f"The file is larger than {size_text(limit)} — upload the audition on the "
+                              f"website: {_site_link()}")]
     row = BotUpload(telegram_user_id=str(tid), created_at=now, updated_at=now,
                     **{k: info[k] for k in ("file_id", "file_unique_id", "kind", "mime_type", "file_name",
                                             "file_size", "duration")})
     db.add(row)
     db.flush()
-    cancel = [{"text": "Отмена", "callback_data": f"{BU_PREFIX}x:{row.id}"}]
+    cancel = [{"text": "Cancel", "callback_data": f"{BU_PREFIX}x:{row.id}"}]
     if len(invited) == 1:
         ch, book = invited[0]
-        buttons = {"inline_keyboard": [[{"text": "Да", "callback_data": f"{BU_PREFIX}c:{row.id}:{ch.id}"}, *cancel]]}
-        return [send(chat_id, f"Проба на «{ch.name}» («{book.title}»)?", buttons)]
+        buttons = {"inline_keyboard": [[{"text": "Yes", "callback_data": f"{BU_PREFIX}c:{row.id}:{ch.id}"}, *cancel]]}
+        return [send(chat_id, f"Audition for «{ch.name}» («{book.title}»)?", buttons)]
     rows = [[{"text": f"«{ch.name}» («{book.title}»)"[:60], "callback_data": f"{BU_PREFIX}c:{row.id}:{ch.id}"}]
             for ch, book in invited]
-    return [send(chat_id, "На какую роль эта проба?", {"inline_keyboard": [*rows, cancel]})]
+    return [send(chat_id, "Which role is this audition for?", {"inline_keyboard": [*rows, cancel]})]
 
 
 def press(db, *, tid: str, chat_id, data: str, user, now: datetime) -> list[Outgoing]:
@@ -103,16 +103,16 @@ def press(db, *, tid: str, chat_id, data: str, user, now: datetime) -> list[Outg
             row.state, row.updated_at = "cancelled", now
             db.flush()
         if row.state == "cancelled":
-            return [send(chat_id, "Отменено.")]
+            return [send(chat_id, "Cancelled.")]
         # после «Да» файл уже в работе — честно, а не «Отменено» при уходящей карточке (ревью C2)
-        return [send(chat_id, f"Проба уже принята — отменить её в боте нельзя. Если нужно, {studio.write_to()}.")]
+        return [send(chat_id, f"The audition has already been accepted and cannot be cancelled in the bot. If needed, {studio.write_to()}.")]
     if action != "c" or row.state != "choose":
-        return [send(chat_id, "Эта проба уже принята или отменена.")]
+        return [send(chat_id, "This audition has already been accepted or cancelled.")]
     if row.created_at < now - CHOICE_TTL:
-        return [send(chat_id, "Выбор устарел — пришлите файл ещё раз.")]
+        return [send(chat_id, "This selection has expired. Send the file again.")]
     deadline = open_deadline(db, character_id)
     if deadline is None or deadline.kind != "audition" or not owner_by_chat(db, tid, user)(deadline.actor_name):
-        return [send(chat_id, "Приглашение уже неактуально.")]
+        return [send(chat_id, "This invitation is no longer current.")]
     # Захват одной записью, как у рассылки: два «Да» подряд — одна задача. Назначение ставим
     # явно: строку мог завести приём дублей с вопросом «дубль или проба?» (bot_takes).
     claimed = (db.query(BotUpload)
@@ -123,8 +123,8 @@ def press(db, *, tid: str, chat_id, data: str, user, now: datetime) -> list[Outg
         return []
     db.expire(row)
     # очередь общая с конвейером — ответ может прийти не сразу; без обещания диктор пришлёт файл ещё раз
-    return [send(chat_id, "Сохраняю пробу — пришлю подтверждение, когда она ляжет (обычно в течение "
-                          "нескольких минут)."), Outgoing("enqueue_bot_upload", {"id": row.id})]
+    return [send(chat_id, "Saving the audition. Confirmation will arrive when it is stored, usually within "
+                          "a few minutes."), Outgoing("enqueue_bot_upload", {"id": row.id})]
 
 
 def enqueue_store(upload_id: str) -> str | None:
@@ -191,15 +191,15 @@ def store(db, upload_id: str, *, fetch, send_text, send_audio, store_file=None,
         row.state, row.updated_at = "failed", now
         db.commit()
         if moved:
-            send_text(tid, "Не получилось принять пробу: роль уже передана другому исполнителю или приглашение "
-                           f"закрыто. Если это ошибка, {studio.write_to()}.")
+            send_text(tid, "Could not accept the audition: the role has been reassigned or the invitation "
+                           f"is closed. If this is a mistake, {studio.write_to()}.")
         else:
-            send_text(tid, f"Не получилось сохранить пробу — попробуйте ещё раз или загрузите на сайте: {_site_link()}")
+            send_text(tid, f"Could not save the audition. Try again or upload it on the website: {_site_link()}")
         return "failed"
     if row.purpose == "agent":
-        send_text(tid, f"Проба принята — «{ch.name}», {actor}.")
+        send_text(tid, f"Audition received — «{ch.name}», {actor}.")
     else:
-        send_text(tid, f"Проба принята — «{ch.name}». Ответ придёт сюда.")
+        send_text(tid, f"Audition received — «{ch.name}». The response will arrive here.")
     # Голосовое и играемое аудио — пересылкой по `file_id`; документ (WAV) Telegram в плеер не
     # отдаст — карточка возьмёт файл из хранилища и сделает MP3-копию.
     # .ogg, присланный как музыка, — тип «аудио»: sendVoice его отклонит (ревью C2)

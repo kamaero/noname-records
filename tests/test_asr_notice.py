@@ -50,7 +50,7 @@ class TestWhatItSays:
             lines=[_line(f"реплика номер {n}", matched=False) for n in range(12)],
         )
 
-        assert "и ещё" in text
+        assert "and" in text
         assert text.count("реплика номер") <= 6
 
 
@@ -133,11 +133,11 @@ def test_moved_lines_notice_names_the_role_and_quotes_the_lines():
     text = moved_lines_notice(role="Гамук", chapter="Глава 11. Дорога", book_title="Карта переправы",
                               texts=["Я знаю короткую дорогу к реке."], link="https://x/role")
 
-    assert text.startswith("✏️ В разметке поправили роль — эти реплики теперь ваши, а в записи их нет: 1")
-    assert "Роль: Гамук" in text
+    assert text.startswith("✏️ The role attribution changed. These lines are now yours and were not found in the recording: 1")
+    assert "Role: Гамук" in text
     assert "Карта переправы · Глава 11. Дорога" in text
     assert "• Я знаю короткую дорогу к реке." in text
-    assert "Допишите их отдельным файлом." in text
+    assert "Record these lines in a separate file." in text
     assert text.endswith("https://x/role")
 
 
@@ -201,7 +201,7 @@ class TestAmbiguousActorName:
         assert result["relayed"] is True
         assert all(not direct for _text, _chat_ids, direct in box), "никому напрямую — имя неоднозначно"
         to_owner = [text for text, _chat_ids, direct in box if not direct]
-        assert to_owner and "Натали Ким" in to_owner[0] and "пропущенных репликах" in to_owner[0]
+        assert to_owner and "Натали Ким" in to_owner[0] and "missing lines" in to_owner[0]
         assert "Ким Натали Вторая" in to_owner[0]
 
     @pytest.mark.parametrize("order", ["a_then_b", "b_then_a"])
@@ -225,7 +225,7 @@ class TestAmbiguousActorName:
         assert result["relayed"] is True
         assert all(not direct for _text, _chat_ids, direct in box)
         to_owner = [text for text, _chat_ids, direct in box if not direct]
-        assert to_owner and "перенесённых репликах" in to_owner[0]
+        assert to_owner and "reassigned lines" in to_owner[0]
 
     def test_a_single_match_is_unaffected(self, db, monkeypatch):
         """Одна подходящая учётка — письмо уходит ей напрямую, как и до фикса."""

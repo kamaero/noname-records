@@ -23,7 +23,7 @@ def db():
     Base.metadata.create_all(bind=engine)
     with sessionmaker(bind=engine, autocommit=False, autoflush=False)() as session:
         session.add(ScriptBook(id=BOOK, title="Карта переправы", source_filename="k.docx", source_format="docx"))
-        session.add(Author(id=AUTHOR, name="Александр Примеродин", slug="primerodin"))
+        session.add(Author(id=AUTHOR, name="Алексей Примеров", slug="primerov"))
         session.add(Author(id="author-2", name="Другой Автор", slug="other"))
         for name, actor in (("Дгарнин", "Зотов Сергей"), ("Пупип", "Литвиненко Константин"), ("Гамук", "")):
             session.add(AuthorCharacter(
@@ -62,7 +62,7 @@ def test_a_bound_book_is_not_offered_a_suggestion(db):
     profile = book_profile(db, BOOK)
 
     assert profile["suggested"] is None
-    assert profile["author"]["name"] == "Александр Примеродин"
+    assert profile["author"]["name"] == "Алексей Примеров"
 
 
 def test_unbinding_is_possible_and_changes_nothing_else(db):

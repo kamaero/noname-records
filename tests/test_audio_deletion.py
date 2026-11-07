@@ -473,7 +473,7 @@ def test_ручка_отвечает_объяснением_а_не_кодом(c
     assert response.json()["error"] == "forbidden"
     # Именно словами, а не голым кодом: тот же обычай, что у `RENAME_ERRORS` на фронте.
     assert response.json()["error"] != response.json()["message"]
-    assert "чуж" in response.json()["message"].lower()
+    assert "only the actor" in response.json()["message"].lower()
 
 
 def test_ручка_не_находит_чужого_идентификатора(client_as_dictor):
@@ -488,7 +488,7 @@ def test_ручка_отказывает_в_старой_записи_слова
     response = client_as_dictor.post(f"/api/recording/files/{old_audio.id}/delete")
     assert response.status_code == 403
     assert response.json()["error"] == "too_old"
-    assert "суток" in response.json()["message"].lower()
+    assert "24 hours" in response.json()["message"].lower()
 
 
 def test_диктор_удаляет_свою_запись_через_ручку(client_as_dictor, own_audio):

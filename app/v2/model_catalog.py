@@ -114,10 +114,10 @@ CATALOG: tuple[RunModel, ...] = (
         price_cache_read=0.022,
         currency="USD",
         peak_multiplier=2.0,
-        peak_hours="в будни 04:00–07:00 и 09:00–13:00 МСК",
+        peak_hours="weekdays 04:00–07:00 and 09:00–13:00 MSK",
         trains_on_text=False,
-        note="Счёт приходит от DeepSeek в долларах; рубли посчитаны по курсу студии. Размышления выключены: на нашем эталоне это не меняет точность, но сокращает ответ в 12 раз.",
-        accuracy="точность 0,957 на эталоне из трёх размеченных автором глав (пол «всё Рассказчик» — 0,747)",
+        note="DeepSeek bills in USD; ruble estimates use the studio exchange rate. Reasoning is disabled: on the reference set this preserved accuracy while reducing the response size by a factor of 12.",
+        accuracy="Accuracy 0.957 on a reference set of three author-annotated chapters (all-narrator baseline: 0.747)",
         # DeepSeek reads the Anthropic-style knob; see `llm_client._chat_anthropic`.
         extra_body={"thinking": {"type": "disabled"}},
     ),
@@ -132,8 +132,8 @@ CATALOG: tuple[RunModel, ...] = (
         price_cache_read=0.225,
         currency="RUB",
         trains_on_text=True,
-        note="Дешёвый тариф: провайдер вправе учиться на присланном тексте. Размышления у этого эндпоинта отключить нельзя — исходящих токенов в 5,7 раза больше, а прогон книги идёт около пяти часов вместо полутора.",
-        accuracy="точность 0,956 на том же эталоне — вровень с DeepSeek",
+        note="Lower-cost tariff: the provider may train on submitted text. Reasoning cannot be disabled at this endpoint; measured output token use was 5.7 times higher, and book processing took about five hours rather than one and a half.",
+        accuracy="Accuracy 0.956 on the same reference set, comparable to DeepSeek",
         # «Reasoning is mandatory for this endpoint and cannot be disabled» — the most
         # we can do is ask for the shortest one.
         extra_body={"reasoning": {"effort": "low"}},
@@ -171,4 +171,4 @@ def custom(provider: str, model: str) -> RunModel:
     """Модель, которой нет в каталоге: студия выбрала её сама — цены мы не знаем."""
     return RunModel(key="custom", label=model, provider=provider, model=model, price_in=0.0, price_out=0.0,
                     price_cache_read=0.0, currency="", trains_on_text=False,
-                    note="Своя модель — цена неизвестна, смета её не покажет.")
+                    note="Custom model: price unknown; it is not included in the estimate.")

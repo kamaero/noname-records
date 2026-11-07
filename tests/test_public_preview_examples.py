@@ -48,7 +48,7 @@ def test_thanks_preview_keeps_the_payload_with_synthetic_examples(monkeypatch, h
         assert len(out["people"]) == 1
         assert out["people"][0]["actor"] == "Примерова Мира"
     else:
-        assert out["preview"].startswith("Лада,")
-        assert "Учебный персонаж" in out["preview"]
+        assert out["preview"].startswith("Actor,")
+        assert "Practice character" in out["preview"]
         assert out["people"] == []
     engine.dispose()

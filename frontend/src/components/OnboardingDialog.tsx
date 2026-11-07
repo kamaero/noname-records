@@ -29,7 +29,7 @@ function BotStatus({ reachable, checking }: { reachable: boolean | null | undefi
     return (
       <p className="onb-status onb-status--checking" role="status">
         <span className="onb-status-mark" aria-hidden="true">…</span>
-        Проверяю, может ли бот вам написать…
+        Checking whether the bot can message you…
       </p>
     );
   }
@@ -37,7 +37,7 @@ function BotStatus({ reachable, checking }: { reachable: boolean | null | undefi
     return (
       <p className="onb-status onb-status--ok" role="status">
         <span className="onb-status-mark" aria-hidden="true">✓</span>
-        Бот на связи — уведомления будут приходить.
+        The bot is connected. You will receive notifications.
       </p>
     );
   }
@@ -45,14 +45,14 @@ function BotStatus({ reachable, checking }: { reachable: boolean | null | undefi
     return (
       <p className="onb-status onb-status--bad" role="status">
         <span className="onb-status-mark" aria-hidden="true">✗</span>
-        Бот пока не может вам написать — откройте бота и нажмите Start.
+        The bot cannot message you yet. Open the bot and select Start.
       </p>
     );
   }
   return (
     <p className="onb-status onb-status--unknown" role="status">
       <span className="onb-status-mark" aria-hidden="true">?</span>
-      Не удалось проверить связь с ботом. Попробуйте ещё раз чуть позже.
+      Could not check the bot connection. Please try again later.
     </p>
   );
 }
@@ -96,18 +96,18 @@ function BotStep({ me }: { me: MeResponse }) {
   return (
     <>
       <p>
-        Студия пишет вам в Telegram: когда вас утвердили на роль, когда в загруженной записи не нашлось каких-то реплик и когда правка разметки отдала вашей роли реплики, которых в записи нет.
+        The studio sends Telegram notifications when you are cast in a role, when an uploaded recording is missing lines, and when attribution changes assign your role lines that are not in the recording.
       </p>
-      <p>Но бот не может написать первым. Откройте его и нажмите Start — один раз, этого достаточно.</p>
+      <p>The bot cannot message you first. Open it and select Start once to allow notifications.</p>
       <BotStatus reachable={reachable} checking={checking} />
       <div className="onb-actions">
         {username ? (
           <a className="ui-btn ui-btn--primary" href={`https://t.me/${username}`} target="_blank" rel="noopener noreferrer">
-            Открыть бота
+            Open bot
           </a>
         ) : null}
         <Button variant="secondary" loading={checking} onClick={recheck}>
-          Проверить ещё раз
+          Check again
         </Button>
       </div>
     </>
@@ -117,54 +117,54 @@ function BotStep({ me }: { me: MeResponse }) {
 function buildSteps(me: MeResponse): Step[] {
   const steps: Step[] = [];
   if (me.auth_source === "telegram") {
-    steps.push({ key: "bot", title: "Бот для уведомлений", help: "bot", body: <BotStep me={me} /> });
+    steps.push({ key: "bot", title: "Notification bot", help: "bot", body: <BotStep me={me} /> });
   }
   steps.push(
     {
       key: "role",
-      title: "Ваша роль",
+      title: "Your role",
       help: "role-lines",
       body: (
         <>
           <p>
-            Текст роли — в разделе «Сценарий»: выберите роль над текстом и главу слева. Ваши роли стоят в списке «Роль» первыми.
+            Find your role’s text in Script: choose a role above the text and a chapter on the left. Your roles appear first in the Role list.
           </p>
           <p>
-            Кнопка «Мои реплики» над текстом соберёт вашу роль по всем главам по порядку, с соседними абзацами — чтобы было видно, кому и на что вы отвечаете.
+            Select My lines above the text to see your role across all chapters in order, with the surrounding paragraphs for context.
           </p>
         </>
       ),
     },
     {
       key: "stress",
-      title: "Ударения и слова-ловушки",
+      title: "Stress marks and word traps",
       help: "stress",
       body: (
         <>
           <p>
-            Когда над текстом включены «Ударения», над ударной гласной стоит знак. Если он стоит неверно, нажмите слово, выберите нужную гласную и нажмите «Для этой книги» — исправление увидят все.
+            Turn on Stress marks above the text to mark stressed vowels. If a mark is wrong, select the word, choose the correct vowel, and select For this book. Everyone will see the correction.
           </p>
           <p>
-            На странице, которую открывает «Мои реплики», есть кнопка «Слова-ловушки»: редкие слова роли по главам, в которых легко ошибиться, читая в потоке.
+            The My lines page includes Word traps: unusual words in your role, grouped by chapter, that are easy to mispronounce while reading.
           </p>
         </>
       ),
     },
     {
       key: "upload",
-      title: "Загрузка дублей",
+      title: "Uploading takes",
       help: "upload",
       body: (
         <>
           <p>
-            Файлы загружаются в разделе «Загрузка» — туда же ведёт кнопка «Загрузить дубль» над сценарием. Сверьте книгу, роль и главу — там должно быть написано «Дубль утверждённой роли». Скопируйте предложенное имя и назовите файл точно так же.
+            Upload files in Uploads, also available through Upload take above the script. Check the book, role, and chapter. The upload type should say Approved role take. Copy the suggested filename and use it exactly.
           </p>
           <p>
-            Перетащите файл в область загрузки и дождитесь сообщения «Готово». Принятый файл появится в списке «Последние файлы главы».
+            Drag your file into the upload area and wait for Done. The accepted file will appear under Recent chapter files.
           </p>
           {me.auth_source === "telegram" ? (
             <p>
-              Если книга сейчас в работе студии, дубли можно прислать и боту в Telegram: файл главы или всю роль одним файлом, с любым именем — бот сам разложит по главам и ответит отчётом.
+              For a book currently in production, you can also send takes to the Telegram bot: a chapter file or the whole role in one file, with any filename. The bot will split it by chapter and send a report.
             </p>
           ) : null}
         </>
@@ -197,8 +197,8 @@ export function OnboardingDialog({ me, onClose, fallbackFocus }: OnboardingDialo
 
   return (
     <Dialog
-      title="Как тут всё устроено"
-      subtitle={`Шаг ${index + 1} из ${steps.length}`}
+      title="How it works"
+      subtitle={`Step ${index + 1} of ${steps.length}`}
       onClose={onClose}
       fallbackFocus={fallbackFocus}
       className="onb-dialog"
@@ -212,16 +212,16 @@ export function OnboardingDialog({ me, onClose, fallbackFocus }: OnboardingDialo
           <div className="onb-nav">
             {index > 0 ? (
               <Button variant="ghost" onClick={() => setIndex((i) => i - 1)}>
-                Назад
+                Back
               </Button>
             ) : null}
             {last ? (
               <Button variant="primary" data-autofocus onClick={onClose}>
-                Понятно
+                Got it
               </Button>
             ) : (
               <Button variant="primary" data-autofocus onClick={() => setIndex((i) => i + 1)}>
-                Далее
+                Next
               </Button>
             )}
           </div>
@@ -232,7 +232,7 @@ export function OnboardingDialog({ me, onClose, fallbackFocus }: OnboardingDialo
         <h3 className="onb-step-title">{step.title}</h3>
         {step.body}
         <Link to={`/help#${step.help}`} className="onb-more" onClick={() => openHelp(step.help)}>
-          Подробнее в справке
+          Learn more in Help
           <Icon name="arrow" />
         </Link>
       </section>

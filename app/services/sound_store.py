@@ -99,7 +99,7 @@ def _place_for(db, book_id: str, place: dict) -> tuple[str, bool]:
             live = _live_place(db, book_id, row.merged_into)
             if live is not None:
                 return live.id, False
-    row = SoundPlace(book_id=book_id, name=place.get("name") or "без имени",
+    row = SoundPlace(book_id=book_id, name=place.get("name") or 'Unnamed location',
                      description=place.get("description") or "",
                      ambience_queries=list(place.get("ambience_queries") or []))
     db.add(row)

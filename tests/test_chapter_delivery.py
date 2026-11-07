@@ -333,7 +333,7 @@ class TestTheArchive:
         build_chapter_archive(db, chapter.id, str(target))
 
         with zipfile.ZipFile(target) as archive:
-            assert "НЕ ЗАПИСАНЫ: Сатухух" in archive.read("опись.txt").decode("utf-8")
+            assert "NOT RECORDED: Сатухух" in archive.read("опись.txt").decode("utf-8")
 
     def test_a_file_that_vanished_from_storage_is_reported_not_hidden(self, studio, monkeypatch, tmp_path):
         from app.services.chapter_delivery import build_chapter_archive
@@ -442,7 +442,7 @@ class TestTheWholeBook:
         db.flush()
         monkeypatch.setattr(
             "app.services.chapter_delivery.book_role_counts_by_chapter",
-            lambda db, book_id: {chapter.id: {"Дгарнин": 40}, second.id: {"Сатухух": 12}},
+            lambda db, book_id, **kw: {chapter.id: {"Дгарнин": 40}, second.id: {"Сатухух": 12}},
         )
         _take(db, chapter, role="Дгарнин", actor="Сергей Зотов")
         db.flush()
@@ -468,7 +468,7 @@ class TestTheWholeBook:
         db, book, chapter = studio
         monkeypatch.setattr(
             "app.services.chapter_delivery.book_role_counts_by_chapter",
-            lambda db, book_id: {chapter.id: {"Дгарнин": 5}},
+            lambda db, book_id, **kw: {chapter.id: {"Дгарнин": 5}},
         )
         ok_item = _take(db, chapter, role="Дгарнин", actor="Сергей Зотов")
         bad_item = _take(db, chapter, role="Дгарнин", actor="Сергей Зотов")
@@ -490,7 +490,7 @@ class TestTheWholeBook:
         db, book, chapter = studio
         monkeypatch.setattr(
             "app.services.chapter_delivery.book_role_counts_by_chapter",
-            lambda db, book_id: {chapter.id: {"Дгарнин": 5}},
+            lambda db, book_id, **kw: {chapter.id: {"Дгарнин": 5}},
         )
         old_one = _take(db, chapter, role="Дгарнин", actor="Сергей Зотов")
         old_two = _take(db, chapter, role="Дгарнин", actor="Сергей Зотов")
@@ -511,7 +511,7 @@ class TestTheWholeBook:
         db, book, chapter = studio
         monkeypatch.setattr(
             "app.services.chapter_delivery.book_role_counts_by_chapter",
-            lambda db, book_id: {chapter.id: {"Дгарнин": 5}},
+            lambda db, book_id, **kw: {chapter.id: {"Дгарнин": 5}},
         )
         old = _take(db, chapter, role="Дгарнин", actor="Сергей Зотов")
         _take(db, chapter, role="Дгарнин", actor="Сергей Зотов")
@@ -532,7 +532,7 @@ class TestTheWholeBook:
         db, book, chapter = studio
         monkeypatch.setattr(
             "app.services.chapter_delivery.book_role_counts_by_chapter",
-            lambda db, book_id: {chapter.id: {"Дгарнин": 5}},
+            lambda db, book_id, **kw: {chapter.id: {"Дгарнин": 5}},
         )
         _take(db, chapter, role="Дгарнин", actor="Сергей Зотов", mirrored_at=utcnow_naive())
         _take(db, chapter, role="Дгарнин", actor="Сергей Зотов")
@@ -562,7 +562,7 @@ class TestTheWholeBook:
         db, book, chapter = studio
         monkeypatch.setattr(
             "app.services.chapter_delivery.book_role_counts_by_chapter",
-            lambda db, book_id: {chapter.id: {"Дгарнин": 5}},
+            lambda db, book_id, **kw: {chapter.id: {"Дгарнин": 5}},
         )
         good = _take(db, chapter, role="Дгарнин", actor="Сергей Зотов")
         good.mirrored_at = utcnow_naive()
@@ -589,7 +589,7 @@ class TestTheWholeBook:
         db, book, chapter = studio
         monkeypatch.setattr(
             "app.services.chapter_delivery.book_role_counts_by_chapter",
-            lambda db, book_id: {chapter.id: {"Дгарнин": 5}},
+            lambda db, book_id, **kw: {chapter.id: {"Дгарнин": 5}},
         )
         broken = _take(db, chapter, role="Дгарнин", actor="Сергей Зотов")
         broken.mirror_state = MISMATCH
@@ -674,7 +674,7 @@ class TestTheTracksTheEditorWouldAddByHand:
         root = ET.fromstring(build_chapter_session(db, chapter.id).lstrip("﻿"))
         names = [t.find("trackParameters/name").text for t in root.findall("session/tracks/audioTrack")]
 
-        assert names[-4:] == ["Саундтрек 1", "Саундтрек 2", "Интершум 1", "Интершум 2"]
+        assert names[-4:] == ["Soundtrack 1", "Soundtrack 2", "Environmental 1", "Environmental 2"]
 
     def test_those_tracks_come_empty(self, studio, monkeypatch):
         import xml.etree.ElementTree as ET
@@ -1052,7 +1052,7 @@ class TestWhenTheRoleWasReadSeveralTimes:
         self._one_role_chapter(db, chapter, monkeypatch, [(0.0, 2.0), (3.0, 5.5)])
 
         names = [c[2] for c in self._clips(db, chapter) if c[1] == "Гамук"]
-        assert names == ["первая · дубль 1/2", "первая · дубль 2/2"]
+        assert names == ["первая · take 1/2", "первая · take 2/2"]
 
     def test_a_lone_take_is_not_numbered(self, studio, monkeypatch):
         """«дубль 1/1» — шум: нумеровать нечего."""
@@ -1181,7 +1181,7 @@ class TestHandingTheChapterOver:
         monkeypatch.setattr(audio_storage, "nas_root", lambda: str(tmp_path))
         monkeypatch.setattr(au, "audio_storage", audio_storage)
         monkeypatch.setattr("app.services.chapter_delivery.book_role_counts_by_chapter",
-                            lambda db, book_id: {chapter.id: {"Дгарнин": 40}})
+                            lambda db, book_id, **kw: {chapter.id: {"Дгарнин": 40}})
         _roles(monkeypatch, {"Дгарнин": 40})
         _take(db, chapter, role="Дгарнин", actor="Сергей Зотов")
         db.flush()
@@ -1255,7 +1255,7 @@ class TestCoverageCountsTheWholeChapter:
 
         db, book, chapter = studio
         monkeypatch.setattr("app.services.chapter_delivery.book_role_counts_by_chapter",
-                            lambda db, book_id: {chapter.id: {"Рассказчик": 75, "Бдеукс": 10, "Хубол": 15}})
+                            lambda db, book_id, **kw: {chapter.id: {"Рассказчик": 75, "Бдеукс": 10, "Хубол": 15}})
         _roles(monkeypatch, {"Рассказчик": 75, "Бдеукс": 10, "Хубол": 15})
         item = _take(db, chapter, role="Бдеукс", actor="Сергей Зотов")
         db.flush()
@@ -1271,7 +1271,7 @@ class TestCoverageCountsTheWholeChapter:
 
         db, book, chapter = studio
         monkeypatch.setattr("app.services.chapter_delivery.book_role_counts_by_chapter",
-                            lambda db, book_id: {chapter.id: {"Рассказчик": 75, "Бдеукс": 25}})
+                            lambda db, book_id, **kw: {chapter.id: {"Рассказчик": 75, "Бдеукс": 25}})
         _roles(monkeypatch, {"Рассказчик": 75, "Бдеукс": 25})
         item = _take(db, chapter, role="Бдеукс", actor="Сергей Зотов")
         db.flush()
@@ -1284,7 +1284,7 @@ class TestCoverageCountsTheWholeChapter:
 
         db, book, chapter = studio
         monkeypatch.setattr("app.services.chapter_delivery.book_role_counts_by_chapter",
-                            lambda db, book_id: {chapter.id: {"Рассказчик": 60, "Бдеукс": 40}})
+                            lambda db, book_id, **kw: {chapter.id: {"Рассказчик": 60, "Бдеукс": 40}})
         _roles(monkeypatch, {"Рассказчик": 60, "Бдеукс": 40})
         one = _take(db, chapter, role="Рассказчик", actor="Кто-то")
         two = _take(db, chapter, role="Бдеукс", actor="Сергей Зотов")
@@ -1470,7 +1470,7 @@ class TestCoverageCountsParagraphsNotPieces:
 
     def _book(self, monkeypatch, chapter, counts):
         monkeypatch.setattr("app.services.chapter_delivery.book_role_counts_by_chapter",
-                            lambda db, book_id: {chapter.id: counts})
+                            lambda db, book_id, **kw: {chapter.id: counts})
         _roles(monkeypatch, counts)
 
     def test_a_role_read_whole_is_exactly_its_paragraphs(self, studio, monkeypatch):
@@ -1541,8 +1541,8 @@ class TestTrackColours:
 
     def test_characters_differ_from_each_other_and_from_the_fixed_colours(self):
         names = [f"Роль {n}" for n in range(12)]
-        hues = self._hues("Рассказчик", *names, "Ambient 1", "Саундтрек 1", "Интершум 1")
-        fixed = {hues["Рассказчик"], hues["Ambient 1"], hues["Саундтрек 1"], hues["Интершум 1"]}
+        hues = self._hues("Рассказчик", *names, "Ambient 1", "Soundtrack 1", "Environmental 1")
+        fixed = {hues["Рассказчик"], hues["Ambient 1"], hues["Soundtrack 1"], hues["Environmental 1"]}
         characters = [hues[name] for name in names]
         assert len(set(characters)) == len(characters)
         assert not set(characters) & fixed
@@ -1551,7 +1551,7 @@ class TestTrackColours:
         assert self._hues("Хдыбдяр", "Химес")["Хдыбдяр"] == self._hues("Хоркон", "Хдыбдяр")["Хдыбдяр"]
 
     def test_every_hue_is_on_the_audition_palette(self):
-        hues = self._hues("Рассказчик", "Хдыбдяр", "Химес", "Ambient 1", "Саундтрек 2", "Интершум 2")
+        hues = self._hues("Рассказчик", "Хдыбдяр", "Химес", "Ambient 1", "Soundtrack 2", "Environmental 2")
         assert all(abs(hue / 14.4 - round(hue / 14.4)) < 1e-9 for hue in hues.values())
 
     def test_the_chapter_session_comes_coloured(self, studio, monkeypatch):
@@ -1589,7 +1589,7 @@ class TestTheOwnersPresets:
                   for t in root.findall("session/tracks/audioTrack")}
         assert chains["Рассказчик"] == ["Single-band Compressor", "Pitch Shifter"]
         assert chains["Химес"] == ["Single-band Compressor"]
-        assert chains["Саундтрек 1"] == []
+        assert chains["Soundtrack 1"] == []
 
 
 class TestAClipKeepsSilenceAroundTheWords:

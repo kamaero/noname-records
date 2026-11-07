@@ -84,4 +84,4 @@ def test_a_sign_no_font_has_is_marked_and_named_not_dropped(export):
     text = _text(render_pdf(export))
 
     assert "�" in text
-    assert "текстовой версии" in text and "U+6F22" in text
+    assert "text version" in text and "U+6F22" in text

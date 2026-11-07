@@ -1,7 +1,7 @@
 """Книга подписана «Автор - "Название"», а код книги остаётся при названии.
 
 Автор и название держатся порознь по одной причине: из `title` выводится код,
-которым актёры подписывают файлы. Пока автор жил в названии, «Примеродины - "Семья
+которым актёры подписывают файлы. Пока автор жил в названии, «Стругацкие - "Семья
 волшебников. книга 2"» давала код `RVK2` вместо `SVK2` — и присланная запись
 искала книгу, которой нет.
 """
@@ -17,7 +17,7 @@ class _Book:
 
 
 def test_witrina_sobiraetsya_iz_avtora_i_nazvaniya():
-    assert compose_display_title("Примеродины", "Карта Переправы") == 'Примеродины - "Карта Переправы"'
+    assert compose_display_title("Стругацкие", "Карта Переправы") == 'Стругацкие - "Карта Переправы"'
 
 
 def test_bez_avtora_ostayotsya_odno_nazvanie():
@@ -26,18 +26,18 @@ def test_bez_avtora_ostayotsya_odno_nazvanie():
 
 def test_kavychki_ne_udvaivayutsya():
     """Человек вписывает название уже в кавычках — витрина не должна их удваивать."""
-    assert compose_display_title("Примеродины", '«Карта Переправы»') == 'Примеродины - "Карта Переправы"'
+    assert compose_display_title("Стругацкие", '«Карта Переправы»') == 'Стругацкие - "Карта Переправы"'
 
 
 def test_sborka_idempotentna():
-    once = compose_display_title("Примеродины", "Карта Переправы")
+    once = compose_display_title("Стругацкие", "Карта Переправы")
     author, title = split_display_title(once)
     assert compose_display_title(author, title) == once
 
 
 def test_staroe_nazvanie_razbiraetsya_obratno():
     """Книги, залитые до разделения полей, носят автора внутри `title`."""
-    assert split_display_title('Примеродины - "Сад великанов. книга 2"') == ("Примеродины", "Сад великанов. книга 2")
+    assert split_display_title('Стругацкие - "Сад великанов. книга 2"') == ("Стругацкие", "Сад великанов. книга 2")
 
 
 def test_obychnoe_nazvanie_s_defisom_ne_schitaetsya_avtorom():
@@ -46,9 +46,9 @@ def test_obychnoe_nazvanie_s_defisom_ne_schitaetsya_avtorom():
 
 def test_avtor_ne_popadaet_v_kod_knigi():
     book = _Book()
-    apply_book_title(book, author="Примеродины", title="Сад великанов. Книга 2")
+    apply_book_title(book, author="Стругацкие", title="Сад великанов. Книга 2")
     assert book.title == "Сад великанов. Книга 2"
-    assert book.display_title == 'Примеродины - "Сад великанов. Книга 2"'
+    assert book.display_title == 'Стругацкие - "Сад великанов. Книга 2"'
     assert book_token(derive_book_code(book.title)) == "SVK2"
 
 
@@ -56,24 +56,24 @@ def test_kod_zapisannoy_knigi_perezhivaet_pereimenovanie():
     """У «Карты» 200+ принятых файлов с кодом КП — правка регистра его не трогает."""
     book = _Book(title="Карта переправы")
     before = book_token(derive_book_code(book.title))
-    apply_book_title(book, author="Примеродины", title="Карта Переправы")
+    apply_book_title(book, author="Стругацкие", title="Карта Переправы")
     assert book_token(derive_book_code(book.title)) == before == "KP"
 
 
 def test_pustoe_nazvanie_ne_stiraet_knigu():
     """Название — ключ к записям актёров; пустое поле не должно его обнулять."""
-    book = _Book(title="Карта Переправы", author_label="Примеродины")
-    apply_book_title(book, author="Примеродины", title="   ")
+    book = _Book(title="Карта Переправы", author_label="Стругацкие")
+    apply_book_title(book, author="Стругацкие", title="   ")
     assert book.title == "Карта Переправы"
 
 
 def test_imya_fayla_daet_avtora_i_nazvanie_porozn():
-    assert parse_filename_title("primerodiny_sad_velikanov_2.fb2") == ("Примеродины", "Сад великанов 2")
+    assert parse_filename_title("strugatskie_sad_velikanov_2.fb2") == ("Стругацкие", "Сад великанов 2")
     assert parse_filename_title("Карта Переправы.docx") == ("", "Карта переправы")
 
 
 def test_zagruzka_delit_imya_fayla_na_avtora_i_nazvanie(tmp_path, monkeypatch):
-    """Файл «Примеродины Сад великанов…» даёт витрину с автором, но чистый `title`."""
+    """Файл «Стругацкие Сад великанов…» даёт витрину с автором, но чистый `title`."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
@@ -84,11 +84,11 @@ def test_zagruzka_delit_imya_fayla_na_avtora_i_nazvanie(tmp_path, monkeypatch):
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine)() as db:
-        book = enqueue_book(db=db, filename="primerodiny_sad_velikanov_2.txt",
+        book = enqueue_book(db=db, filename="strugatskie_sad_velikanov_2.txt",
                             payload="Глава 1\nТекст.\n".encode("utf-8"))
         assert book.title == "Сад великанов 2"
-        assert book.author_label == "Примеродины"
-        assert book.display_title == 'Примеродины - "Сад великанов 2"'
+        assert book.author_label == "Стругацкие"
+        assert book.display_title == 'Стругацкие - "Сад великанов 2"'
         assert book_token(derive_book_code(book.title)) == "SV2"
 
 
@@ -105,9 +105,9 @@ def test_zagruzka_beret_vpisannoe_chelovekom(tmp_path, monkeypatch):
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine)() as db:
         book = enqueue_book(db=db, filename="kniga.txt", payload="Глава 1\nТекст.\n".encode("utf-8"),
-                            title="Карта Переправы", author="Примеродины")
+                            title="Карта Переправы", author="Стругацкие")
         assert book.title == "Карта Переправы"
-        assert book.display_title == 'Примеродины - "Карта Переправы"'
+        assert book.display_title == 'Стругацкие - "Карта Переправы"'
 
 
 def _factory():
@@ -148,21 +148,21 @@ def test_pereimenovanie_pishet_tri_polya_i_vozvrashchaet_kod(monkeypatch):
     from app.models import ScriptBook
 
     client, factory = _client(["author"], monkeypatch)
-    answer = client.post("/api/v2/books/b1/title", json={"author": "Примеродины", "title": "Карта Переправы"})
+    answer = client.post("/api/v2/books/b1/title", json={"author": "Стругацкие", "title": "Карта Переправы"})
 
     assert answer.status_code == 200
     body = answer.json()
-    assert body["display_title"] == 'Примеродины - "Карта Переправы"'
+    assert body["display_title"] == 'Стругацкие - "Карта Переправы"'
     # Код остался прежним — 200+ принятых файлов «КП» не осиротели.
     assert body["book_code"] == "KP"
     with factory() as db:
         book = db.get(ScriptBook, "b1")
-        assert (book.title, book.author_label) == ("Карта Переправы", "Примеродины")
+        assert (book.title, book.author_label) == ("Карта Переправы", "Стругацкие")
 
 
 def test_pereimenovanie_bez_nazvaniya_otvergaetsya(monkeypatch):
     client, _ = _client(["author"], monkeypatch)
-    answer = client.post("/api/v2/books/b1/title", json={"author": "Примеродины", "title": "  "})
+    answer = client.post("/api/v2/books/b1/title", json={"author": "Стругацкие", "title": "  "})
     assert answer.status_code == 400
 
 
@@ -182,7 +182,7 @@ def test_smena_koda_pod_zapisyami_trebuet_podtverzhdeniya(monkeypatch):
                          stored_key="k", mime_type="audio/wav", size_bytes=1, chapter="1", role="Роль"))
         db.commit()
 
-    answer = client.post("/api/v2/books/b1/title", json={"author": "Примеродины", "title": "Другая книга"})
+    answer = client.post("/api/v2/books/b1/title", json={"author": "Стругацкие", "title": "Другая книга"})
     assert answer.status_code == 409
     body = answer.json()
     assert (body["error"], body["was_code"], body["files"]) == ("code_changes", "KP", 1)
@@ -191,7 +191,7 @@ def test_smena_koda_pod_zapisyami_trebuet_podtverzhdeniya(monkeypatch):
 
     # С открытыми глазами — переименование проходит.
     answer = client.post("/api/v2/books/b1/title",
-                         json={"author": "Примеродины", "title": "Другая книга", "confirm": True})
+                         json={"author": "Стругацкие", "title": "Другая книга", "confirm": True})
     assert answer.status_code == 200
     with factory() as db:
         assert db.get(ScriptBook, "b1").title == "Другая книга"
@@ -206,5 +206,5 @@ def test_pravka_registra_koda_ne_menyaet_i_ni_o_chem_ne_sprashivaet(monkeypatch)
                          stored_key="k", mime_type="audio/wav", size_bytes=1, chapter="1", role="Роль"))
         db.commit()
 
-    answer = client.post("/api/v2/books/b1/title", json={"author": "Примеродины", "title": "Карта Переправы"})
+    answer = client.post("/api/v2/books/b1/title", json={"author": "Стругацкие", "title": "Карта Переправы"})
     assert answer.status_code == 200

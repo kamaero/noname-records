@@ -41,7 +41,7 @@ export function Sheet({ title, subtitle, onClose, children, footer, side = "righ
             <h2 className="ui-sheet-title">{title}</h2>
             {subtitle ? <div className="ui-sheet-subtitle">{subtitle}</div> : null}
           </div>
-          <button ref={closeRef} type="button" className="ui-btn ui-btn--ghost ui-btn--icon" onClick={onClose} aria-label="Закрыть">
+          <button ref={closeRef} type="button" className="ui-btn ui-btn--ghost ui-btn--icon" onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
         </header>

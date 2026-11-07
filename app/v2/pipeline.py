@@ -34,15 +34,16 @@ from app.v2.segmenter import segment_chapter
 from app.v2.store import load_chapter_segments, store_attributions, store_chapter_segments, store_stress_marks
 from app.v2.stress import Resolver, load_author_layer, stress_segment
 from app.v2.units import units_from_segments
+from app.v2.job_profile import lock_book_profile
 
 logger = logging.getLogger(__name__)
 
 STEPS = ("segment", "cast", "attribute", "stress")
 STEP_LABELS = {
-    "segment": "Сегментация",
-    "cast": "Персонажи",
-    "attribute": "Роли",
-    "stress": "Ударения",
+    "segment": 'Segmentation',
+    "cast": 'Characters',
+    "attribute": 'Attribution',
+    "stress": 'Stress marks',
 }
 HEADING_SOURCE = "rule"
 LLM_SOURCES = ("llm", "llm_review", HEADING_SOURCE)
@@ -65,6 +66,7 @@ class RunContext:
     """What a step needs besides the database: options, the model, and the callbacks."""
 
     force: bool = False
+    language: str | None = None
     provider: str = ""
     model: str = ""
     thinking: str = "off"
@@ -76,6 +78,9 @@ class RunContext:
     on_progress: Callable[[str], None] | None = None
     on_heartbeat: Callable[[], None] | None = None
     started: float = field(default_factory=time.monotonic)
+
+    def profile_language(self, book) -> str:
+        return self.language if self.language in ("en", "ru") else getattr(book, "language", "ru")
 
     def say(self, message: str) -> None:
         if self.on_progress:
@@ -97,6 +102,9 @@ class RunContext:
         return self.llm
 
     def get_resolver(self, db, book) -> Resolver:
+        if self.profile_language(book) == "en":
+            # Английская книга не должна загружать словари и модель русского языка.
+            return Resolver()
         if self.resolver is None:
             context = self.context
             if context == "auto":
@@ -122,7 +130,7 @@ def _split_aliases(raw: str) -> list[str]:
     return [part.strip() for part in (raw or "").replace(";", ",").split(",") if part.strip()]
 
 
-def cast_for_chapter(characters, chapter_index: int) -> tuple[dict[str, str], list[str]]:
+def cast_for_chapter(characters, chapter_index: int, *, language: str = "ru") -> tuple[dict[str, str], list[str]]:
     """`(cast, cast_lines)` — every name and alias to its canonical name, and the prompt lines.
 
     A character whose `appears_in` is filled is offered only in those chapters; one
@@ -145,7 +153,8 @@ def cast_for_chapter(characters, chapter_index: int) -> tuple[dict[str, str], li
         for alias in aliases:
             cast.setdefault(alias, name)
         lines.append(f"- {name} — {', '.join(aliases)}" if aliases else f"- {name}")
-    lines.append(f"- {NARRATOR} — авторская речь, служебный голос")
+    description = "narration and author tags; internal narrator voice" if language == "en" else "авторская речь, служебный голос"
+    lines.append(f"- {NARRATOR} — {description}")
     return cast, lines
 
 
@@ -159,7 +168,7 @@ def heading_records(units) -> list[dict]:
 
 
 def attribute_chapter_rows(db, book, chapter, characters, *, llm, provider: str, model: str,
-                           review: bool = True, on_batch=None) -> dict:
+                           review: bool = True, on_batch=None, language: str | None = None) -> dict:
     """Attribute one chapter's segments and store the answer as the next version.
 
     `{stored, stats, problems, segments}`; a chapter without segments stores nothing.
@@ -168,15 +177,24 @@ def attribute_chapter_rows(db, book, chapter, characters, *, llm, provider: str,
     """
     segments = load_chapter_segments(db, chapter_id=chapter.id)
     if not segments:
-        return {"stored": 0, "stats": new_stats(), "problems": ["нет v2_segments"], "segments": 0}
+        return {"stored": 0, "stats": new_stats(), "problems": ['No v2 segments'], "segments": 0}
     units = units_from_segments(segments)
     heading_ids = {s.id for s in segments if s.kind == "heading"}
-    cast, cast_lines = cast_for_chapter(characters, int(chapter.chapter_index))
+    from app.v2.reader import effective_attributions
+
+    # Ручная версия описывает весь абзац: повтор модели не должен менять её границы.
+    manual_ids = {
+        segment_id for segment_id, rows in effective_attributions(db, [s.id for s in segments]).items()
+        if any(row.source == "operator" for row in rows)
+    }
+    language = language or getattr(book, "language", "ru")
+    cast, cast_lines = cast_for_chapter(characters, int(chapter.chapter_index), language=language)
     records, problems, stats = attribute_chapter(
-        [u for u in units if u.id not in heading_ids],
+        [u for u in units if u.id not in heading_ids and u.id not in manual_ids],
         cast=cast, cast_lines=cast_lines, llm=llm, review=review, on_batch=on_batch,
+        language=language,
     )
-    stored = store_attributions(db, heading_records([u for u in units if u.id in heading_ids]) + records)
+    stored = store_attributions(db, heading_records([u for u in units if u.id in heading_ids and u.id not in manual_ids]) + records)
     db.add(LlmUsageLog(
         book_id=book.id,
         chapter_id=chapter.id,
@@ -193,8 +211,12 @@ def attribute_chapter_rows(db, book, chapter, characters, *, llm, provider: str,
     return {"stored": stored, "stats": stats, "problems": problems, "segments": len(segments)}
 
 
-def stress_chapter_rows(db, chapter, resolver: Resolver) -> dict:
+def stress_chapter_rows(db, chapter, resolver: Resolver, *, language: str | None = None) -> dict:
     """Stress every segment of one chapter through the resolver chain; `{marks, counts, unresolved}`."""
+    book = db.get(ScriptBook, chapter.book_id)
+    if (language or getattr(book, "language", "ru")) == "en":
+        return {"marks": 0, "counts": {}, "unresolved": {}, "segments": 0,
+                "reason": "not_applicable_for_english"}
     segments = load_chapter_segments(db, chapter_id=chapter.id)
     marks_total = 0
     counts: dict[str, int] = {}
@@ -292,7 +314,7 @@ def walk_chapters(db, book, run: V2Run, ctx: RunContext, chapters, work, *, skip
     results: dict[str, dict] = {}
     for chapter in chapters:
         if _stop_requested(db, book):
-            raise StopRequested(f"остановлено перед главой {chapter.chapter_index}")
+            raise StopRequested(f'Stopped before chapter {chapter.chapter_index}')
         if chapter.id in skip:
             skipped += 1
             _touch(db, run, ctx, chapters_done=done + skipped)
@@ -309,8 +331,7 @@ def walk_chapters(db, book, run: V2Run, ctx: RunContext, chapters, work, *, skip
             prompt_tokens=int(run.prompt_tokens or 0) + int(stats.get("prompt_tokens") or 0),
             completion_tokens=int(run.completion_tokens or 0) + int(stats.get("completion_tokens") or 0),
         )
-        ctx.say(f"{STEP_LABELS.get(run.step, run.step)}: глава {chapter.chapter_index} "
-                f"({done + skipped}/{len(chapters)}) {time.monotonic() - started:.0f}с {_brief(result)}")
+        ctx.say(f'{STEP_LABELS.get(run.step, run.step)}: chapter {chapter.chapter_index} ({done + skipped}/{len(chapters)}) {time.monotonic() - started:.0f}s {_brief(result)}')
     return {"done": done, "skipped": skipped, "results": results}
 
 
@@ -340,7 +361,7 @@ def step_segment(db, book, run: V2Run, ctx: RunContext) -> dict:
 
     walked = walk_chapters(db, book, run, ctx, chapters, work, skip=skip)
     total = sum(int(r.get("segments") or 0) for r in walked["results"].values())
-    _log(db, book, f"сегментация: глав {walked['done']}, пропущено {walked['skipped']}, сегментов {total}")
+    _log(db, book, f'Segmentation: chapters {walked['done']}, skipped {walked['skipped']}, segments {total}')
     db.commit()
     return {"chapters": walked["done"], "skipped": walked["skipped"], "segments": total}
 
@@ -356,7 +377,7 @@ def step_cast(db, book, run: V2Run, ctx: RunContext) -> dict:
     _touch(db, run, ctx, chapters_total=1, chapters_done=0)
     existing = db.query(Character).filter(Character.book_id == book.id).count()
     if existing and not ctx.force:
-        _log(db, book, f"персонажи: используем существующие ({existing})")
+        _log(db, book, f'Characters: reusing existing cast ({existing})')
         _touch(db, run, ctx, chapters_done=1)
         return {"reused": existing, "imported": 0}
 
@@ -382,9 +403,9 @@ def step_cast(db, book, run: V2Run, ctx: RunContext) -> dict:
     try:
         from app.services.char_extraction import _run_char_extraction
 
-        imported = int(_run_char_extraction(db, book, job) or 0)
+        imported = int(_run_char_extraction(db, book, job, language=ctx.profile_language(book)) or 0)
         job.status = "done"
-        _log(db, book, f"персонажи: извлечено {imported}")
+        _log(db, book, f'Characters extracted: {imported}')
         db.commit()
         _touch(db, run, ctx, chapters_done=1)
         return {"reused": 0, "imported": imported}
@@ -394,7 +415,7 @@ def step_cast(db, book, run: V2Run, ctx: RunContext) -> dict:
         job = db.get(ScriptJob, job.id) or job
         job.status = "failed"
         job.error_message = f"{type(exc).__name__}: {str(exc)[:200]}"
-        _log(db, book, f"персонажи: извлечение не удалось — {job.error_message}; книга идёт дальше с текущим кастом", "warning")
+        _log(db, book, f'Character extraction failed: {job.error_message}; processing continues with the current cast', "warning")
         db.commit()
         _touch(db, run, ctx, chapters_done=1)
         return {"reused": 0, "imported": 0, "error": job.error_message}
@@ -413,19 +434,23 @@ def step_attribute(db, book, run: V2Run, ctx: RunContext) -> dict:
         result = attribute_chapter_rows(
             db, book, chapter, characters, llm=ctx.get_llm(), provider=ctx.provider, model=ctx.model,
             review=ctx.review, on_batch=ctx.on_heartbeat and (lambda *_a, **_k: ctx.on_heartbeat()),
+            language=ctx.profile_language(book),
         )
         merge_stats(totals, result["stats"])
-        problems.extend(f"глава {chapter.chapter_index}: {p}" for p in result["problems"])
+        problems.extend(f'chapter {chapter.chapter_index}: {p}' for p in result["problems"])
         return result
 
     walked = walk_chapters(db, book, run, ctx, chapters, work, skip=skip)
-    _log(db, book, f"роли: глав {walked['done']}, пропущено {walked['skipped']}, вызовов {totals['calls']}, "
-                   f"токены {totals['prompt_tokens']}/{totals['completion_tokens']}, проблем {len(problems)}")
+    _log(db, book, f'Attribution: chapters {walked['done']}, skipped {walked['skipped']}, calls {totals['calls']}, tokens {totals['prompt_tokens']}/{totals['completion_tokens']}, problems {len(problems)}')
     db.commit()
     return {"chapters": walked["done"], "skipped": walked["skipped"], "stats": totals, "problems": problems}
 
 
 def step_stress(db, book, run: V2Run, ctx: RunContext) -> dict:
+    if ctx.profile_language(book) == "en":
+        # Пропуск не пишет пустые версии поверх ручных решений о произношении.
+        return {"chapters": 0, "skipped": len(_chapters(db, book.id)), "marks": 0,
+                "counts": {}, "reason": "not_applicable_for_english"}
     chapters = _chapters(db, book.id)
     skip = set() if ctx.force else chapters_stressed(db, [c.id for c in chapters])
     resolver = ctx.get_resolver(db, book)
@@ -434,15 +459,14 @@ def step_stress(db, book, run: V2Run, ctx: RunContext) -> dict:
 
     def work(chapter):
         nonlocal marks_total
-        result = stress_chapter_rows(db, chapter, resolver)
+        result = stress_chapter_rows(db, chapter, resolver, language=ctx.profile_language(book))
         marks_total += int(result["marks"])
         for source, count in result["counts"].items():
             counts[source] = counts.get(source, 0) + int(count)
         return result
 
     walked = walk_chapters(db, book, run, ctx, chapters, work, skip=skip)
-    _log(db, book, f"ударения: глав {walked['done']}, пропущено {walked['skipped']}, ударений {marks_total}, "
-                   f"без ответа {counts.get('unresolved', 0)}")
+    _log(db, book, f'Stress marking: chapters {walked['done']}, skipped {walked['skipped']}, marks {marks_total}, unresolved {counts.get('unresolved', 0)}')
     db.commit()
     return {"chapters": walked["done"], "skipped": walked["skipped"], "marks": marks_total, "counts": counts}
 
@@ -467,11 +491,30 @@ def _notify(db, book, previous: str, detail: str = "") -> None:
         logger.warning("v2 status notification failed book=%s", book.id, exc_info=True)
 
 
-def _open_run(db, book, run_id: str | None) -> V2Run:
+def _open_run(db, book, run_id: str | None, *, language: str | None = None) -> V2Run:
     run = db.get(V2Run, run_id) if run_id else None
     if run is None:
-        run = V2Run(id=run_id or str(uuid.uuid4()), book_id=book.id, status="queued")
+        run = V2Run(id=run_id or str(uuid.uuid4()), book_id=book.id, status="queued",
+                    language_snapshot=language or book.language)
         db.add(run)
+    if run.book_id != book.id:
+        raise ValueError("run_book_mismatch")
+    if run.language_snapshot not in ("en", "ru"):
+        # У старой очереди нет достоверного исходного языка. Живая книга могла
+        # измениться до обновления сервера; молчаливый fallback оплатил бы иной профиль.
+        run.status = "failed"
+        run.error = "language_snapshot_missing: start a new run to select the current book profile"
+        run.finished_at = utcnow_naive()
+        book.status = "failed"
+        db.commit()
+        return run
+    if language is not None and language != run.language_snapshot:
+        run.status = "failed"
+        run.error = "language_snapshot_mismatch: the queued profile does not match this run"
+        run.finished_at = utcnow_naive()
+        book.status = "failed"
+        db.commit()
+        return run
     run.status = "running"
     run.started_at = utcnow_naive()
     run.finished_at = None
@@ -497,23 +540,21 @@ def _settle_book(db, book, context) -> None:
         try:
             report = apply_author_profile_to_book(db, book)
             context.say(
-                f"профиль автора: актёров {report['actors_applied']}, цветов {report['colours_applied']}"
-                f" на {report['characters_linked']} ролей"
+                f'Author profile: actors {report['actors_applied']}, colours {report['colours_applied']} across {report['characters_linked']} roles'
             )
-            _log(db, book, "профиль автора применён: актёры {actors_applied}, цвета {colours_applied},"
-                           " связано ролей {characters_linked}".format(**report))
+            _log(db, book, 'Author profile applied: actors {actors_applied}, colours {colours_applied}, linked roles {characters_linked}'.format(**report))
         except Exception as exc:  # noqa: BLE001 — markup is done; this is a convenience
             logger.warning("author profile apply failed book=%s: %s", book.id, exc)
-            _log(db, book, f"профиль автора не применился: {exc}", "warning")
+            _log(db, book, f'Author profile could not be applied: {exc}', "warning")
     else:
-        _log(db, book, "книга не привязана к автору — каст без актёров; привяжите автора в карточке книги")
+        _log(db, book, 'No author is linked to the book; link an author in the book settings to apply their cast.')
 
     try:
         money = rebuild_v2_budget(db, book.id, updated_by="pipeline")
-        context.say(f"смета: реплик {money['lines']}, сумма {money['total_rub']} ₽")
+        context.say(f'Budget: lines {money['lines']}, total {money['total_rub']} ₽')
     except Exception as exc:  # noqa: BLE001
         logger.warning("v2 budget rebuild failed book=%s: %s", book.id, exc)
-        _log(db, book, f"смета не пересчиталась: {exc}", "warning")
+        _log(db, book, f'Budget recalculation failed: {exc}', "warning")
 
 
 ACTIVE_STATUSES = ("queued", "running")
@@ -556,9 +597,15 @@ def active_run(db, book_id: str) -> V2Run | None:
     )
 
 
-def create_queued_run(db, book_id: str) -> V2Run:
+def create_queued_run(db, book_id: str, *, language: str | None = None) -> V2Run:
     """The row the API makes before enqueueing, so the progress screen sees the run at once."""
-    run = V2Run(id=str(uuid.uuid4()), book_id=book_id, status="queued", updated_at=utcnow_naive())
+    if language is None:
+        book = db.get(ScriptBook, book_id)
+        language = getattr(book, "language", "ru")
+    if language not in ("en", "ru"):
+        raise ValueError("unsupported_book_language")
+    run = V2Run(id=str(uuid.uuid4()), book_id=book_id, status="queued", updated_at=utcnow_naive(),
+                language_snapshot=language)
     db.add(run)
     return run
 
@@ -581,6 +628,7 @@ def run_book_pipeline(
     ctx: RunContext | None = None,
     on_progress: Callable[[str], None] | None = None,
     on_heartbeat: Callable[[], None] | None = None,
+    language: str | None = None,
 ) -> V2Run:
     """Run `steps` on the book, in the order of `STEPS`, and return the finished run row.
 
@@ -595,7 +643,7 @@ def run_book_pipeline(
     functions = step_functions or STEP_FUNCTIONS
     unknown = [s for s in steps if s not in functions]
     if unknown:
-        raise ValueError(f"неизвестные шаги: {', '.join(unknown)}")
+        raise ValueError(f'Unknown steps: {', '.join(unknown)}')
     ordered = [s for s in STEPS if s in set(steps)] + [s for s in steps if s not in STEPS]
 
     context = ctx or RunContext()
@@ -605,23 +653,26 @@ def run_book_pipeline(
     context.on_heartbeat = on_heartbeat or context.on_heartbeat
 
     with factory() as db:
-        book = db.get(ScriptBook, book_id)
+        book = lock_book_profile(db, book_id)
         if book is None:
-            raise ValueError(f"книги {book_id} нет")
+            raise ValueError(f'Book {book_id} not found')
         # The book's own choice of model wins over the process-wide default: it is what
         # the hub shows and what the author was asked about.
         chosen = model_catalog.for_book(book)
         context.provider = provider or context.provider or chosen.provider or settings.default_final_provider
         context.model = model or context.model or chosen.model or settings.default_final_model
-        run = _open_run(db, book, run_id)
+        run = _open_run(db, book, run_id, language=language or context.language)
+        if run.status == "failed":
+            db.expunge(run)
+            return run
+        context.language = run.language_snapshot
         previous_status = str(book.status or "")
         book.pipeline_mode = V2_MODE
         book.status = "processing"
         # `stop_requested` is left as it is: the API clears it when it asks for a run,
         # and a flag raised while the run sat in the queue is honoured before chapter one.
         book.last_notified_status = ""  # re-arm: one notification per run
-        _log(db, book, f"старт прогона {run.id}: шаги {', '.join(ordered)}"
-                       f"{' (force)' if context.force else ''}, модель {context.provider}/{context.model}")
+        _log(db, book, f'Starting run {run.id}: steps {', '.join(ordered)}{(' (force)' if context.force else '')}, model {context.provider}/{context.model}')
         db.commit()
 
         try:
@@ -638,7 +689,7 @@ def run_book_pipeline(
                 if key == "":
                     _touch(db, run, context, step="attribute", chapters_done=0)
                     label = PROVIDER_LABELS.get(context.provider, context.provider)
-                    raise RuntimeError(f"Для разметки нужен ключ {label} — добавьте его в «Настройки → Нейросети».")
+                    raise RuntimeError(f'Attribution requires a key for {label}. Add it in Settings → AI providers.')
             for step in ordered:
                 _touch(db, run, context, step=step, chapters_done=0)
                 context.say(f"— {STEP_LABELS.get(step, step)} —")
@@ -650,16 +701,16 @@ def run_book_pipeline(
             # «останавливается» for ever after.
             book.stop_requested = "false"
             book.status = FINAL_STATUS
-            _log(db, book, "прогон завершён: книга на авторской проверке")
+            _log(db, book, 'Run complete: book ready for author review')
             _touch(db, run, context, status="done", finished_at=utcnow_naive())
-            _notify(db, book, previous_status, "Пайплайн v2 завершён: все главы размечены.")
+            _notify(db, book, previous_status, 'Book processing complete: all chapters are annotated.')
             db.commit()
         except StopRequested as exc:
             db.rollback()
             book = db.get(ScriptBook, book_id)
             book.status = "stopped"
             book.stop_requested = "false"
-            _log(db, book, f"прогон остановлен: {exc}")
+            _log(db, book, f'Run stopped: {exc}')
             _touch(db, run, context, status="stopped", error=str(exc), finished_at=utcnow_naive())
         except Exception as exc:  # noqa: BLE001 — the row must say what happened
             db.rollback()
@@ -667,7 +718,7 @@ def run_book_pipeline(
             book = db.get(ScriptBook, book_id)
             book.status = "failed"
             error = f"{type(exc).__name__}: {str(exc)[:500]}"
-            _log(db, book, f"прогон упал на шаге {run.step}: {error}", "error")
+            _log(db, book, f'Run failed at step {run.step}: {error}', "error")
             _touch(db, run, context, status="failed", error=error, finished_at=utcnow_naive())
             _notify(db, book, previous_status, f"v2 · {STEP_LABELS.get(run.step, run.step)} · {error[:160]}")
             db.commit()

@@ -611,11 +611,11 @@ def test_a_role_carries_an_age_and_the_book_remembers_the_check(db):
     db.add(Character(id="c1", book_id=BOOK, name="Гамук", age="около сорока"))
     book = db.get(ScriptBook, BOOK)
     book.cast_checked_at = utcnow_naive()
-    book.cast_checked_by = "Александр Примеродин"
+    book.cast_checked_by = "Алексей Примеров"
     db.commit()
 
     assert db.query(Character).filter(Character.name == "Гамук").one().age == "около сорока"
-    assert db.get(ScriptBook, BOOK).cast_checked_by == "Александр Примеродин"
+    assert db.get(ScriptBook, BOOK).cast_checked_by == "Алексей Примеров"
 
 
 def test_the_row_carries_what_the_director_reads(db):

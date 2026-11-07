@@ -30,10 +30,10 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="shell">
           <div className="panel error error-boundary">
-            <h2>Что-то сломалось в интерфейсе</h2>
-            <p>Страница упала с ошибкой рендера. Данные на сервере не затронуты — обычно помогает перезагрузка.</p>
+            <h2>The interface encountered an error</h2>
+            <p>This page could not render. Server data is unaffected; reloading usually helps.</p>
             <pre className="error-boundary-detail">{this.state.error.message}</pre>
-            <button onClick={this.handleReload}>Перезагрузить</button>
+            <button onClick={this.handleReload}>Reload</button>
           </div>
         </div>
       );

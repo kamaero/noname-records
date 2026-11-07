@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "./api/client";
+import { configureStudioCalendar, type StudioCalendar } from "./utils/serverTime";
+import { Button } from "./ui";
 import type { MeResponse } from "./types";
 import { AppShell, roleAccess } from "./layout/AppShell";
 import { SkeletonScreen } from "./components/Skeleton";
@@ -29,15 +31,31 @@ function Layout() {
     queryKey: ["me"],
     queryFn: () => apiGet<MeResponse>("/api/me"),
   });
+  const calendarQuery = useQuery({
+    queryKey: ["studio-calendar"],
+    enabled: Boolean(meQuery.data?.authenticated),
+    queryFn: async () => {
+      const calendar = await apiGet<StudioCalendar>("/api/studio/calendar");
+      configureStudioCalendar(calendar);
+      return calendar;
+    },
+    retry: false,
+    staleTime: Infinity,
+  });
 
   if (meQuery.isLoading) {
-    return <SkeletonScreen label="Загружаю профиль…" lines={4} />;
+    return <SkeletonScreen label="Loading profile…" lines={4} />;
   }
 
   if (meQuery.isError || !meQuery.data?.authenticated) {
     window.location.href = "/app/login";
     return null;
   }
+  if (calendarQuery.isPending) return <SkeletonScreen label="Loading studio timezone…" lines={4} />;
+  if (calendarQuery.isError) return <div className="ui-note ui-note--error" role="alert">
+    Studio timezone unavailable. Dates cannot be displayed safely.
+    <Button variant="secondary" onClick={() => calendarQuery.refetch()}>Retry</Button>
+  </div>;
 
   const me = meQuery.data;
 

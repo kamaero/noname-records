@@ -90,7 +90,7 @@ def test_voice_title(db, mp3):
     item = _item(db, file_name="voice.ogg", mime_type="audio/ogg")
     _, send_text = _sent()
     bot_demos.store_item(db, item.id, fetch=_fetch(), download=_no_download, send_text=send_text, now=NOW)
-    assert db.query(DictorDemo).one().title == "голосовое"
+    assert db.query(DictorDemo).one().title == "voice message"
 
 
 def test_yandex_folder_two_files_two_demos(db, mp3, tmp_path):
@@ -119,7 +119,7 @@ def test_download_failure_saves_link(db, mp3):
     assert bot_demos.store_item(db, item.id, fetch=_fetch(), download=download, send_text=send_text,
                                 now=NOW) == "link_saved"
     assert db.query(DictorLink).filter_by(user_id="u41", url=url).count() == 1
-    assert "Не скачалось" in sent[0][1] and url in sent[0][1]
+    assert "Could not download" in sent[0][1] and url in sent[0][1]
 
 
 def test_duplicate_reported(db, mp3):
@@ -128,7 +128,7 @@ def test_duplicate_reported(db, mp3):
     bot_demos.store_item(db, first.id, fetch=_fetch(b"same"), download=_no_download, send_text=send_text, now=NOW)
     assert bot_demos.store_item(db, second.id, fetch=_fetch(b"same"), download=_no_download, send_text=send_text,
                                 now=NOW) == "duplicate"
-    assert "уже есть" in sent[-1][1] and db.query(DictorDemo).count() == 1
+    assert "already in the profile" in sent[-1][1] and db.query(DictorDemo).count() == 1
 
 
 def test_too_big_file_is_reported(db, mp3, monkeypatch):
@@ -138,7 +138,7 @@ def test_too_big_file_is_reported(db, mp3, monkeypatch):
     sent, send_text = _sent()
     assert bot_demos.store_item(db, item.id, fetch=fetch, download=_no_download, send_text=send_text,
                                 now=NOW) == "failed"
-    assert fetch.calls == [] and "больше 20 МБ" in sent[0][1]
+    assert fetch.calls == [] and "larger than 20 MB" in sent[0][1]
 
 
 def test_unexpected_error_marks_failed(db, monkeypatch):
@@ -149,7 +149,7 @@ def test_unexpected_error_marks_failed(db, monkeypatch):
     sent, send_text = _sent()
     assert bot_demos.store_item(db, item.id, fetch=_fetch(), download=_no_download, send_text=send_text,
                                 now=NOW) == "failed"
-    assert db.get(BotDemoItem, item.id).state == "failed" and "пришлите ещё раз" in sent[0][1]
+    assert db.get(BotDemoItem, item.id).state == "failed" and "send it again" in sent[0][1]
 
 
 def test_not_queued_is_skipped(db):

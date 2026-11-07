@@ -100,9 +100,9 @@ def is_agent(request: Request) -> bool:
 def verify_telegram_payload(payload: dict) -> tuple[bool, str]:
     bot_token = settings.telegram_bot_token.strip()
     if not bot_token:
-        return False, "TELEGRAM_BOT_TOKEN не настроен"
+        return False, "TELEGRAM_BOT_TOKEN is not configured"
     if "hash" not in payload or "auth_date" not in payload or "id" not in payload:
-        return False, "Неполные данные Telegram login"
+        return False, "Incomplete Telegram login data"
 
     auth_hash = str(payload.get("hash", ""))
     data_check_arr = []
@@ -119,14 +119,14 @@ def verify_telegram_payload(payload: dict) -> tuple[bool, str]:
     secret_key = hashlib.sha256(bot_token.encode("utf-8")).digest()
     calc_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(calc_hash, auth_hash):
-        return False, "Неверная подпись Telegram login"
+        return False, "Invalid Telegram login signature"
 
     try:
         auth_date = int(str(payload.get("auth_date", "0")))
     except ValueError:
-        return False, "Некорректный auth_date"
+        return False, "Invalid auth_date"
     if abs(int(time.time()) - auth_date) > settings.telegram_auth_max_age_seconds:
-        return False, "Telegram login устарел"
+        return False, "Telegram login has expired"
 
     return True, ""
 

@@ -492,7 +492,7 @@
 }
 .v2r-pick:hover, .v2r-pick.is-active { border-color: var(--accent-line); box-shadow: 0 0 0 2px var(--accent-soft); }
 .v2r-pick.is-current { border-style: dashed; }
-.v2r-pick.is-current .v2r-role-actor::after { content: " · сейчас"; color: var(--text-faint); }
+.v2r-pick.is-current .v2r-role-actor::after { content: " · current"; color: var(--text-faint); }
 .v2r-pick--book { background: var(--surface-1); }
 .v2r-pick:disabled { opacity: 0.6; cursor: default; }
 

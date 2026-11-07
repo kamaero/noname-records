@@ -39,6 +39,7 @@ def _audit_assembly_snapshot(db, chapter_id: str, *, book_status: dict | None = 
     from app.services.chapter_delivery import (chapter_recording_status, build_chapter_session,
                                                session_fingerprint)
     from app.services.audio_integrity import chapter_has_broken_files
+    from app.services.asr_run import chapter_language
 
     chapter = db.get(ScriptChapter, str(chapter_id or "").strip())
     if chapter is None or chapter_has_broken_files(db, chapter.id):
@@ -61,24 +62,29 @@ def _audit_assembly_snapshot(db, chapter_id: str, *, book_status: dict | None = 
     if not isinstance(narrator_fingerprint, str) or not narrator_fingerprint.strip():
         return None
     return {"assembled_fingerprint": session_fingerprint(xml), "narrator_take_id": str(take.id),
-            "narrator_input_fingerprint": narrator_fingerprint}
+            "narrator_input_fingerprint": narrator_fingerprint,
+            "language": chapter_language(db, chapter.id)}
 
 
 
 def _assembly_addresses_complete(db, chapter_id: str, *, layout=None) -> bool:
     """Полнота сценария не зависит от доступности диска или настроенного NAS."""
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter_id)
     from app.services.chapter_delivery import _script_layout
     from app.services.asr_run import chapter_replicas
     from app.services.asr_audit import classify_narrator_line
     from app.services.author_profile import normalize_name
     from app.services.shared_runtime import is_narrator_name
+    from app.services.asr_run import chapter_language
+    language = chapter_language(db, chapter_id)
 
     layout = layout if layout is not None else _script_layout(db, chapter_id)
     if layout is None or not layout[3]:
         return False
     mandatory = set()
     for replica in chapter_replicas(db, chapter_id):
-        if is_narrator_name(replica["role"]) and classify_narrator_line(replica["text"]) != "required":
+        if identities.is_narrator(replica["role"], replica.get("role_ref", "")) and classify_narrator_line(replica["text"], language=language) != "required":
             continue
         mandatory.add((normalize_name(replica["role"]), str(replica["segment_id"]), int(replica["role_index"])))
     placed = set()
@@ -108,7 +114,9 @@ def _assembly_sources_available(db, chapter_id: str) -> bool:
     expected_code = book_token(derive_book_code(str(getattr(book, "title", "") or "")))
     # Старая публичная схема связывает файлы с книгами только через код; чужой
     # исходник мог попасть в раскладку из-за одинаковых названий глав.
-    if not expected_code or any(book_token(str(item.book_code or "")) != expected_code for item in files):
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter_id)
+    if any(not identities.owns_audio(item) for item in files):
         return False
     # У hard-NFS даже stat/open зависает при отвалившемся NAS. Сначала сторож,
     # затем любые обращения к исходникам; resolve_path сам диск не трогает.
@@ -241,7 +249,7 @@ def enqueue_audit(chapter_id: str, *, force: bool = False) -> str | None:
         logger.exception("Не подтверждена постановка аудита главы %s; повтор автоматически запрещён", chapter_id)
         with SessionLocal() as db:
             db.execute(update(BackgroundRun).where(BackgroundRun.id == run_id).values(
-                error_message="queue_outcome_unknown: требуется проверка владельцем"))
+                error_message="queue_outcome_unknown: owner review is required"))
             db.commit()
         return None
 

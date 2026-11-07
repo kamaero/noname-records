@@ -143,7 +143,7 @@ def _section(title: str, items: list[str]) -> list[str]:
     for item in items[:LINES_SHOWN]:
         out.append(f"• {item}")
     if len(items) > LINES_SHOWN:
-        out.append(f"…и ещё {len(items) - LINES_SHOWN}")
+        out.append(f'…and {len(items) - LINES_SHOWN}')
     return out
 
 
@@ -171,24 +171,24 @@ def render_chapter_report(payload: dict) -> str:
     link = str(payload.get("link") or "").strip()
 
     header = f"{book_title} · {chapter}".strip(" ·")
-    composition = f"Роли {recorded_roles}/{roles} · дублей {takes}"
+    composition = f'Roles {recorded_roles}/{roles} · takes {takes}'
 
     if not missing and not weak and not markup and not failed:
-        return f"📖 {header}\n{composition} · всё на месте"
+        return f'📖 {header}\n{composition} · all lines present'
 
     out = [f"📖 {header}", composition]
-    out += _section("Не дочитано:", [
+    out += _section('Not fully recorded:', [
         f"{item.get('role')}: {_quote(line)}"
         for item in missing for line in (item.get("lines") or [])
     ])
-    out += _section("Нашлось плохо:", [
+    out += _section('Poor matches:', [
         f"{item.get('role')}: {_quote(item.get('text'))}" for item in weak
     ])
-    out += _section("Похоже на ошибку разметки:", [
+    out += _section('Possible attribution errors:', [
         f"{item.get('role')}: {_quote(item.get('text'))}" for item in markup
     ])
-    out += _section("Не распозналось:", [
-        f"{item.get('role')}: {_quote(item.get('error')) or 'без сообщения об ошибке'}" for item in failed
+    out += _section('Recognition failed:', [
+        f'{item.get('role')}: {_quote(item.get('error')) or 'no error message'}' for item in failed
     ])
     if link:
         out += ["", link]

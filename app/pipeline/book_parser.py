@@ -21,9 +21,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 AUTHOR_TOKEN_MAP = {
-    "primerodiny": "Примеродины",
-    "primerodin": "Примеродин",
-    "primerodina": "Примеродина",
     "стругацкие": "Стругацкие",
     "strugatskie": "Стругацкие",
     "strugackie": "Стругацкие",
@@ -197,7 +194,7 @@ def _strip_service_tokens(parts: list[str]) -> list[str]:
 
 
 def parse_filename_title(filename: str) -> tuple[str, str]:
-    """Разобрать имя файла на автора и название: («Примеродины», «Сад великанов 2»).
+    """Разобрать имя файла на отдельные имя автора и название книги.
 
     Автора отдаём отдельно, а не приклеиваем к названию: из названия выводится код
     книги для имён файлов актёров (`app.services.audio_uploads.derive_book_code`),
@@ -225,7 +222,7 @@ def parse_filename_title(filename: str) -> tuple[str, str]:
     if body and volume:
         return "", f"{body} Том {volume}"
     # От имени файла осталось одно лишь имя автора: это и есть всё название, какое
-    # есть, — иначе получилось бы «Примеродины - "Примеродины"».
+    # есть, — иначе имя автора повторилось бы по обе стороны разделителя.
     return "", (_normalize_filename_words(parts) or stem)
 
 
