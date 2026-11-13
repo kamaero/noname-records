@@ -176,6 +176,8 @@ def _build_cast(db, book_id: str, characters: list[Character], line_counts: dict
     bg_map, text_map, weight_map, style_map = build_character_style_maps(characters, extra_names=[NARRATOR, UNSURE])
     actors = {str(c.name or "").strip(): str(c.actor_name or "").strip() for c in characters if str(c.name or "").strip()}
     actors[NARRATOR] = _narrator_actor(db, book_id, characters)
+    from app.services.chapter_titles import TITLE_ROLE, title_actor
+    actors[TITLE_ROLE] = title_actor(db.get(ScriptBook, book_id))
     ids = {str(c.name or "").strip(): str(c.id or "") for c in characters if str(c.name or "").strip()}
     # what the character is and how the author wants him to sound: the dictor reads
     # this where he reads the lines, not on a screen he never opens
@@ -291,6 +293,9 @@ def build_chapter_payload(db, chapter_id: str, *, can_edit: bool = False, can_vo
     segments = load_chapter_segments(db, chapter_id=chapter_id)
     segment_ids = [segment.id for segment in segments]
     attributions = effective_attributions(db, segment_ids)
+    if not can_edit:
+        from app.services.chapter_titles import recording_rows
+        attributions = recording_rows(db, segments, attributions)
     stress = effective_stress(db, segment_ids)
 
     line_counts: dict[str, int] = collections.Counter()

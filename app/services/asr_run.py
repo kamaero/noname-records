@@ -55,6 +55,8 @@ def chapter_replicas(db, chapter_id: str) -> list[dict]:
     if not segments:
         return []
     rows_by_segment = effective_attributions(db, [segment.id for segment in segments])
+    from app.services.chapter_titles import recording_rows
+    rows_by_segment = recording_rows(db, segments, rows_by_segment)
 
     from app.services.role_identity import chapter_roles
     return _replicas_from_segments(segments, rows_by_segment, identities=chapter_roles(db, chapter_id))
@@ -108,11 +110,14 @@ def _role_pieces_in_segments(db, chapter_id: str, role: str) -> "tuple[bool, lis
     wanted = normalize_name(str(role or "").strip())
     if not wanted:
         return False, []
-    narrator = identities.is_narrator(role)
+    from app.services.chapter_titles import TITLE_ROLE
+    narrator = identities.is_narrator(role) or role == TITLE_ROLE
     segments = load_chapter_segments(db, chapter_id=str(chapter_id or "").strip())
     if not segments:
         return narrator, []
     rows_by_segment = effective_attributions(db, [segment.id for segment in segments])
+    from app.services.chapter_titles import recording_rows
+    rows_by_segment = recording_rows(db, segments, rows_by_segment)
 
     pieces: list[tuple[str, str]] = []
     for segment in segments:
@@ -457,7 +462,12 @@ def run_asr_for_take(db, audio_file_id: str, *, transcribe=None, notify: bool = 
         return job
 
     expected = expected_lines(db, chapter.id, job.expected_role, language=language)
-    alignment = align_transcript(expected, heard.get("segments") or [], language=language)
+    from app.services.chapter_titles import TITLE_ROLE
+    if job.expected_role == TITLE_ROLE:
+        from app.services.chapter_title_intake import alignment as title_alignment
+        alignment = title_alignment(db, job.chapter_id, heard, language=language)
+    else:
+        alignment = align_transcript(expected, heard.get("segments") or [], language=language)
     alignment.update(language=language, normalizer_version=ALIGNMENT_VERSION)
     job.status = "done"
     job.transcript_text = str(heard.get("text") or "")

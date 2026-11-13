@@ -56,7 +56,12 @@ def realign_job(db, job_id: str, *, write: bool = True) -> dict | None:
     language = asr_language(before.get("language") or job.language)
     from app.services.role_identity import job_role
     expected = expected_lines(db, str(job.chapter_id or ""), job_role(db, job), language=language)
-    alignment = align_transcript(expected, heard.get("segments") or [], language=language)
+    from app.services.chapter_titles import TITLE_ROLE
+    if job.expected_role == TITLE_ROLE:
+        from app.services.chapter_title_intake import alignment as title_alignment
+        alignment = title_alignment(db, job.chapter_id, heard, language=language)
+    else:
+        alignment = align_transcript(expected, heard.get("segments") or [], language=language)
     alignment.update(language=language, normalizer_version=ALIGNMENT_VERSION)
 
     report = {

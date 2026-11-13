@@ -65,6 +65,14 @@ The installer configures Docker and HTTPS. Sign in at your domain. The optional 
 4. Create actor accounts, publish chapters and collect recordings.
 5. Review ASR results and download the chapter project for mixing.
 
+## Separate chapter title voice
+
+An administrator can assign a separate actor to a book's headings. Run `docker compose exec web python scripts/configure_chapter_titles.py --book-id BOOK_ID --actor "Full Actor Name"` to preview the change, then repeat with `--apply`. Back up the database before applying. Existing paid transcripts are realigned locally without sending actor notices or paying for transcription again.
+
+The assigned actor sends `BookCode_Главы_Actor.wav` or `.flac` to the Telegram bot. The book code must be unique; the actor must have an active linked account. An unambiguous surname or the full actor name is accepted. Administrators and agents can send the assigned actor's recording on their behalf. There is no website upload form for this role.
+
+All heading segments form each chapter title. Recognized repeats are kept, including a return to an earlier chapter. Audition exports put complete title takes consecutively on the separate `Названия глав` track before the chapter body. Missing or ambiguous titles stay visible for studio review. Source recordings and paid ASR checkpoints are retained in `data/spool/bot_takes`; include this directory in backups. Resending the same file resumes a failed or incomplete upload with its existing source and paid cache when the actor, headings and recognition settings are unchanged. A request with an unknown payment outcome requires manual review before a paid retry.
+
 ## Maintenance
 
 Run commands from the installation directory (`~/noname-records` on Mac/Linux or `$HOME\noname-records` in Windows PowerShell):

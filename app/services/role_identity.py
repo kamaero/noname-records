@@ -14,6 +14,7 @@ from app.services.shared_runtime import NARRATOR_DISPLAY_NAME, is_narrator_name
 LEGACY = "legacy"
 TYPED = "typed_v1"
 NARRATOR_REF = "narrator:system"
+TITLE_REF = "chapter_titles:system"
 CHARACTER_PREFIX = "character:"
 
 
@@ -56,6 +57,9 @@ class BookRoles:
         return labels
 
     def ref(self, name: str) -> str:
+        from app.services.chapter_titles import TITLE_ROLE, title_actor
+        if name == TITLE_ROLE and title_actor(self._book):
+            return TITLE_REF
         if not self.typed:
             return ""
         if self.is_narrator(name):
@@ -66,11 +70,14 @@ class BookRoles:
         return CHARACTER_PREFIX + next(iter(ids)) if ids else ""
 
     def known_ref(self, ref: str) -> bool:
-        return ref == NARRATOR_REF or (ref.startswith(CHARACTER_PREFIX) and ref[len(CHARACTER_PREFIX):] in self.by_id)
+        return ref in {NARRATOR_REF, TITLE_REF} or (ref.startswith(CHARACTER_PREFIX) and ref[len(CHARACTER_PREFIX):] in self.by_id)
 
     def name(self, role_ref: str, fallback: str) -> str:
         if not self.typed or not role_ref:
             return str(fallback or "").strip()
+        if role_ref == TITLE_REF:
+            from app.services.chapter_titles import TITLE_ROLE
+            return TITLE_ROLE
         if role_ref == NARRATOR_REF:
             return NARRATOR_DISPLAY_NAME
         if role_ref.startswith(CHARACTER_PREFIX):
@@ -122,6 +129,9 @@ class BookRoles:
         return str(audio.role or "") == str(character.name or "")
 
     def kind(self, name: str, role_ref: str = "") -> str:
+        from app.services.chapter_titles import TITLE_ROLE
+        if name == TITLE_ROLE or role_ref == TITLE_REF:
+            return "chapter_titles"
         if not str(name or "").strip() or str(name).upper().startswith("UNSURE"):
             return "unassigned"
         return "system_narrator" if self.is_narrator(name, role_ref) else "character"

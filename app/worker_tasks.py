@@ -235,13 +235,19 @@ def perform_bot_take_task(upload_id: str, run_id: str = "", language: str | None
         _start_background_run(session_factory, run_id)
         with session_factory() as db:
             row = db.get(BotUpload, str(upload_id or ""))
+            title_service = {}
+            if row is not None and row.purpose == "titles":
+                from app.services.chapter_title_intake import process
+                import json
+                title_meta = json.loads(row.result_json or "{}")
+                title_service = {key: title_meta[key] for key in ("provider", "model") if title_meta.get(key)}
             language = snapshot_language(db, row, language=language) if row is not None else language
             phrases = asr_run.book_phrases(db, row.book_id) if row is not None else []
             # Распознавание — тот же сервис и те же подсказки, что у обычной сверки. Повтор —
             # только на «сервис занят» (`_transcribe_retrying`): таймаут считается «возможно
             # оплачено», и второй раз за него не платим.
             transcribe_part = lambda path: asr_run._transcribe_retrying(  # noqa: E731
-                lambda: asr_run._transcribe_with_service(path, phrases=phrases, language=language))
+                lambda: asr_run._transcribe_with_service(path, phrases=phrases, language=language, **title_service))
             # Каталог постоянный для строки учёта: ручной повтор найдёт в нём оплаченные части.
             workdir = takes_workdir(str(upload_id))
             result = process(

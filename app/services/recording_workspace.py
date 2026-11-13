@@ -159,13 +159,16 @@ def build_recording_workspace_context(
     recent_files = (db.query(AudioFile).filter(AudioFile.kind == TAKE)
                     .order_by(AudioFile.uploaded_at.desc()).limit(80).all())
     role_line_counts = chapter_role_counts(db, selected_chapter.id) if selected_chapter is not None else {}
-    cast_names = sorted(role_line_counts, key=lambda name: (-role_line_counts[name], name.lower()))
+    from app.services.chapter_titles import TITLE_ROLE
+    upload_line_counts = {role: count for role, count in role_line_counts.items() if role != TITLE_ROLE}
+    cast_names = sorted(upload_line_counts, key=lambda name: (-role_line_counts[name], name.lower()))
     my_roles = resolve_recording_my_roles(
         db,
         selected_chapter.book_id if selected_chapter else "",
         user_name or default_actor_name,
-        role_line_counts,
+        upload_line_counts,
     )
+    my_roles = [role for role in my_roles if role["name"] != TITLE_ROLE]
     characters = db.query(Character).filter(Character.book_id == selected_chapter.book_id).all() if selected_chapter else []
     cast_color_map, cast_text_color_map, _weights, _styles = build_character_style_maps(characters, cast_names)
     return {

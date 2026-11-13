@@ -129,6 +129,11 @@ def receive(db, *, tid: str, chat_id, user, info: dict, now: datetime) -> list[O
     """Ответ на вложение; `None` — это не дубль, пусть отвечает поток проб без изменений."""
     from app.services.studio_settings import active_book
 
+    from app.services.chapter_title_intake import receive as receive_titles
+    title_result = receive_titles(db, tid=tid, chat_id=chat_id, user=user, info=info, now=now)
+    if title_result is not None:
+        return title_result
+
     if info.get("bad"):
         # Фото или стикер от человека не должны слышать «пришлите аудио» (ревью C2): решает
         # поток проб, а без приглашения — обычный диалог.

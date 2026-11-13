@@ -153,7 +153,9 @@ def chapter_role_counts(db, chapter_id: str) -> dict[str, int]:
     if not segments:
         return {}
     counts: collections.Counter = collections.Counter()
-    for rows in effective_attributions(db, [segment.id for segment in segments]).values():
+    from app.services.chapter_titles import recording_rows
+    projected = recording_rows(db, segments, effective_attributions(db, [segment.id for segment in segments]))
+    for rows in projected.values():
         # a replica is a paragraph the role speaks in, however the author's words tear it
         speakers = {identities.name(getattr(row, "role_ref", ""), row.speaker) for row in rows}
         for name in speakers:
@@ -291,7 +293,11 @@ def _speaker_tally(db, book_id: str, characters: list[Character],
     chapters: dict[str, set[int]] = collections.defaultdict(set)
     # a replica is a paragraph the role speaks in: «— А, — сказал Пупип, — Б» is one
     counted: set[tuple[str, str]] = set()
+    from app.services.chapter_titles import title_enabled
+    headings = {row[0] for row in db.query(V2Segment.id).filter(V2Segment.book_id == book_id, V2Segment.kind == "heading")} if title_enabled(db, book_id) else set()
     for segment_id, _start, _end, speaker, _source in effective_book_attributions(db, book_id):
+        if segment_id in headings:
+            continue
         name = str(speaker or "").strip()
         if name not in resolved:
             resolved[name] = resolve(name)
@@ -413,4 +419,15 @@ def book_cast(db, book_id: str, *, only_speaking: bool = False, actor_name: str 
         if only_speaking and not lines.get(str(row.id), 0):
             continue
         rows.append(entry(row, str(row.id), is_narrator=False))
+    from app.services.chapter_titles import TITLE_ROLE, chapter_targets, title_actor
+    from app.models import ScriptBook
+    actor = title_actor(db.get(ScriptBook, book_id))
+    if actor:
+        from types import SimpleNamespace
+        targets = chapter_targets(db, book_id)
+        title = entry(SimpleNamespace(name=TITLE_ROLE, actor_name=actor, id="", char_map_id=""), TITLE_ROLE, is_narrator=False)
+        title.update(role_kind="chapter_titles", lines_count=sum(len(t["lines"]) for t in targets),
+                     appears_in_chapters=[t["chapter_index"] for t in targets], upload_via="bot")
+        if not only_speaking or title["lines_count"]:
+            rows.append(title)
     return rows

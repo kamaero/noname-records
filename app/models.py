@@ -171,6 +171,7 @@ class ScriptBook(Base):
     validation_profile: Mapped[str] = mapped_column(String(40), nullable=False, default="operator_only")
     genre_guidelines: Mapped[str] = mapped_column(String, nullable=False, default="")
     book_annotation: Mapped[str] = mapped_column(String, nullable=False, default="")
+    chapter_title_actor_name: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     narrative_owner_name: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     narrative_owner_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     narrative_owner_reason: Mapped[str] = mapped_column(String(255), nullable=False, default="")
