@@ -270,6 +270,10 @@
 
 .asr-nas-toggle { text-align: left; white-space: normal; padding: 2px 0; }
 .asr-nas-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Общие разряды для всей книги не дают дробям и процентам сдвигаться между строками. */
+.asr-nas-values { display: inline-grid; align-items: center; vertical-align: middle; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.asr-nas-values > span { text-align: right; }
+.asr-nas-values > .asr-nas-divider { text-align: center; }
 .asr-nas-details { padding: 10px 14px 10px 52px; background: var(--surface-2); border-top: 1px solid var(--border); font-size: 12px; }
 .asr-nas-details section + section { margin-top: 10px; }
 .asr-nas-details ul { list-style: none; padding: 0; margin: 4px 0 0; }
