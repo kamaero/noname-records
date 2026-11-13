@@ -29,6 +29,7 @@ from app.services import audio_storage, nas_health
 from app.services.audio_integrity import MISMATCH, MISSING, OK
 from app.services.audio_mirror import MISMATCH as MIRROR_MISMATCH
 from app.services.audio_naming import book_token, chapter_token
+from app.services.chapter_storage_status import assembly_status, nas_delivery
 from app.services.audio_uploads import TAKE, derive_book_code
 from app.services.audition_session import SessionClip, SessionMarker, SessionTrack, build_session_xml
 from app.services.author_profile import normalize_name
@@ -104,6 +105,8 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
     recorded: dict[str, set[str]] = {}
     audio_of_chapter: dict[str, list[str]] = {}
     role_of_audio: dict[str, str] = {}
+    delivery_files: dict[str, list[dict]] = {}
+    nas_configured = bool(audio_storage.nas_root())
     ok_files: dict[str, int] = {}
     bad_files: dict[str, int] = {}
     all_files: dict[str, int] = {}
@@ -122,8 +125,9 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
     rows_of_files = db.query(
         AudioFile.id, AudioFile.chapter, AudioFile.role, AudioFile.role_ref, AudioFile.role_book_id, AudioFile.book_code, AudioFile.verify_state, AudioFile.md5,
         AudioFile.mirrored_at, AudioFile.mirror_state, AudioFile.uploaded_at,
+        AudioFile.canonical_filename, AudioFile.original_filename,
     ).filter(AudioFile.kind == TAKE).all()
-    for audio_id, label, role, role_ref, role_book_id, book_code, verify_state, md5, mirrored_at, mirror_state, uploaded_at in rows_of_files:
+    for audio_id, label, role, role_ref, role_book_id, book_code, verify_state, md5, mirrored_at, mirror_state, uploaded_at, canonical_filename, original_filename in rows_of_files:
         if not identities.owns_audio(SimpleNamespace(role_book_id=role_book_id, book_code=book_code)):
             continue
         if identities.typed and not identities.known_ref(role_ref):
@@ -132,6 +136,13 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
         chapter = labels.get(str(label or "").strip())
         if chapter is None:
             continue
+        if role in counts.get(chapter.id, {}):
+            delivery_files.setdefault(chapter.id, []).append({
+                "audio_id": audio_id, "role": role,
+                "filename": canonical_filename or original_filename,
+                "mirror_state": mirror_state, "mirrored_at": mirrored_at,
+                "verify_state": verify_state,
+            })
         recorded.setdefault(chapter.id, set()).add(str(role or "").strip())
         audio_of_chapter.setdefault(chapter.id, []).append(str(audio_id))
         role_of_audio[str(audio_id)] = str(role or "").strip()
@@ -226,6 +237,8 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
             "integrity_files": all_files.get(chapter.id, 0),
             # Зеркало: сколько копий доехало и сколько ждут дольше суток —
             # второе означает, что канал лежит давно, а не пять минут.
+            "nas_delivery": nas_delivery(delivery_files.get(chapter.id, []), configured=nas_configured),
+            "assembly": assembly_status(chapter, configured=nas_configured),
             "mirrored_files": mirrored.get(chapter.id, 0),
             "unmirrored_files": unmirrored.get(chapter.id, 0),
             "stale_unmirrored": stale.get(chapter.id, 0),
