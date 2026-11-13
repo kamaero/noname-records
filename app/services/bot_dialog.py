@@ -464,6 +464,12 @@ def handle_update(db, update: dict, *, now: datetime) -> list[Outgoing]:
         return session_template.receive(chat_id, template_doc)
 
     attached = bot_uploads.incoming_file(message)
+    if attached is not None and kind != "none":
+        from app.services.chapter_title_intake import receive as receive_titles
+        titles = receive_titles(db, tid=tid, chat_id=chat_id, user=user, info=attached, now=now)
+        if titles is not None:
+            db.flush()
+            return titles
     if attached is not None and kind != "none" and _can_upload_for_others(roles):
         # Администратор и агент грузят чужие дубли: актёр уже известен из каста, спрашивать
         # подопечного заново нельзя — иначе запись утверждённой роли становится пробой.

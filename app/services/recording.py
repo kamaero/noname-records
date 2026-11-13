@@ -33,6 +33,11 @@ def resolve_recording_my_roles(db, book_id: str, actor_name: str, role_line_coun
                     "lines": int(role_line_counts.get(ch.name.strip(), 0)),
                 }
             )
+    from app.models import ScriptBook
+    from app.services.chapter_titles import TITLE_ROLE, title_actor
+    assigned = title_actor(db.get(ScriptBook, book_id))
+    if assigned and actor_name and names_match(actor_name, assigned):
+        matched.append({"name": TITLE_ROLE, "actor_name": assigned, "lines": int(role_line_counts.get(TITLE_ROLE, 0))})
     matched.sort(key=lambda item: (-int(item["lines"]), str(item["name"])))
     return matched
 

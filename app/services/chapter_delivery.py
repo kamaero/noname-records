@@ -63,7 +63,17 @@ def book_role_counts_by_chapter(db, book_id: str, *, identities=None) -> dict[st
     counts: dict[str, dict[str, int]] = {}
     # реплика — абзац, где роль говорит, как в `chapter_role_counts`
     counted: set[tuple[str, str]] = set()
-    for segment_id, _start, _end, speaker, _source in effective_book_attributions(db, book_id, identities=identities):
+    from app.services.chapter_titles import title_enabled, recording_rows
+    if title_enabled(db, book_id):
+        from app.v2.reader import effective_attributions
+        segments = db.query(V2Segment).filter(V2Segment.book_id == book_id).all()
+        projected = recording_rows(db, segments, effective_attributions(db, [segment.id for segment in segments]))
+        source_rows = [(segment.id, row.span_start, row.span_end,
+                        identities.name(getattr(row, "role_ref", ""), row.speaker) if identities else row.speaker, row.source)
+                       for segment in segments for row in projected.get(segment.id, [])]
+    else:
+        source_rows = effective_book_attributions(db, book_id, identities=identities)
+    for segment_id, _start, _end, speaker, _source in source_rows:
         name = str(speaker or "").strip()
         if not name or is_placeholder_name(name):
             continue
@@ -84,6 +94,7 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
     поля нулевые.
     """
     from app.services.role_identity import book_roles
+    from app.services.chapter_titles import TITLE_ROLE
     identities = book_roles(db, book_id)
     book = db.get(ScriptBook, str(book_id or "").strip())
     if book is None:
@@ -210,7 +221,10 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
             "estimated_duration_seconds": max(1, round(words_by_chapter[chapter.id] * 60 / 150)) if words_by_chapter.get(chapter.id) else None,
             "total_roles": len(roles),
             "recorded_roles": done,
-            "ready": bool(roles) and done == len(roles),
+            "ready": bool(roles) and done == len(roles) and (TITLE_ROLE not in roles or bool(best_of_role.get(TITLE_ROLE, {}).get("coverage", 0) >= 1)),
+            "title_missing": bool(roles.get(TITLE_ROLE, 0) and best_of_role.get(TITLE_ROLE, {}).get("coverage", 0) < 1),
+            "title_lines": int(roles.get(TITLE_ROLE, 0)),
+            "title_coverage": best_of_role.get(TITLE_ROLE, {}).get("coverage") if TITLE_ROLE in roles else None,
             "delivered_at": iso_utc(chapter.delivered_at) or "",
             "released_at": iso_utc(chapter.released_at) or "",
             # None — не считали. Ноль означал бы «ничего не произнесено».
@@ -457,6 +471,8 @@ def chapter_recording_status(db, chapter_id: str) -> dict | None:
         str(name or "").strip(): str(actor or "").strip()
         for name, actor in db.query(Character.name, Character.actor_name).filter(Character.book_id == chapter.book_id).all()
     }
+    from app.services.chapter_titles import TITLE_ROLE, title_actor
+    actors[TITLE_ROLE] = title_actor(db.get(ScriptBook, chapter.book_id))
     takes = (
         db.query(AudioFile)
         .filter(AudioFile.kind == TAKE, AudioFile.chapter == label)
@@ -531,7 +547,8 @@ def chapter_recording_status(db, chapter_id: str) -> dict | None:
         "total_roles": len(rows),
         "recorded_roles": recorded,
         # пустая глава не «готова»: готовить в ней нечего
-        "ready": bool(rows) and recorded == len(rows),
+        "ready": bool(rows) and recorded == len(rows) and all(row["asr_coverage"] == 1 for row in rows if row["role"] == TITLE_ROLE),
+        "title_missing": any(row["asr_coverage"] != 1 for row in rows if row["role"] == TITLE_ROLE),
         "duration_seconds": round(sum(row["duration_seconds"] for row in rows), 3),
         "size_bytes": sum(row["size_bytes"] for row in rows),
     }
@@ -1258,8 +1275,52 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
     # дорожка от подходов первой, а не только не раньше общих часов — иначе
     # хвост подходов первой реплики наедет на клип второй.
     track_free_at: dict[str, float] = {}
+    from app.services.chapter_titles import TITLE_ROLE
+    leading_titles = []
+    for row in replicas:
+        if row.get("role") != TITLE_ROLE:
+            break
+        leading_titles.append(row)
+    leading_ids = {row["segment_id"] for row in leading_titles}
     for replica in replicas:
         role = str(replica.get("role") or "")
+        if role == TITLE_ROLE:
+            if replica.get("segment_id") in leading_ids and replica is not leading_titles[0]:
+                continue
+            group = leading_titles if replica.get("segment_id") in leading_ids else [replica]
+            offset = max(clock, track_free_at.get(role, 0.0))
+            for item in by_role.get(role, []):
+                lines = heard.get(item.id) or []
+                groups = {}
+                for member in group:
+                    index = int(member.get("role_index") or 0)
+                    if index >= len(lines) or not lines[index].get("matched"):
+                        continue
+                    for take_number, take in enumerate(lines[index].get("takes") or _takes_of(lines[index])):
+                        key = take.get("title_group", take_number)
+                        groups.setdefault(key, []).append((member, take))
+                for number, members in enumerate(groups.values(), 1):
+                    if len({entry[0]["segment_id"] for entry in members}) != len(group):
+                        continue
+                    whole = {"start": min(entry[1]["start"] for entry in members),
+                             "end": max(entry[1]["end"] for entry in members)}
+                    source_in, source_out = _with_breath(whole, speech.get(str(item.id), []), float(item.duration_seconds or 0))
+                    if source_in < 0 or source_out <= source_in or source_out > float(item.duration_seconds or 0):
+                        continue
+                    placed.append((role, SessionClip(
+                        name=_clip_name(" ".join(row["text"] for row in group), number, len(groups)),
+                        path=audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local")),
+                        start=offset, source_in=source_in, source_out=source_out,
+                        relative=str(item.canonical_filename or "") if relative else "",
+                        audio_file_id=str(item.id), segment_id=str(replica.get("segment_id") or ""),
+                        role_index=int(replica.get("role_index") or 0), role=role)))
+                    if starts is not None:
+                        for member, take in members:
+                            starts.setdefault(member["segment_id"], offset + take["start"] - source_in)
+                    offset += source_out - source_in
+            if offset > clock:
+                clock = track_free_at[role] = offset + GAP_SECONDS
+            continue
         candidates = []
         for position, item in enumerate(by_role.get(role, [])):
             lines = heard.get(item.id) or []

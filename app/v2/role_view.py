@@ -180,19 +180,24 @@ def role_script(
         "chapters": [],
         "in_chapters": [],
     }
-    spellings = _spoken_by(db, book.id, role)
+    from app.services.chapter_titles import TITLE_ROLE, title_enabled
+    separate_titles = title_enabled(db, book.id)
+    title_role = separate_titles and role == TITLE_ROLE
+    spellings = [TITLE_ROLE] if title_role else _spoken_by(db, book.id, role)
     if not spellings:
         return empty
-
-    # Where the role speaks: one row per span, ordered the way the book reads.
     latest = _latest_versions_for_book(V2Attribution, book.id)
-    hits = db.execute(
+    hits_query = (
         select(V2Segment.chapter_id, V2Segment.ordinal)
         .join(V2Attribution, V2Attribution.segment_id == V2Segment.id)
         .join(latest, and_(latest.c.segment_id == V2Attribution.segment_id, latest.c.v == V2Attribution.version))
-        .where(V2Segment.book_id == book.id, V2Attribution.speaker.in_(spellings))
-        .distinct()
-    ).all()
+        .where(V2Segment.book_id == book.id, V2Attribution.speaker.in_(spellings)).distinct()
+    )
+    if title_role:
+        hits_query = select(V2Segment.chapter_id, V2Segment.ordinal).where(V2Segment.book_id == book.id, V2Segment.kind == "heading")
+    elif separate_titles:
+        hits_query = hits_query.where(V2Segment.kind != "heading")
+    hits = db.execute(hits_query).all()
     lines = sorted(
         ((str(chapter_id), int(ordinal or 0)) for chapter_id, ordinal in hits if chapter_id in order),
         key=lambda item: (order[item[0]], item[1]),
@@ -242,6 +247,8 @@ def role_script(
     )
     segment_ids = [segment.id for segment in picked]
     attributions = effective_attributions(db, segment_ids)
+    from app.services.chapter_titles import recording_rows
+    attributions = recording_rows(db, picked, attributions)
     stress = effective_stress(db, segment_ids)
     from app.services.role_identity import book_roles
     identities = book_roles(db, book_id)
@@ -328,17 +335,24 @@ def role_traps(
         "fresh": bool(fresh),
         "chapters": [],
     }
-    spellings = _spoken_by(db, book.id, role)
+    from app.services.chapter_titles import TITLE_ROLE, title_enabled
+    separate_titles = title_enabled(db, book.id)
+    title_role = separate_titles and role == TITLE_ROLE
+    spellings = [TITLE_ROLE] if title_role else _spoken_by(db, book.id, role)
     if not spellings:
         return result
-
     latest = _latest_versions_for_book(V2Attribution, book.id)
     spans: dict[str, list[tuple[int, int]]] = collections.defaultdict(list)
-    for segment_id, start, end in db.execute(
+    spans_query = (
         select(V2Attribution.segment_id, V2Attribution.span_start, V2Attribution.span_end)
         .join(latest, and_(latest.c.segment_id == V2Attribution.segment_id, latest.c.v == V2Attribution.version))
         .where(V2Attribution.speaker.in_(spellings))
-    ):
+    )
+    if title_role:
+        spans_query = select(V2Segment.id, 0, func.length(V2Segment.text)).where(V2Segment.book_id == book.id, V2Segment.kind == "heading")
+    elif separate_titles:
+        spans_query = spans_query.join(V2Segment, V2Segment.id == V2Attribution.segment_id).where(V2Segment.kind != "heading")
+    for segment_id, start, end in db.execute(spans_query):
         spans[str(segment_id)].append((int(start or 0), int(end or 0)))
     if not spans:
         return result

@@ -142,6 +142,10 @@ def chapter_is_ready(db, chapter_id: str) -> bool:
     if not roles:
         return False
     recorded = {str(item.role or "").strip() for item in chapter_files(db, chapter_id)}
+    from app.services.chapter_titles import TITLE_ROLE
+    if TITLE_ROLE in roles:
+        from app.services.chapter_delivery import chapter_recording_status
+        return bool(chapter_recording_status(db, chapter.id)["ready"])
     return roles.issubset(recorded)
 
 
