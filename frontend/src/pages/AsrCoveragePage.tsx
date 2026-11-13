@@ -246,6 +246,7 @@ export function AsrCoveragePage() {
   const chapters = coverage.data?.chapters ?? [];
   const rows = onlyStarted ? chapters.filter((chapter) => chapter.recorded_roles > 0) : chapters;
   const canDownload = coverage.data?.can_download ?? false;
+  const nasDigits = Math.max(2, ...chapters.map((chapter) => String(chapter.nas_delivery?.total_files ?? 0).length));
 
   /** Эмбиент в ряду действий главы: кнопка, ход или «✓». Поля считаются только
    * редактору — у диктора все нули, и ничего не рисуется. */
@@ -439,7 +440,10 @@ export function AsrCoveragePage() {
               return next;
             }))}
           >
-            {delivery.percent == null ? "—" : `${delivery.delivered_files}/${delivery.total_files} · ${delivery.percent}%`}
+            {delivery.percent == null ? "—" : <span className="asr-nas-values" style={{ gridTemplateColumns: `${nasDigits}ch 1ch ${nasDigits}ch 2ch 4ch` }}>
+              <span>{delivery.delivered_files}</span><span className="asr-nas-divider" aria-hidden="true">/</span><span>{delivery.total_files}</span>
+              <span className="asr-nas-divider" aria-hidden="true">·</span><span>{delivery.percent}%</span>
+            </span>}
             {errors ? <span className="asr-broken"> · {errors} error{errors === 1 ? "" : "s"}</span> : null}
           </button>;
         },
@@ -499,7 +503,7 @@ export function AsrCoveragePage() {
         ),
       },
     ],
-    [canDownload, isAdmin, release, recognise, auditChapter, ambient, stopAmbient, openChapters, openNasChapters],
+    [canDownload, isAdmin, release, recognise, auditChapter, ambient, stopAmbient, openChapters, openNasChapters, nasDigits],
   );
 
   const toggleChapter = useCallback((row: BookRecordingChapter) => {
