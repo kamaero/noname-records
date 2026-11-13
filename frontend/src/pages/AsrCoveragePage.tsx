@@ -18,6 +18,7 @@ import { useToast } from "../components/ToastProvider";
 import { Button, DataTable, EmptyState, LinkButton, PageHeader, type Column } from "../ui";
 import { Icon } from "../components/Icon";
 import { ChapterFilesRow } from "../components/asr/ChapterFilesRow";
+import { NasDeliveryDetails } from "../components/asr/NasDeliveryDetails";
 import type { BookRecordingChapter, BookRecordingResponse, BooksResponse, MeResponse } from "../types";
 import { plural } from "../viewModels/bookHub";
 import { ambientPlan, describeAmbientError, startChapterAmbient, stopChapterAmbient } from "../v2/soundApi";
@@ -59,6 +60,7 @@ export function AsrCoveragePage() {
   /* Раскрытых глав может быть несколько разом: сравнить, что записано в двух соседних,
      — обычное дело, и закрывать предыдущую за человека было бы самоуправством. */
   const [openChapters, setOpenChapters] = useState<Set<string>>(() => new Set());
+  const [openNasChapters, setOpenNasChapters] = useState<Set<string>>(() => new Set());
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { pushToast } = useToast();
@@ -418,15 +420,42 @@ export function AsrCoveragePage() {
       },
       {
         key: "backup",
-        header: "Backup",
+        header: "On NAS",
         className: "asr-col-backup",
         render: (row) => {
-          const total = row.mirrored_files + row.unmirrored_files;
-          if (!total) return <span className="cast-muted">—</span>;
-          if (row.mirror_broken || row.stale_unmirrored) return <span className="asr-broken" title={row.mirror_broken ? "NAS copy failed verification; the server file is intact" : "Copy pending for over a day; check the NAS"}>Error</span>;
-          if (row.unmirrored_files) return <span className="cast-muted" title={`Copied to NAS: ${row.mirrored_files} of ${total} files`}>Copying</span>;
-          return <span title={`All ${total} chapter files verified on NAS`}>Verified ✓</span>;
+          const delivery = row.nas_delivery;
+          const errors = delivery.files.filter((file) => file.state === "error").length;
+          return <button
+            type="button"
+            className="asr-run asr-nas-toggle num"
+            aria-label={`NAS files for chapter ${row.chapter_index}`}
+            aria-expanded={openNasChapters.has(row.chapter_id)}
+            aria-controls={`nas-files-${row.chapter_id}`}
+            onKeyDown={(event) => event.stopPropagation()}
+            title={delivery.reason === "nas_not_configured" ? "NAS mirroring is not configured" : "Verified copies of all takes and fixes for speaking roles; open file details"}
+            onClick={stopRow(() => setOpenNasChapters((open) => {
+              const next = new Set(open);
+              if (!next.delete(row.chapter_id)) next.add(row.chapter_id);
+              return next;
+            }))}
+          >
+            {delivery.percent == null ? "—" : `${delivery.delivered_files}/${delivery.total_files} · ${delivery.percent}%`}
+            {errors ? <span className="asr-broken"> · {errors} error{errors === 1 ? "" : "s"}</span> : null}
+          </button>;
         },
+      },
+      {
+        key: "assembly",
+        header: "Assembly",
+        className: "asr-col-assembly",
+        render: (row) => <span
+          className={row.assembly.state === "outdated" ? "asr-holes" : row.assembly.assembled ? "" : "cast-muted"}
+          title={row.assembly.state === "current" ? "Current chapter project archived and verified"
+            : row.assembly.state === "outdated" ? "Chapter changed after assembly"
+            : row.assembly.reason === "nas_not_configured" ? "NAS mirroring is not configured"
+            : row.assembly.state === "unknown" ? "No verified chapter archive"
+            : "Chapter has not been assembled"}
+        >{row.assembly.state === "unknown" ? "—" : row.assembly.assembled ? "Yes" : "No"}</span>,
       },
       {
         key: "get",
@@ -470,7 +499,7 @@ export function AsrCoveragePage() {
         ),
       },
     ],
-    [canDownload, isAdmin, release, recognise, auditChapter, ambient, stopAmbient, openChapters],
+    [canDownload, isAdmin, release, recognise, auditChapter, ambient, stopAmbient, openChapters, openNasChapters],
   );
 
   const toggleChapter = useCallback((row: BookRecordingChapter) => {
@@ -483,8 +512,12 @@ export function AsrCoveragePage() {
 
   const renderDetail = useCallback(
     (row: BookRecordingChapter) => {
-      if (!openChapters.has(row.chapter_id)) return null;
+      const showFiles = openChapters.has(row.chapter_id);
+      const showNas = openNasChapters.has(row.chapter_id);
+      if (!showFiles && !showNas) return null;
       return <>
+        {showNas ? <NasDeliveryDetails delivery={row.nas_delivery} id={`nas-files-${row.chapter_id}`} /> : null}
+        {showFiles ? <>
         <div className="asr-detail-status">
           {row.integrity_bad > 0 ? <span className="asr-broken">File verification failed: {row.integrity_bad}</span>
             : row.integrity_checked ? <span>Files verified: {row.integrity_ok} ✓</span>
@@ -493,18 +526,16 @@ export function AsrCoveragePage() {
           {row.session_outdated ? <span className="asr-broken">Project outdated</span> : null}
           {row.session_markers_skipped > 0 ? <span className="asr-broken">{row.session_markers_skipped} {plural(row.session_markers_skipped, "marker", "markers", "markers")} without a position</span> : null}
         </div>
-        <ChapterFilesRow chapterId={row.chapter_id} bookId={bookId} canDelete={canDeleteTakes} />
+        <ChapterFilesRow chapterId={row.chapter_id} bookId={bookId} canDelete={canDeleteTakes} nasDelivery={row.nas_delivery} />
+        </> : null}
       </>;
     },
-    [openChapters, bookId, canDeleteTakes, canDownload, verify],
+    [openChapters, openNasChapters, bookId, canDeleteTakes, canDownload, verify],
   );
 
-  /* Прогресс книги — по собранным главам: все роли записаны и проект .sesx лежит на
-     NAS. Сумма «роль × глава» (сотни при касте в семьдесят) читалась как число ролей
-     и сбивала с толку. Устаревший проект не в счёт — его ещё пересоберут.
-     «Собрана», а не «сдана»: «сдана» в таблице — отмечена человеком (сведена и выложена),
-     а «всё записано» — архив уже забран в сведение. */
-  const assembled = chapters.filter((chapter) => chapter.ready && chapter.session_archived && !chapter.session_outdated).length;
+  /* Готовность ролей и скачивание не доказывают сборку: нужен подтверждённый
+     архив текущей версии. Устаревший проект не увеличивает прогресс книги. */
+  const assembled = chapters.filter((chapter) => chapter.assembly.assembled).length;
   const bookPercent = chapters.length ? Math.round((assembled / chapters.length) * 100) : 0;
 
   const ready = coverage.data?.ready_chapters ?? 0;
@@ -551,7 +582,7 @@ export function AsrCoveragePage() {
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={bookPercent}
-          title="A chapter is assembled when all roles are recorded and its .sesx project is on the NAS. Recorded lines shows script lines found by transcription"
+          title="A chapter is assembled when its current project is archived and verified. Recorded lines shows script lines found by transcription"
         >
           <span className={chapters.length && assembled === chapters.length ? "asr-book-fill is-ready" : "asr-book-fill"} style={{ width: `${bookPercent}%` }} />
           <span className="asr-book-title">{book ? book.display_title || book.title : "—"}</span>

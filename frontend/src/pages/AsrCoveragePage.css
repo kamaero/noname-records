@@ -60,7 +60,8 @@
 .asr-table .asr-col-duration { width: 120px; }
 .asr-table .asr-col-audit { width: 170px; }
 .asr-col-audit .asr-links { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 2px 6px; white-space: normal; }
-.asr-table .asr-col-backup { width: 100px; }
+.asr-table .asr-col-backup { width: 145px; }
+.asr-table .asr-col-assembly { width: 80px; }
 .asr-table .asr-col-get { width: 300px; }
 .asr-detail-status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 14px 0 52px; background: var(--surface-2); font-size: 12px; }
 
@@ -266,3 +267,11 @@
 /* Сданная глава (released_at) — бледная строка: работа по ней закончена. */
 .asr-table tr.asr-row-released td { color: var(--text-faint); }
 .asr-release { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; margin-right: 8px; }
+
+.asr-nas-toggle { text-align: left; white-space: normal; padding: 2px 0; }
+.asr-nas-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.asr-nas-details { padding: 10px 14px 10px 52px; background: var(--surface-2); border-top: 1px solid var(--border); font-size: 12px; }
+.asr-nas-details section + section { margin-top: 10px; }
+.asr-nas-details ul { list-style: none; padding: 0; margin: 4px 0 0; }
+.asr-nas-details li { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 3px 0; }
+.asr-nas-filename { overflow-wrap: anywhere; }

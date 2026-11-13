@@ -18,7 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPostJson, describeApiError } from "../../api/client";
 import { Button } from "../../ui";
 import { useToast } from "../ToastProvider";
-import type { ChapterRecordingResponse, ChapterRecordingRole, ChapterTake } from "../../types";
+import type { ChapterRecordingResponse, ChapterRecordingRole, ChapterTake, NasDelivery } from "../../types";
 
 type ChapterFilesRowProps = {
   chapterId: string;
@@ -26,6 +26,7 @@ type ChapterFilesRowProps = {
   canDelete: boolean;
   /** на какой запрос покрытия навесить пересчёт после удаления */
   bookId: string;
+  nasDelivery?: NasDelivery;
 };
 
 function formatSize(bytes: number): string {
@@ -52,12 +53,14 @@ function formatDuration(totalSeconds: number): string {
   return `${minutes}:${ss}`;
 }
 
-/** «есть файл» и «файл цел и скопирован» — разные вещи, и молчать про разницу нельзя. */
-function describeMirror(take: ChapterTake): { text: string; broken: boolean } {
-  if (take.mirror_state === "mismatch") return { text: "copy mismatch", broken: true };
-  if (take.location === "nas") return { text: "NAS only", broken: true };
-  if (take.mirrored_at) return { text: "copy verified ✓", broken: false };
-  return { text: "copy pending", broken: false };
+/** Опись и сводка читают одно подтверждение: старая отметка времени не
+    должна превращать ошибку нового журнала в зелёную галочку. */
+function describeMirror(file?: NasDelivery["files"][number]): { text: string; broken: boolean } {
+  if (!file) return { text: "copy unconfirmed", broken: false };
+  if (file.state === "error") return { text: file.error || "copy failed", broken: true };
+  if (file.state === "delivered") return { text: "copy verified ✓", broken: false };
+  if (file.state === "pending") return { text: "copy pending", broken: false };
+  return { text: "copy status unknown", broken: false };
 }
 
 /** Вопрос называет цену — чей дубль, какая роль, когда прислан, сколько длится, — а не
@@ -74,14 +77,15 @@ function confirmDelete(take: ChapterTake): boolean {
   );
 }
 
-function TakeLine({ take, canDelete, deleting, onDelete, onCopyPath }: {
+function TakeLine({ take, canDelete, deleting, onDelete, onCopyPath, nasDelivery }: {
   take: ChapterTake;
+  nasDelivery?: NasDelivery;
   canDelete: boolean;
   deleting: boolean;
   onDelete: (take: ChapterTake) => void;
   onCopyPath: (take: ChapterTake) => void;
 }) {
-  const mirror = describeMirror(take);
+  const mirror = describeMirror(nasDelivery?.files.find((file) => file.audio_id === take.id));
   const audio = `/api/v2/takes/${encodeURIComponent(take.id)}/audio`;
   return (
     <li className="cf-take">
@@ -119,8 +123,9 @@ function TakeLine({ take, canDelete, deleting, onDelete, onCopyPath }: {
   );
 }
 
-function RoleBlock({ role, canDelete, deletingId, onDelete, onCopyPath }: {
+function RoleBlock({ role, canDelete, deletingId, onDelete, onCopyPath, nasDelivery }: {
   role: ChapterRecordingRole;
+  nasDelivery?: NasDelivery;
   canDelete: boolean;
   deletingId: string | undefined;
   onDelete: (take: ChapterTake) => void;
@@ -146,6 +151,7 @@ function RoleBlock({ role, canDelete, deletingId, onDelete, onCopyPath }: {
               deleting={take.id === deletingId}
               onDelete={onDelete}
               onCopyPath={onCopyPath}
+              nasDelivery={nasDelivery}
             />
           ))}
         </ul>
@@ -154,7 +160,7 @@ function RoleBlock({ role, canDelete, deletingId, onDelete, onCopyPath }: {
   );
 }
 
-export function ChapterFilesRow({ chapterId, canDelete, bookId }: ChapterFilesRowProps) {
+export function ChapterFilesRow({ chapterId, canDelete, bookId, nasDelivery }: ChapterFilesRowProps) {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
 
@@ -214,6 +220,7 @@ export function ChapterFilesRow({ chapterId, canDelete, bookId }: ChapterFilesRo
           deletingId={remove.isPending ? remove.variables?.id : undefined}
           onDelete={(take) => remove.mutate(take)}
           onCopyPath={copyPath}
+          nasDelivery={nasDelivery}
         />
       ))}
       {orphans.length > 0 ? (
@@ -231,6 +238,7 @@ export function ChapterFilesRow({ chapterId, canDelete, bookId }: ChapterFilesRo
                 deleting={remove.isPending && remove.variables?.id === take.id}
                 onDelete={(item) => remove.mutate(item)}
                 onCopyPath={copyPath}
+                nasDelivery={nasDelivery}
               />
             ))}
           </ul>

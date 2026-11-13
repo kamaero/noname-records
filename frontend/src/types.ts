@@ -932,6 +932,30 @@ export type AsrAuditState = {
   error_message?: string;
 };
 
+export type NasDelivery = {
+  state: "known" | "unknown" | "empty";
+  total_files: number;
+  delivered_files: number;
+  percent: number | null;
+  checked_at: string | null;
+  reason: string;
+  files: {
+    audio_id: string;
+    role: string;
+    filename: string;
+    state: "delivered" | "pending" | "error" | "unknown";
+    verified_at: string | null;
+    error: string;
+  }[];
+};
+
+export type ChapterAssembly = {
+  assembled: boolean;
+  state: "current" | "outdated" | "missing" | "unknown";
+  completed_at: string | null;
+  reason: string;
+};
+
 export type BookRecordingChapter = {
   chapter_id: string;
   chapter_index: number;
@@ -962,6 +986,8 @@ export type BookRecordingChapter = {
   integrity_skipped: number;
   /** всего дублей главы; `integrity_skipped === integrity_files` — сверять нечего */
   integrity_files: number;
+  nas_delivery: NasDelivery;
+  assembly: ChapterAssembly;
   mirrored_files: number;
   /** вторая копия ещё не подтверждена на NAS зеркалированием */
   unmirrored_files: number;
