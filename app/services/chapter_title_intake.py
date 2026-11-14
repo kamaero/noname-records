@@ -172,31 +172,67 @@ def paid_part(path, *, transcribe, workdir, guard=None):
     return result
 
 
-def alignment(db, chapter_id, heard, *, language='ru'):
-    from app.models import ScriptChapter
-    from app.services.chapter_title_match import match_title_candidates
+def _title_analysis(candidates, segments, duration, *, language):
+    from app.services.chapter_title_timing import prepare_title_segments
+    from app.services.chapter_title_approaches import match_approaches, _stream
+    from app.services.asr_align import normalize_words
 
-    chapter = db.get(ScriptChapter, chapter_id)
-    targets = chapter_targets(db, chapter.book_id)
-    target = next(item for item in targets if item['chapter_id'] == chapter_id)
-    report = match_title_candidates(targets, heard.get('segments') or [], language=language)
-    from app.services.asr_align import normalize_words, word_stream
-    stream = word_stream(heard.get('segments') or [], language=language)
-    takes_by_line = {index: [] for index in range(len(target['lines']))}
-    for number, interval in enumerate(report['intervals']):
-        if interval['chapter_id'] != chapter_id:
+    prepared, issues = prepare_title_segments(segments, duration)
+    report = match_approaches(candidates, prepared, language=language)
+    stream = _stream(prepared, language=language)
+    by_id = {item['chapter_id']: item for item in candidates}
+    for interval in report['intervals']:
+        if interval.get('review_only'):
             continue
+        target = by_id[interval['chapter_id']]
         words = [word for word in stream if word[1] >= interval['start'] and word[2] <= interval['end']]
         counts = [len(normalize_words(text, language=language)) for text in target['lines']]
-        if sum(counts) != len(words):
-            raise ValueError('title_word_binding_ambiguous')
-        cursor = 0
+        if sum(counts) != len(words) or any(word[0] == '__timing_unknown__' for word in words):
+            # При несовпадении привязки сохраняем подход для прослушивания,
+            # но не выдаём отсутствующий номер или спорное слово за покрытие.
+            interval['review_only'] = True
+            report['unresolved'].append({**interval, 'reason': 'title_word_binding_unresolved', 'candidates': []})
+            continue
+        cursor, spans = 0, []
         for index, count in enumerate(counts):
             selected = words[cursor:cursor + count]
             cursor += count
             if selected:
-                takes_by_line[index].append({'start': selected[0][1], 'end': selected[-1][2],
-                    'score': 1.0, 'title_group': number})
+                spans.append({'line_index': index, 'start': selected[0][1], 'end': selected[-1][2]})
+        interval['line_spans'] = spans
+    confirmed = {item['chapter_id'] for item in report['intervals'] if not item.get('review_only')}
+    report['missing'] = [{**candidate, 'text': ' '.join(candidate['lines']), 'line_index': 0,
+                          'line_indices': list(range(len(candidate['lines'])))}
+                         for candidate in candidates if candidate['chapter_id'] not in confirmed]
+    report['unresolved'].extend(issues)
+    report['timing_issues'] = issues
+    return report
+
+
+def alignment(db, chapter_id, heard, *, language='ru', duration):
+    from app.models import ScriptChapter
+
+    chapter = db.get(ScriptChapter, chapter_id)
+    targets = chapter_targets(db, chapter.book_id)
+    target = next(item for item in targets if item['chapter_id'] == chapter_id)
+    report = _title_analysis(targets, heard.get('segments') or [], duration, language=language)
+    takes_by_line = {index: [] for index in range(len(target['lines']))}
+    approaches = []
+    for number, interval in enumerate(report['intervals']):
+        if interval['chapter_id'] != chapter_id:
+            continue
+        bounds = [*report['intervals'], *report['unresolved']]
+        before = max((float(entry['end']) for entry in bounds if float(entry['end']) <= interval['start']), default=0.)
+        after = min((float(entry['start']) for entry in bounds if float(entry['start']) >= interval['end']), default=duration)
+        approaches.append({**interval, 'title_group': number, 'source_order': number,
+                           'padding_start': max(0., before, interval['start'] - .2),
+                           'padding_end': min(duration, after, interval['end'] + .2),
+                           'review_only': bool(interval.get('review_only'))})
+        if interval.get('review_only'):
+            continue
+        for span in interval.get('line_spans', []):
+            takes_by_line[span['line_index']].append({'start': span['start'], 'end': span['end'],
+                                                     'score': 1.0, 'title_group': number})
     lines = []
     for index, text in enumerate(target['lines']):
         takes = takes_by_line[index]
@@ -207,7 +243,8 @@ def alignment(db, chapter_id, heard, *, language='ru'):
     return {'lines': lines, 'total': len(lines), 'matched': matched,
             'coverage': matched / len(lines) if lines else 0,
             'missing': [row['text'] for row in lines if not row['matched']], 'language': language,
-            'normalizer_version': 'chapter-title-exact-v1'}
+            'title_approaches': approaches, 'timing_issues': report['timing_issues'],
+            'normalizer_version': 'chapter-title-approaches-v2'}
 
 
 class _LostLease(RuntimeError):
@@ -286,7 +323,6 @@ def process(db, upload_id, *, fetch, transcribe_part, send_text, notify_owner, w
     from app.services import asr_run, take_format
     from app.services.audio_probe import probe_audio_file
     from app.services.audio_uploads import store_audio_file
-    from app.services.chapter_title_match import match_title_candidates
     from app.services.chapter_delivery import mark_session_outdated
     from app.services.shared_runtime import safe_name
     from app.services.take_split import transcribe_whole
@@ -365,17 +401,11 @@ def process(db, upload_id, *, fetch, transcribe_part, send_text, notify_owner, w
                 # Общий план и главы публикует только действующий обработчик.
                 lease.guard()
                 _save(heard_file, heard)
-            for segment in heard.get('segments') or []:
-                if str(segment.get('text') or '').strip() and not segment.get('words'):
-                    raise ValueError('title_word_times_required')
-                for word in segment.get('words') or []:
-                    start, end = float(word['start']), float(word['end'])
-                    if not math.isfinite(start) or not math.isfinite(end) or not 0 <= start < end <= duration:
-                        raise ValueError('title_timing_out_of_source')
-            report = match_title_candidates(targets, heard.get('segments') or [], language=language)
+            report = _title_analysis(targets, heard.get('segments') or [], duration, language=language)
             db.refresh(book)
             if title_actor(book) != row.actor_name or chapter_targets(db, book.id) != targets:
                 raise ValueError('title_assignment_changed_manual_review_required')
+            meta.pop('error', None)
             meta['recognition'] = report
             stored = meta.setdefault('stored', {})
             for target in targets:
@@ -404,7 +434,7 @@ def process(db, upload_id, *, fetch, transcribe_part, send_text, notify_owner, w
                 job.expected_chapter_index, job.language, job.status = target['chapter_index'], language, 'done'
                 job.provider, job.model = str(meta.get('provider') or ''), str(meta.get('model') or '')
                 job.heard_json, job.transcript_text = json.dumps(heard, ensure_ascii=False), str(heard.get('text') or '')
-                asr_run.store_alignment(job, alignment(db, cid, heard, language=language))
+                asr_run.store_alignment(job, alignment(db, cid, heard, language=language, duration=duration))
                 db.add(job)
                 mark_session_outdated(db, cid)
                 lease.checkpoint(meta)

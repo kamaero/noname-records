@@ -602,3 +602,128 @@ def test_stale_assignment_change_does_not_reclaim_old_upload(studio, state):
     db.commit()
     assert not any(item.method == 'enqueue_bot_take' for item in response)
     assert db.get(BotUpload, rowid).state == state
+
+
+def test_zero_punctuation_and_event_tags_do_not_reject_valid_titles(studio, tmp_path):
+    from copy import deepcopy
+    db, book = studio
+    rowid = register(db, book)
+    transcript = heard('Chapter 1 Red Harbor', 'Chapter 2 Blue Field')('')
+    transcript['segments'][0]['words'].extend([
+        {'word': '.', 'start': 1.9, 'end': 1.9},
+        {'word': '[laughter]', 'start': 1.95, 'end': 1.95}])
+    original = deepcopy(transcript)
+    assert run(db, rowid, tmp_path, transcript) == 'done'
+    assert transcript == original
+    assert json.loads((tmp_path / 'spool' / 'heard.json').read_text()) == original
+    assert all(json.loads(job.heard_json) == original for job in db.query(AsrJob))
+    assert all(job.coverage == 1 for job in db.query(AsrJob))
+
+
+def test_zero_lexical_artifact_keeps_other_full_approaches_and_raw_cache(studio, tmp_path):
+    from copy import deepcopy
+    db, book = studio
+    rowid = register(db, book)
+    transcript = heard('Chapter 1 Red Harbor', 'Chapter 1 Red Harbor', 'Chapter 2 Blue Field')('')
+    token = transcript['segments'][0]['words'][2]
+    token['end'] = token['start']
+    original = deepcopy(transcript)
+    assert run(db, rowid, tmp_path, transcript) == 'unsorted'
+    assert transcript == original and db.query(AudioFile).count() == 2
+    job = db.query(AsrJob).filter_by(chapter_id='chapter1').one()
+    payload = json.loads(job.alignment_json)
+    assert job.coverage == 1
+    assert len(payload['title_approaches']) == 1
+    assert payload['title_approaches'][0]['start'] == transcript['segments'][1]['words'][0]['start']
+    assert payload['timing_issues']
+    assert json.loads(job.heard_json) == original
+
+
+def test_all_english_approaches_render_in_source_order_but_only_full_prove_coverage(studio, tmp_path):
+    from app.services import asr_replay
+    from app.services.chapter_delivery import _script_layout
+    db, book = studio
+    rowid = register(db, book)
+    transcript = heard('Chapter 1 Red Harbor', 'Red Harbor', 'Chapter 1 Red Harbor', 'Chapter 2 Blue Field')('')
+    calls = []
+    assert run(db, rowid, tmp_path, transcript, transcribe=lambda _: calls.append(True) or transcript) == 'unsorted'
+    job = db.query(AsrJob).filter_by(chapter_id='chapter1').one()
+    payload = json.loads(job.alignment_json)
+    assert [entry['review_only'] for entry in payload['title_approaches']] == [False, True, False]
+    assert len(payload['lines'][0]['takes']) == 2 and job.coverage == 1
+    clips = [clip for role, clip in _script_layout(db, 'chapter1')[3] if role == TITLE_ROLE]
+    assert len(clips) == 3
+    assert [bool(clip.segment_id) for clip in clips] == [True, False, True]
+    assert [clip.source_in for clip in clips] == sorted(clip.source_in for clip in clips)
+    assert all(after.start >= before.start + before.length for before, after in zip(clips, clips[1:]))
+    original_heard = job.heard_json
+    asr_replay.realign_job(db, job.id, write=True)
+    db.commit()
+    assert job.heard_json == original_heard and len(calls) == 1
+    assert len(json.loads(job.alignment_json)['title_approaches']) == 3
+
+
+def test_fuzzy_title_stays_a_review_clip_and_never_proves_heading(studio, tmp_path):
+    from app.services.chapter_delivery import _script_layout, chapter_recording_status
+    from app.services.audio_integrity import chapter_is_ready
+    db, book = studio
+    rowid = register(db, book)
+    transcript = heard('Chapter 1 Redd Harbor')('')
+    assert run(db, rowid, tmp_path, transcript) == 'unsorted'
+    job = db.query(AsrJob).filter_by(chapter_id='chapter1').one()
+    assert job.coverage == 0
+    clips = [clip for role, clip in _script_layout(db, 'chapter1')[3] if role == TITLE_ROLE]
+    assert len(clips) == 1 and clips[0].segment_id == ''
+    assert chapter_recording_status(db, 'chapter1')['title_missing']
+    assert not chapter_is_ready(db, 'chapter1')
+
+
+def test_split_number_and_subtitle_keep_partial_repeat_as_single_review_clip(studio, tmp_path):
+    from app.services.chapter_delivery import _script_layout
+    db, book = studio
+    db.get(V2Segment, 'chapter1:0').text = 'Chapter 1'
+    db.get(V2Segment, 'chapter1:1').ordinal = 2
+    db.flush()
+    db.add(V2Segment(id='chapter1:subtitle', book_id=book.id, chapter_id='chapter1', ordinal=1,
+                     kind='heading', text='Red Harbor'))
+    db.commit()
+    rowid = register(db, book)
+    transcript = heard('Chapter 1 Red Harbor', 'Red Harbor', 'Chapter 1 Red Harbor', 'Chapter 2 Blue Field')('')
+    assert run(db, rowid, tmp_path, transcript) == 'unsorted'
+    job = db.query(AsrJob).filter_by(chapter_id='chapter1').one()
+    payload = json.loads(job.alignment_json)
+    assert len(payload['lines']) == 2 and all(len(line['takes']) == 2 for line in payload['lines'])
+    clips = [clip for role, clip in _script_layout(db, 'chapter1')[3] if role == TITLE_ROLE]
+    assert len(clips) == 3 and [bool(clip.segment_id) for clip in clips] == [True, False, True]
+
+
+def test_valid_title_before_zero_lexical_artifact_has_bounded_clip_padding(studio, tmp_path):
+    from app.services.chapter_delivery import _script_layout
+    db, book = studio
+    rowid = register(db, book)
+    transcript = heard('Chapter 1 Red Harbor')('')
+    transcript['segments'][0]['words'].append({'word': 'unknown', 'start': 2., 'end': 2.})
+    assert run(db, rowid, tmp_path, transcript) == 'unsorted'
+    job = db.query(AsrJob).filter_by(chapter_id='chapter1').one()
+    assert job.coverage == 1
+    clips = [clip for role, clip in _script_layout(db, 'chapter1')[3] if role == TITLE_ROLE]
+    assert len(clips) == 1 and clips[0].source_out <= 2.
+
+
+def test_failed_legacy_timing_validation_resumes_from_paid_cache(studio, tmp_path, monkeypatch):
+    db, book = studio
+    rowid = register(db, book)
+    transcript = heard('Chapter 1 Red Harbor', 'Chapter 2 Blue Field')('')
+    transcript['segments'][0]['words'].append({'word': '.', 'start': 1.9, 'end': 1.9})
+    real_analysis = intake._title_analysis
+    def legacy_failure(*args, **kwargs):
+        raise ValueError('title_timing_out_of_source')
+    monkeypatch.setattr(intake, '_title_analysis', legacy_failure)
+    calls = []
+    assert run(db, rowid, tmp_path, transcript, transcribe=lambda _: calls.append(True) or transcript) == 'failed'
+    assert (tmp_path / 'spool' / 'heard.json').exists()
+    monkeypatch.setattr(intake, '_title_analysis', real_analysis)
+    assert register(db, book) == rowid
+    assert run(db, rowid, tmp_path, transcript, transcribe=lambda _: pytest.fail('paid again')) == 'done'
+    assert len(calls) == 1
+    assert 'error' not in json.loads(db.get(BotUpload, rowid).result_json)

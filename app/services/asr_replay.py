@@ -59,7 +59,7 @@ def realign_job(db, job_id: str, *, write: bool = True) -> dict | None:
     from app.services.chapter_titles import TITLE_ROLE
     if job.expected_role == TITLE_ROLE:
         from app.services.chapter_title_intake import alignment as title_alignment
-        alignment = title_alignment(db, job.chapter_id, heard, language=language)
+        alignment = title_alignment(db, job.chapter_id, heard, language=language, duration=audio.duration_seconds)
     else:
         alignment = align_transcript(expected, heard.get("segments") or [], language=language)
     alignment.update(language=language, normalizer_version=ALIGNMENT_VERSION)
