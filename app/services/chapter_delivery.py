@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import logging
 import os
 import re
@@ -941,11 +942,13 @@ def _script_layout(db, chapter_id: str, *, relative: bool = False):
             role_name = identities.name(getattr(item, "role_ref", ""), item.role)
         by_role.setdefault(role_name, []).append(item)
     heard = _lines_by_audio(db, [item.id for item in audio_files], chapter_id=chapter.id)
+    title_approaches = _title_approaches_by_audio(db, [item.id for item in audio_files], chapter_id=chapter.id)
 
     replicas = chapter_replicas(db, chapter_id)
     starts: dict[str, float] = {}
     placed = _place_by_script(replicas, by_role, heard, relative=relative,
-                              files_by_id={str(item.id): item for item in audio_files}, starts=starts)
+                              files_by_id={str(item.id): item for item in audio_files}, starts=starts,
+                              title_approaches=title_approaches)
     # Конец сцены до конца главы — это конец РАЗЛОЖЕННЫХ по сценарию клипов, а не целых
     # дублей запасного пути: у тех нет согласованного места на общем таймлайне (см.
     # докстринг `_place_by_script`), и мерить сцену их концом было бы враньём монтажёру.
@@ -1243,7 +1246,7 @@ def _clip_name(text: str, number: int, total: int) -> str:
 
 
 def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=None,
-                     starts: dict[str, float] | None = None) -> list[tuple[str, SessionClip]]:
+                     starts: dict[str, float] | None = None, title_approaches=None) -> list[tuple[str, SessionClip]]:
     """Разложить реплики по таймлайну одну за другой, как они идут в главе.
 
     `files_by_id` — все файлы главы: строка, найденная у соседней роли того же актёра
@@ -1262,6 +1265,7 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
     минимум увиденных офсетов, а не первый из них.
     """
     files_by_id = files_by_id or {}
+    title_approaches = title_approaches or {}
     speech = _speech_by_file(heard)
     placed: list[tuple[str, SessionClip]] = []
     clock = 0.0
@@ -1282,6 +1286,7 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
             break
         leading_titles.append(row)
     leading_ids = {row["segment_id"] for row in leading_titles}
+    all_titles_lead = len(leading_titles) == sum(row.get("role") == TITLE_ROLE for row in replicas)
     for replica in replicas:
         role = str(replica.get("role") or "")
         if role == TITLE_ROLE:
@@ -1290,6 +1295,59 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
             group = leading_titles if replica.get("segment_id") in leading_ids else [replica]
             offset = max(clock, track_free_at.get(role, 0.0))
             for item in by_role.get(role, []):
+                if item.id in title_approaches:
+                    approaches = []
+                    for position, entry in enumerate(title_approaches[item.id]):
+                        if not isinstance(entry, dict):
+                            continue
+                        try:
+                            start, stop = float(entry["start"]), float(entry["end"])
+                        except (KeyError, TypeError, ValueError, OverflowError):
+                            continue
+                        if not (math.isfinite(start) and math.isfinite(stop) and 0 <= start < stop <= float(item.duration_seconds or 0)):
+                            continue
+                        order = entry.get("source_order")
+                        approaches.append({**entry, "start": start, "end": stop,
+                                           "source_order": order if type(order) is int else position})
+                    approaches.sort(key=lambda entry: (entry["source_order"], entry["start"]))
+                    if not all_titles_lead:
+                        # Внутренний заголовок остаётся после текста. Подтверждённые
+                        # куски идут старым путём; спорные подходы слушают отдельно.
+                        approaches = [entry for entry in approaches if entry.get("review_only")] if leading_titles and replica is leading_titles[0] else []
+                    for number, approach in enumerate(approaches, 1):
+                        try:
+                            first, last = float(approach["start"]), float(approach["end"])
+                            duration = float(item.duration_seconds or 0)
+                        except (TypeError, ValueError, KeyError):
+                            continue
+                        if not (math.isfinite(first) and math.isfinite(last) and 0 <= first < last <= duration):
+                            continue
+                        before = max((float(other["end"]) for other in approaches if float(other["end"]) <= first), default=0.)
+                        after = min((float(other["start"]) for other in approaches if float(other["start"]) >= last), default=duration)
+                        source_in, source_out = max(0., before, first - .2), min(duration, after, last + .2)
+                        try:
+                            source_in = max(source_in, float(approach.get("padding_start", source_in)))
+                            source_out = min(source_out, float(approach.get("padding_end", source_out)))
+                        except (TypeError, ValueError, OverflowError):
+                            continue
+                        if not (math.isfinite(source_in) and math.isfinite(source_out) and 0 <= source_in <= first < last <= source_out <= duration):
+                            continue
+                        review = bool(approach.get("review_only"))
+                        name = ("Review · " if review else "") + str(approach.get("observed_text") or approach.get("text") or replica.get("text") or "")
+                        placed.append((role, SessionClip(name=_clip_name(name, number, len(approaches)),
+                            path=audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local")),
+                            start=offset, source_in=source_in, source_out=source_out,
+                            relative=str(item.canonical_filename or "") if relative else "", audio_file_id=str(item.id),
+                            segment_id="" if review else str(replica.get("segment_id") or ""),
+                            role_index=int(replica.get("role_index") or 0), role=role)))
+                        if starts is not None and not review:
+                            for span in approach.get("line_spans") or []:
+                                member = next((row for row in group if row.get("role_index") == span.get("line_index")), None)
+                                if member:
+                                    starts.setdefault(member["segment_id"], offset + float(span["start"]) - source_in)
+                        offset += source_out - source_in
+                    if all_titles_lead:
+                        continue
                 lines = heard.get(item.id) or []
                 groups = {}
                 for member in group:
@@ -1386,6 +1444,20 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
         # распутывания.
         clock += max(max(0.0, source_out - source_in) for source_in, source_out in cuts) + GAP_SECONDS
     return placed
+
+
+def _title_approaches_by_audio(db, audio_ids, *, chapter_id):
+    result = {}
+    if not audio_ids:
+        return result
+    for job in db.query(AsrJob).filter(AsrJob.audio_file_id.in_(audio_ids), AsrJob.status == "done", AsrJob.chapter_id == chapter_id):
+        try:
+            payload = json.loads(job.alignment_json or "{}")
+        except (TypeError, ValueError):
+            continue
+        if isinstance(payload.get("title_approaches"), list):
+            result[str(job.audio_file_id)] = payload["title_approaches"]
+    return result
 
 
 def _lines_by_audio(db, audio_ids: list[str], *, chapter_id: str = "") -> dict[str, list[dict]]:
