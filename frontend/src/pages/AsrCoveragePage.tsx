@@ -108,38 +108,6 @@ export function AsrCoveragePage() {
       pushToast({ tone: "error", title: "Could not start", detail: describeApiError(error, "the server did not respond") }),
   });
 
-  /* Строгая проверка рассказчика — платный прогон. Сама ставится,
-     когда глава собирается; кнопка — для повтора по решению владельца. */
-  const auditChapter = useMutation({
-    mutationFn: (chapter: BookRecordingChapter) =>
-      apiPostJson<{ ok: boolean; job_id?: string }>(`/api/v2/chapters/${encodeURIComponent(chapter.chapter_id)}/audit`, {}),
-    onSuccess: async (_result, chapter) => {
-      pushToast({
-        tone: "success",
-        title: "Strict audit started",
-        detail: `Chapter ${chapter.chapter_index}. The paid audit has started; results will appear here.`,
-      });
-      await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
-    },
-    onError: async (error) => {
-      const detail = error instanceof ApiError && error.errorCode === "chapter_not_assembled"
-        ? "The chapter has changed. Rebuild it first"
-        : error instanceof ApiError && error.errorCode === "already_queued"
-          ? "An audit is already queued or running; no duplicate was started"
-          : error instanceof ApiError && error.errorCode === "audit_disabled"
-            ? "Strict audit is disabled"
-            : error instanceof ApiError && error.errorCode === "audit_missing_key"
-              ? "Add a RouterAI key in AI settings"
-              : error instanceof ApiError && error.errorCode === "audit_over_limit"
-                ? "Monthly limit reached; check spending settings"
-                : error instanceof ApiError && error.errorCode === "audit_budget_unavailable"
-                  ? "Could not check the monthly limit"
-            : describeApiError(error, "the server did not respond");
-      pushToast({ tone: "error", title: "Could not start", detail });
-      await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
-    },
-  });
-
   /* «Сдана» = сведена, прослушана и выложена; её ставит человек, а не скачивание архива.
      Когда сдана последняя опубликованная глава, спрашиваем про «Озвучена»: сервер сам
      книгу не закрывает — это решение владельца, с письмами и закрытием сроков. */
@@ -395,7 +363,7 @@ export function AsrCoveragePage() {
             : audit.status === "done" ? `${audit.confirmed} ${audit.confirmed === 1 ? "error" : "errors"}` : "no result";
           const title = !audit ? "No audit yet"
             : audit.status === "unknown" ? "Outcome unknown; no automatic retry. Check the task log."
-            : audit.status === "stale" ? "The script or recording changed after the audit. Rebuild the chapter"
+            : audit.status === "stale" ? "The script or recording changed; assembly will refresh the narrator check"
             : audit.status === "failed" ? "The run stopped. See the task log for details"
             : audit.status === "skipped" ? (audit.error_message?.includes("narrator_input_changed_after_payment")
               ? "The narrator recording changed during the audit. The paid result is saved; automatic retry is disabled."
@@ -404,17 +372,7 @@ export function AsrCoveragePage() {
           return (
             <span className="asr-links">
               <span className={audit?.confirmed ? "num asr-holes" : "cast-muted"} title={title}>{label}</span>
-              {isAdmin && row.audit_assembled && !busy && audit?.status !== "stale" ? (
-                <button
-                  type="button"
-                  className="asr-run"
-                  disabled={auditChapter.isPending}
-                  onClick={stopRow(() => auditChapter.mutate(row))}
-                  title="Paid audit of the assembled narrator recording. Cost depends on duration and rates; each retry is charged separately"
-                >
-                  {audit ? "retry" : "audit"}
-                </button>
-              ) : null}
+
             </span>
           );
         },
@@ -433,7 +391,7 @@ export function AsrCoveragePage() {
             aria-expanded={openNasChapters.has(row.chapter_id)}
             aria-controls={`nas-files-${row.chapter_id}`}
             onKeyDown={(event) => event.stopPropagation()}
-            title={delivery.reason === "nas_not_configured" ? "NAS mirroring is not configured" : "Verified copies of all takes and fixes for speaking roles; open file details"}
+            title={delivery.reason === "nas_not_configured" ? "NAS mirroring is not configured" : "Verified original-source copies and fixes for speaking roles; this is a file count, separate from recorded-line coverage and working projects"}
             onClick={stopRow(() => setOpenNasChapters((open) => {
               const next = new Set(open);
               if (!next.delete(row.chapter_id)) next.add(row.chapter_id);
@@ -454,7 +412,7 @@ export function AsrCoveragePage() {
         className: "asr-col-assembly",
         render: (row) => <span
           className={row.assembly.state === "outdated" ? "asr-holes" : row.assembly.assembled ? "" : "cast-muted"}
-          title={row.assembly.state === "current" ? "Current chapter project archived and verified"
+          title={row.assembly.state === "current" ? "Current working draft saved; missing script lines stay marked"
             : row.assembly.state === "outdated" ? "Chapter changed after assembly"
             : row.assembly.reason === "nas_not_configured" ? "NAS mirroring is not configured"
             : row.assembly.state === "unknown" ? "No verified chapter archive"
@@ -503,7 +461,7 @@ export function AsrCoveragePage() {
         ),
       },
     ],
-    [canDownload, isAdmin, release, recognise, auditChapter, ambient, stopAmbient, openChapters, openNasChapters, nasDigits],
+    [canDownload, isAdmin, release, recognise, ambient, stopAmbient, openChapters, openNasChapters, nasDigits],
   );
 
   const toggleChapter = useCallback((row: BookRecordingChapter) => {
@@ -586,7 +544,7 @@ export function AsrCoveragePage() {
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={bookPercent}
-          title="A chapter is assembled when its current project is archived and verified. Recorded lines shows script lines found by transcription"
+          title="A working draft is assembled after narrator intake and transcription finish. Other missing voices and lines remain marked in the project. Recorded lines shows script lines found by transcription"
         >
           <span className={chapters.length && assembled === chapters.length ? "asr-book-fill is-ready" : "asr-book-fill"} style={{ width: `${bookPercent}%` }} />
           <span className="asr-book-title">{book ? book.display_title || book.title : "—"}</span>

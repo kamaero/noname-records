@@ -93,7 +93,7 @@ def test_real_session_maps_word_anchor_through_cut_and_script_order(studio):
     assert "красный" in xml and "приблизительно, у соседнего слова" in xml
     assert skipped == 0
     without = chapter_delivery.build_chapter_session(db, chapter.id, include_audit=False)
-    assert "РАССКАЗЧИК · пропуск" not in without
+    assert "NARRATOR · text mismatch" not in without
     again = chapter_delivery.build_chapter_session(db, chapter.id, sample_rate=1000)
     assert chapter_delivery.session_fingerprint(xml) == chapter_delivery.session_fingerprint(again)
 
@@ -254,3 +254,34 @@ def test_two_narrator_spans_in_one_segment_require_the_correct_piece_index(studi
     markers, skipped = narrator_audit_session_markers(db, chapter.id, tracks)
     assert [marker.start for marker in markers] == ([] if legacy else [44])
     assert skipped == (1 if legacy else 0)
+
+
+def test_confirmed_lexical_substitution_has_text_mismatch_label(studio):
+    db, chapter, take, audit, flag = studio
+    segment = db.get(V2Segment, flag["segment_id"])
+    text = "- осклабился он и сказал."
+    segment.text = text
+    db.query(V2Attribution).filter(V2Attribution.segment_id == segment.id).one().span_end = len(text)
+    flag.update(text=text, missing_words=["осклабился"], note="прочитано оскалился",
+                confirm_note="вторая модель услышала оскалился")
+    flag["word_anchors"][0]["word"] = "осклабился"
+    _set_flag(db, audit, flag)
+    markers, skipped = narrator_audit_session_markers(db, chapter.id, _tracks(take))
+    assert skipped == 0 and len(markers) == 1
+    assert "text mismatch «осклабился»" in markers[0].name
+    assert "пропуск" not in markers[0].name
+    assert "оскалился" in markers[0].comment
+
+
+def test_spoken_optional_tag_substitution_can_be_placed(studio):
+    db, chapter, take, audit, flag = studio
+    segment = db.get(V2Segment, flag["segment_id"])
+    text = "- сказал он."
+    segment.text = text
+    db.query(V2Attribution).filter(V2Attribution.segment_id == segment.id).one().span_end = len(text)
+    flag.update(text=text, missing_words=["сказал"], omission_optional=True)
+    flag["word_anchors"][0]["word"] = "сказал"
+    _set_flag(db, audit, flag)
+    markers, skipped = narrator_audit_session_markers(db, chapter.id, _tracks(take))
+    assert skipped == 0 and len(markers) == 1
+    assert "text mismatch «сказал»" in markers[0].name

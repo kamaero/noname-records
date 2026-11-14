@@ -714,3 +714,29 @@ def test_поручение_не_стирает_копию_перезалито�
         assert result == {"purged": 0, "missing": 0, "reused": 1, "left": 0}
         row = db.get(AudioFile, second.id)
         assert row.mirror_state == "ok" and row.mirrored_at is not None
+
+
+
+def test_existing_legacy_copy_gets_bounded_verified_proof_without_rewriting(tmp_path, monkeypatch):
+    import hashlib
+    from app.services import audio_storage
+    from app.services.audio_mirror import mirror_once
+    from app.services.mirror_evidence import mirror_proof_valid
+    from app.time_utils import utcnow_naive
+
+    sessions = _mirror_env(tmp_path, monkeypatch)
+    key, payload = "sample/Chapter01/source.wav", b"synthetic recording bytes"
+    for folder in ("rec", "nas"):
+        path = tmp_path / folder / key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    with sessions() as db:
+        item = AudioFile(book_code="sample", original_filename="source.wav", stored_key=key,
+            mime_type="audio/wav", size_bytes=len(payload), chapter="Chapter 1", role="Speaker",
+            md5=hashlib.md5(payload).hexdigest(), mirror_state="ok", mirrored_at=utcnow_naive())
+        db.add(item)
+        db.commit()
+        monkeypatch.setattr(audio_storage, "write_stream", lambda *a, **kw: pytest.fail("legacy copy rewritten"))
+        assert mirror_once(db)["mirrored"] == 1
+        assert mirror_proof_valid(item, root=audio_storage.nas_root())
+        assert mirror_once(db)["mirrored"] == 0

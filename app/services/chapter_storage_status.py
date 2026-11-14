@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from app.time_utils import iso_utc
+from app.config import settings
+from app.services.mirror_evidence import mirror_proof_valid
 
 
 _MIRROR_ERRORS = {
@@ -27,8 +29,10 @@ def nas_delivery(files: list[dict], *, configured: bool) -> dict:
             state, error = "unknown", ""
         elif error:
             state = "error"
-        elif verified_at and mirror_state == "ok":
+        elif verified_at and mirror_state == "ok" and mirror_proof_valid(item, root=settings.audio_nas_path):
             state = "delivered"
+        elif verified_at and mirror_state == "ok":
+            state = "unknown"
         else:
             state = "pending"
         # Входное имя может содержать путь с любой ОС: наружу идёт только имя.
@@ -51,7 +55,7 @@ def nas_delivery(files: list[dict], *, configured: bool) -> dict:
 
 def assembly_status(chapter, *, configured: bool) -> dict:
     """Отметка скачивания или готовность ролей не доказывают создание архива."""
-    if not configured:
+    if not configured and not getattr(chapter, "session_key", ""):
         state, reason = "unknown", "nas_not_configured"
     elif chapter.session_outdated_at:
         state, reason = "outdated", "chapter_changed"

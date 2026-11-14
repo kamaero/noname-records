@@ -11,9 +11,9 @@
 подтверждения находки второй моделью: иначе письмо о «пропуске» сказало бы диктору
 неправду об его работе и отправило бы перезаписывать уже сданное.
 
-Необязательные строки: простые авторские ремарки-репризы («- сказал он», жесты,
-реакции) рассказчик пропускает намеренно — в микс они не входят; титулы глав читает
-другой диктор. Аудит их не требует (см. `classify_narrator_line`).
+Короткие нейтральные указания говорящего можно опустить целиком; произнесённые
+проверяются на замены слов и форм. События и составные ремарки обязательны.
+Титулы глав может читать другой диктор.
 """
 from __future__ import annotations
 
@@ -44,51 +44,31 @@ JUDGE_BATCH = 30
 #: услышал спорное место целиком, и меньше окно — тем чаще он услышит обрыв.
 CONFIRM_PAD_SECONDS = 12
 
-#: Глаголы речи, жеста и реакции, которыми заканчивается простая авторская ремарка.
-#: Собраны с боевых реплик книги и разметки bake-off: ремарка —
-#: «- <наречие> <глагол> <говорящий>, <манера>». Сравнение по токенам, а не префиксу:
-#: «без тени сожаления сказал» и «промедлив секунду, признался» — тоже ремарки.
-#: Ё нормализуется в е до сравнения, поэтому здесь только формы на е.
+#: Версия правил хранится отдельно от входа: неизвестный платный исход нельзя
+#: обойти простым обновлением политики проверки.
+AUDIT_POLICY_VERSION = "narrator-text-v2"
+
+#: Исключение разрешает только отсутствие короткого нейтрального указания роли.
+#: Действия («осклабился», «отшвырнул») и составные ремарки сохраняют смысл сцены,
+#: поэтому прежний широкий список глаголов скрывал реальные ошибки диктора.
 _TAG_VERBS = frozenset({
-    "сказал", "сказала", "сказано", "произнес", "произнесла", "произнесло",
-    "произнесли", "спросил", "спросила", "спросило", "спросили", "ответил", "ответила",
-    "ответило", "ответили", "молвил", "молвила", "промолвил", "промолвила", "бросил",
-    "бросила", "добавил", "добавила", "добавило", "уточнил", "уточнила", "пояснил",
-    "пояснила", "объяснил", "объяснила", "объяснял", "объясняла", "поведал", "поведала",
-    "продолжил", "продолжила", "продолжал", "продолжала", "перебил", "перебила",
-    "переспросил", "переспросила", "осведомился", "осведомилась", "поинтересовался",
-    "поинтересовалась", "посоветовал", "посоветовала", "предложил", "предложила",
-    "повторил", "повторила", "отозвался", "отозвалась", "воскликнул", "воскликнула",
-    "провозгласил", "провозгласила", "заявил", "заявила", "признался", "призналась",
-    "солгал", "учил", "учила", "говорил", "говорила", "шепнул", "шепнула", "прошипел",
-    "прошипела", "взревел", "пролепетал", "пролепетала", "пробормотал", "пробормотала",
-    "буркнул", "буркнула", "рыкнул", "рыкнула", "провибрировал", "передразнил",
-    "отметил", "отметила", "подытожил", "подытожила", "предположил", "предположила",
-    "хмыкнул", "хмыкнула", "фыркнул", "фыркнула", "вздохнул", "вздохнула", "усмехнулся",
-    "усмехнулась", "ухмыльнулся", "ухмыльнулась", "осклабился", "осклабилась",
-    "оскалился", "оскалилась", "улыбнулся", "улыбнулась", "рассмеялся", "рассмеялась",
-    "засмеялся", "засмеялась", "изумился", "изумилась", "удивился", "удивилась",
-    "опешил", "опешила", "смутился", "смутилась", "озадачился", "озадачилась",
-    "восхитился", "восхитилась", "одобрил", "одобрила", "похвалил", "похвалила",
-    "согласился", "согласилась", "посерьезнел", "понял", "поняла", "дернулся", "дрогнул",
-    "вздрогнул", "вздрогнула", "кивнул", "кивнула", "закивал", "закивала", "покивал",
-    "покивала", "прищурился", "прищурилась", "потер", "потерла", "взялся", "взялась",
-    "обвел", "промокнул", "сунул", "раздвинул", "раздвинула", "поправил",
-    "поправила", "повернулся", "повернулась", "отступил", "отступила", "оперся",
-    "пожал", "принял", "приняла", "отшвырнул", "отшвырнула", "разомкнул",
-    "разомкнула", "собрался", "собралась", "выделил", "выделила", "задумался",
-    "задумалась", "задумались", "сузил", "сузила", "подтвердил", "подтвердила",
-    "сверкнул", "сверкнула", "скрывать", "соглашался", "соглашалась", "закончил",
-    "закончила", "закончилось", "убрал", "убрала", "рассуждал", "рассуждала",
-    "глядя", "разглядывая", "разминая", "провозгласил",
+    "сказал", "сказала", "сказали", "произнес", "произнесла", "произнесли",
+    "спросил", "спросила", "спросили", "ответил", "ответила", "ответили",
+    "молвил", "молвила", "промолвил", "промолвила", "добавил", "добавила",
+    "переспросил", "переспросила", "шепнул", "шепнула", "прошептал", "прошептала",
+    "пробормотал", "пробормотала", "буркнул", "буркнула", "пролепетал", "пролепетала",
+    "воскликнул", "воскликнула", "прошипел", "прошипела", "рыкнул", "рыкнула",
+    "уточнил", "уточнила", "пояснил", "пояснила", "повторил", "повторила",
+    "отозвался", "отозвалась", "поинтересовался", "поинтересовалась",
+    "осведомился", "осведомилась", "хмыкнул", "хмыкнула", "фыркнул", "фыркнула",
+    "усмехнулся", "усмехнулась", "вздохнул", "вздохнула",
 })
-#: Ремарка-оповещение без глагола речи: «- раздался звонкий голосок».
-_TAG_VOICE_RE = re.compile(r"^(?:раздался|раздалось|прозвучал[ао]?|послышал[аося]+)\b")
-#: Обстоятельство-событие превращает ремарку в мини-сюжет («…, когда персонаж вошел»):
-#: событие надо читать, иначе в миксе пропадёт факт.
-_TAG_EVENT_CLAUSE_RE = re.compile(r"\b(когда|после|прежде чем|пока)\b|[.!?…]\s*\S")
+_TAG_SUBJECTS = frozenset({"он", "она", "они", "я", "мы", "ты", "вы", "герой", "героиня", "епископ",
+                           "демон", "человек", "девушка", "мужчина", "женщина"})
+_TAG_MANNERS = frozenset({"тихо", "громко", "спокойно", "тихонько", "негромко",
+    "хрипло", "сдавленно", "недовольно", "насмешливо", "иронично", "сухо", "тише",
+    "уверенно", "неуверенно", "осторожно", "задумчиво", "удивленно", "глухо"})
 _TITLE_RE = re.compile(r"^\s*(глава|chapter)\s+\d", re.IGNORECASE)
-_WORD = re.compile(r"[а-яёa-z0-9]+")
 
 
 class AsrAuditError(RuntimeError):
@@ -96,15 +76,12 @@ class AsrAuditError(RuntimeError):
 
 
 def classify_narrator_line(text: str, *, language: str = "ru") -> str:
-    """Как аудит относится к строке рассказчика: required | tag | title.
+    """Нейтральную ремарку можно опустить; события и действия обязательны.
 
-    Правило владельца (2026-11-06): простые ремарки-репризы и титулы в микс не входят,
-    рассказчик их не читает. Пограничные случаи решаем в пользу required — недотребовать
-    безопаснее: владелец увидит флаг и решит сам, а недоглядеть пропуск хуже лишнего письма.
+    Консервативный разбор не пытается угадать сюжет по одному глаголу: разрешены
+    лишь короткие указания говорящего без второй клаузы или добавочного действия.
     """
     raw = str(text or "").strip()
-    if not raw:
-        return "required"
     if language == "en":
         if re.match(r"^(?:chapter|part|book)\s+(?:\d+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b", raw, re.I) or re.fullmatch(r"(?:prologue|epilogue|interlude)[.!:]?", raw, re.I):
             return "title"
@@ -115,25 +92,24 @@ def classify_narrator_line(text: str, *, language: str = "ru") -> str:
         return "required"
     if _TITLE_RE.match(raw):
         return "title"
-    # Хвостовое тире («- осклабился демон. –») — артефакт границы цитаты, а не вторая фраза.
-    # Ремарка всегда начинается с тире: строка без тире — повествование или цитата,
-    # глагол речи внутри не делает её репризой («И персонаж сказал «нет»» — текст).
-    if not raw.lstrip().startswith(("-", "–", "—")):
+    if not raw.startswith(("-", "–", "—")):
         return "required"
-    body = raw.lstrip("-–— ").rstrip("-–— ").strip()
-    body = body.lower().replace("ё", "е")
-    # Ремарка короткая: длинная тирада с тире — уже повествование, а не реприза.
-    if len(_WORD.findall(body)) > 14:
+    body = raw.lstrip("-–— ").rstrip("-–— ").strip().rstrip(".!?…")
+    words = re.findall(r"[а-яёА-ЯЁa-zA-Z0-9]+", body)
+    tokens = [word.lower().replace("ё", "е") for word in words]
+    if not 2 <= len(tokens) <= 5 or re.search(r"[,;:.!?…]", body):
         return "required"
-    # Вторая фраза или событийная клауза — в строке есть что читать.
-    if _TAG_EVENT_CLAUSE_RE.search(body):
+    if sum(token in _TAG_VERBS for token in tokens) != 1:
         return "required"
-    tokens = set(_WORD.findall(body))
-    if tokens & _TAG_VERBS:
-        return "tag"
-    if _TAG_VOICE_RE.match(body):
-        return "tag"
-    return "required"
+    subjects = 0
+    for word, token in zip(words, tokens):
+        if token in _TAG_VERBS or token in _TAG_MANNERS:
+            continue
+        if token in _TAG_SUBJECTS or word[0].isupper():
+            subjects += 1
+        else:
+            return "required"
+    return "tag" if 1 <= subjects <= 2 else "required"
 
 
 def narrator_lines(db, chapter_id: str) -> dict:
@@ -266,7 +242,8 @@ def _snapshot_from_parts(lines, replicas, placed, book, audio_source, *, identit
                       "end": float(clip.source_out)})
     signature = {"lines": lines, "clips": clips, "sources": [
         {"id": key, "uploaded_at": str(item["uploaded_at"] or ""),
-         "md5": str(item["md5"] or ""), "size_bytes": int(item["size_bytes"] or 0)}
+         "md5": str(item["md5"] or ""), "size_bytes": int(item["size_bytes"] or 0),
+         "stored_key": str(item["stored_key"] or ""), "location": str(item["location"] or "local")}
         for key, item in sorted(sources.items())]}
     signature.update(language=language, normalizer_version=ALIGNMENT_VERSION)
     if identities and identities.typed:
@@ -363,12 +340,13 @@ def _narrator_fingerprints(db, chapter_ids: list[str], *, identities_by_book=Non
     return out
 
 
-def _preflight_sources(sources: dict, source_paths: dict) -> None:
+def _preflight_sources(sources: dict, source_paths: dict) -> dict:
     from app.services import audio_integrity, nas_health
 
     if any(sources[key]["location"] == "nas" for key in source_paths):
         if not nas_health.reachable_now():
             raise AsrAuditError("narrator_storage_unavailable")
+    evidence = {}
     # Проверяем весь набор до первого списания: иначе целый исходник уже оплачен,
     # а следующий отсутствующий фикс делает проверку главы незавершимой.
     for key, path in source_paths.items():
@@ -381,10 +359,22 @@ def _preflight_sources(sources: dict, source_paths: dict) -> None:
                 raise AsrAuditError(f"narrator_source_size_mismatch:{key}")
             with open(path, "rb") as handle:
                 handle.read(1)
-            if item.get("md5") and audio_integrity.file_digest(path) != item["md5"]:
+            actual_md5 = audio_integrity.file_digest(path)
+            if item.get("md5") and actual_md5 != item["md5"]:
                 raise AsrAuditError(f"narrator_source_checksum_mismatch:{key}")
+            evidence[key] = (size, actual_md5)
         except OSError as exc:
             raise AsrAuditError(f"narrator_source_unreadable:{key}") from exc
+    return evidence
+
+
+def _audit_lines(snapshot: dict) -> list[dict]:
+    """Прочитанную необязательную ремарку проверяем, сохраняя адрес сценария."""
+    placed = {clip["index"] for clip in snapshot["clips"]}
+    return sorted([*snapshot["lines"]["required"],
+                   *({**line, "omission_optional": True}
+                     for line in snapshot["lines"]["tags"] if line["index"] in placed)],
+                  key=lambda line: line["index"])
 
 
 def _assembled_transcript(snapshot: dict, transcripts: dict) -> tuple[dict, dict]:
@@ -405,7 +395,7 @@ def _assembled_transcript(snapshot: dict, transcripts: dict) -> tuple[dict, dict
                          "end": clock + duration, "words": words})
         clock += duration + .35
     alignment = {"lines": []}
-    for item in snapshot["lines"]["required"]:
+    for item in _audit_lines(snapshot):
         windows = by_index.get(item["index"], [])
         alignment["lines"].append({"index": item["index"], "matched": bool(windows),
             "start": windows[0]["audit_start"] if windows else None,
@@ -564,11 +554,13 @@ _JUDGE_SYSTEM = """Ты — редактор аудиокниги. Провер�
 - Звуки без слов (смешки, кряхтения, вздохи) в расшифровке помечены тегами вроде [смеется] — они всегда допустимы.
 - Имена сверяй с глоссарием: фонетически близкое написание допустимо, но пропуск имени недопустим.
 - Каждое слово с содержанием строки должно прозвучать в той же лексеме и той же форме. Пропуск слова, замена синонимом, другая грамматическая форма («получала» вместо «получила» и наоборот) — отметка partial с этими словами в missing_words.
+- «осклабился» и «оскалился» — разные слова: замена недопустима, отметь partial и ожидаемое слово в missing_words.
+- Пометка «можно опустить» разрешает отсутствие всей короткой нейтральной ремарки. Если она прочитана, проверяй замены слов и грамматических форм как обычно; сюжетные действия и составные ремарки обязательны.
 - «missing» — только если фрагмента записи нет или в нём нет текста строки совсем.
 - Если у строки несколько подходов, достаточно одного полностью прочитанного подхода. Слова из разных неполных подходов не склеивай в воображаемую полную реплику.
 Вердикт строго по схеме, по каждой строке из запроса."""
 
-_CONFIRM_SYSTEM = """Ты — редактор аудиокниги. По свежей расшифровке проблемного места записи решаешь, подтверждается ли ранее отмеченный пропуск. Перестановка слов допустима, имена допустимы любым фонетически близким написанием, звуки без слов ([смеется], вздохи) допустимы. Слова из missing_words в той же форме присутствуют — пропуск НЕ подтверждён. Отвечай строго по схеме."""
+_CONFIRM_SYSTEM = """Ты — редактор аудиокниги. По свежей расшифровке проблемного места записи решаешь, подтверждается ли ранее отмеченное расхождение с текстом: пропуск, лексическая замена или ошибка формы. «Осклабился» и «оскалился» — разные слова: замена подтверждается только если слышна и во второй расшифровке. Перестановка слов допустима, имена допустимы любым фонетически близким написанием, звуки без слов ([смеется], вздохи) допустимы. Слова из missing_words в той же форме присутствуют — расхождение НЕ подтверждено. Синоним или другая форма не оправдывают замену. Ремарку с пометкой «можно опустить» можно не произносить целиком; произнесённую проверяй на замены. Отвечай строго по схеме."""
 
 
 def _quote(text: str, limit: int = 120) -> str:
@@ -579,7 +571,9 @@ def _quote(text: str, limit: int = 120) -> str:
 def _judge_user_prompt(required: list[dict], excerpts: dict[int, str], glossary: list[str]) -> str:
     lines_out = [f"Глоссарий имён: {', '.join(glossary[:80])}" if glossary else "Глоссарий имён: —", "", "Строки сценария:"]
     for item in required:
-        lines_out.append(f"[{item['index']}] {item['text']}")
+        lines_out.append(f"[{item['index']}] {item['text']}"
+                         + (" (можно опустить целиком; произнесённые слова проверять)"
+                            if item.get("omission_optional") else ""))
     lines_out += ["", "Расшифровка записи по строкам:"]
     for item in required:
         excerpt = excerpts.get(item["index"])
@@ -725,7 +719,7 @@ def _judge_required(*, required: list[dict], alignment: dict, heard: dict,
                 # клипа: соседнее похожее предложение не звучит вместо неё.
                 verdict = {"status": "missing", "missing_words": [],
                            "note": "required line is not placed in the assembled chapter"}
-            if verdict["status"] == "ok":
+            if verdict["status"] == "ok" or (item.get("omission_optional") and verdict["status"] == "missing"):
                 continue
             anchor = _anchor_of(alignment, item["index"], stream=stream)
             flags.append({**item, "status": verdict["status"],
@@ -772,7 +766,9 @@ def _confirm_flags(*, flags: list[dict], source_path: str = "", judge,
                 answer = judge(
                     _CONFIRM_SYSTEM + ("\nThe book is in English. Compare its English wording and contractions; return all notes in English." if language == "en" else ""),
                     f"Индекс строки: {flag['index']}\nСтрока сценария: {flag['text']}\n"
-                    f"Ранее отмечено как пропуск: {flag['status']}\n"
+                    f"Ранее отмечено расхождение с текстом: {flag['status']}\n"
+                    + ("Ремарку можно опустить целиком, но замены слов недопустимы.\n"
+                       if flag.get("omission_optional") else "") +
                     f"Слова: {', '.join(flag['missing_words'])}\nСвежая расшифровка места: {transcript}",
                     _CONFIRM_SCHEMA,
                 )
@@ -803,7 +799,7 @@ def _confirm_flags(*, flags: list[dict], source_path: str = "", judge,
 
 def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
                   confirm_transcribe=None, expected_narrator_fingerprint: str = "",
-                  language: str | None = None, notify_result=None) -> "object":
+                  language: str | None = None, notify_result=None, notify_narrator: bool = True) -> "object":
     """Снимок входа и результат фиксируются короткими транзакциями.
 
     Платные вызовы могут идти минуты: незакрытый flush на SQLite блокировал бы
@@ -853,7 +849,7 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
     book = SimpleNamespace(title=str(getattr(book_row, "title", "") or ""))
     lines = {"required": [], "tags": [], "titles": []}
     flags, confirmed = [], []
-    meta = {"take_id": str(take.id), "take_uploaded_at": str(take.uploaded_at or ""),
+    meta = {"audit_policy_version": AUDIT_POLICY_VERSION, "take_id": str(take.id), "take_uploaded_at": str(take.uploaded_at or ""),
             "classified_at": iso_utc(utcnow_naive()), "cost_complete": True,
             "cost_scope": "stt_only", "stt_calls": 0, "language": language,
             "normalizer_version": ALIGNMENT_VERSION}
@@ -877,17 +873,18 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
         audit.lines_json = json.dumps(meta, ensure_ascii=False)
         glossary = book_phrases(db, chapter.book_id)
         db.commit()
-        if not lines["required"]:
+        selected = _audit_lines(snapshot)
+        if not selected:
             raise AsrAuditError("no_required_lines")
         if not snapshot["clips"]:
             raise AsrAuditError("no_assembled_narrator_clips")
-        required_indexes = {item["index"] for item in lines["required"]}
+        required_indexes = {item["index"] for item in selected}
         required_sources = {clip["source_audio_file_id"] for clip in snapshot["clips"]
                             if clip["index"] in required_indexes}
         source_paths = {key: audio_storage.resolve_path(str(item["stored_key"] or ""),
                        location=str(item["location"] or "local")) for key, item in snapshot["sources"].items()
                        if key in required_sources}
-        _preflight_sources(snapshot["sources"], source_paths)
+        source_evidence = _preflight_sources(snapshot["sources"], source_paths)
         # Ошибки шлюза и таймауты не доказывают, что провайдер не списал деньги.
         transcribe_call = transcribe or (lambda path: _transcribe_retrying(
             lambda: _transcribe_fresh(path, model=model, phrases=glossary,
@@ -912,7 +909,7 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
         audit.transcript_json = json.dumps(heard, ensure_ascii=False)
         db.commit()
         judge_call = judge or (lambda system, user, schema: default_judge_ask(system, user, schema, model=judge_model))
-        flags = _judge_required(required=lines["required"], alignment=alignment, heard=heard,
+        flags = _judge_required(required=selected, alignment=alignment, heard=heard,
                                 glossary=glossary, judge=judge_call, language=language)
         _attach_source_windows(flags, alignment)
         confirm_call = confirm_transcribe or (lambda path: _transcribe_retrying(
@@ -922,13 +919,21 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
                                    confirm_transcribe=confirm_call, record_cost=record_cost, language=language)
         # Пока модели слушали, редактор мог заменить фикс или текст. Оплаченное
         # сохраняем, но старые выводы не должны обвинить уже исправившегося диктора.
+        if _preflight_sources(snapshot["sources"], source_paths) != source_evidence:
+            raise AsrAuditError("narrator_source_changed_after_payment")
+        db.commit()
+        # Физические байты проверены выше без writer. Метаданные читаются заново
+        # под коротким writer: между сверкой и сохранением done редактор не успеет
+        # заменить исходник и получить устаревшее обвинение рассказчика.
+        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
         db.expire_all()
         current_fingerprint = narrator_input_fingerprint(db, chapter.id)
-        db.commit()
         audit.status = "done" if current_fingerprint == snapshot["fingerprint"] else "skipped"
         if audit.status == "skipped":
             audit.error_message = "narrator_input_changed_after_payment"
     except Exception as exc:
+        db.rollback()
+        db.add(audit)
         audit.status = "failed"
         audit.error_message = str(exc)[:255]
         logger.warning("Аудит главы %s не завершён: %s", chapter.id, exc)
@@ -958,7 +963,7 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
     except Exception:
         db.rollback()
         logger.exception("Не отправлен отчёт владельцу по главе %s", chapter.id)
-    if confirmed and completed:
+    if confirmed and completed and notify_narrator:
         recipients = {}
         for flag in confirmed:
             source_ids = {w["source_audio_file_id"] for w in flag.get("source_windows") or []}
@@ -1107,7 +1112,8 @@ def latest_audits(db, chapter_ids: list[str], *, identities_by_book=None, chapte
         if audit_status == "done":
             try:
                 saved = str(metadata.get("narrator_input_fingerprint") or "")
-                if not saved or saved != fingerprints.get(cid):
+                if (metadata.get("audit_policy_version") != AUDIT_POLICY_VERSION
+                        or not saved or saved != fingerprints.get(cid)):
                     audit_status = "stale"
             except Exception:
                 # Нельзя выдавать прошлые находки за текущие, если сравнение входа
@@ -1149,7 +1155,8 @@ def needs_run(db, chapter_id: str) -> bool:
         return True
     try:
         meta = json.loads(last.lines_json or "{}")
-        return meta.get("narrator_input_fingerprint") != narrator_input_fingerprint(db, chapter_id)
+        return (meta.get("audit_policy_version") != AUDIT_POLICY_VERSION
+                or meta.get("narrator_input_fingerprint") != narrator_input_fingerprint(db, chapter_id))
     except (ValueError, AsrAuditError):
         return True
 

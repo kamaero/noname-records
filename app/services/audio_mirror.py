@@ -112,42 +112,51 @@ def mirror_once(db) -> dict:
         )
         return {"mirrored": 0, "failed": 0, "left": 0}
 
-    mirrored = failed = 0
-    # Строки, для которых на сервере не нашлось файла, цикл не трогает вовсе — не
-    # копирует и не пытается. Считать их в "left" значило бы врать про то, что они
-    # "ещё предстоят": они не сдвинутся ни на каком следующем круге, и до переезда
-    # такой пропуск завышал бы остаток на десятки записей, у которых своя беда и
-    # свой журнал — не этот.
-    missing_local = 0
-    # mirror_state == mismatch исключён: такой файл уже показал, что копия
-    # не сходится, и будет показывать то же самое на каждом круге. Он ждёт
-    # человека, а не очередной попытки.
-    query = db.query(AudioFile).filter(AudioFile.mirrored_at.is_(None), AudioFile.mirror_state != MISMATCH)
-    for item in query.all():
+    from app.services.mirror_evidence import make_mirror_proof, mirror_proof_valid
+
+    mirrored = failed = processed = 0
+    candidates = db.query(AudioFile).filter(AudioFile.mirror_state != MISMATCH).all()
+    for item in candidates:
+        if (item.mirrored_at is not None and item.mirror_state == OK
+                and mirror_proof_valid(item, root=audio_storage.nas_root())):
+            continue
+        if processed >= 50:
+            break
         key = str(item.stored_key or "")
         local = audio_storage.resolve_path(key)
         if not os.path.isfile(local):
-            missing_local += 1
             continue
-        expected_md5 = str(item.md5 or "").strip()
+        processed += 1
+        identity = (str(item.id), key, str(item.md5 or ""), int(item.size_bytes or 0))
         try:
-            with open(local, "rb") as source:
-                audio_storage.write_stream(key, source, location="nas")
-            nas_path = audio_storage.resolve_path(key, location="nas")
-            if expected_md5:
-                landed_ok = file_digest(nas_path) == expected_md5
-            else:
-                # Записи старше миграции 0020 суммы приёма не имеют: сверять
-                # нечем, а считать их битыми на этом основании — врать (тот же
-                # довод, что в audio_integrity.verify_file). Сравниваем размер —
-                # это всё, что доступно без суммы.
-                landed_ok = os.path.getsize(nas_path) == int(item.size_bytes or 0)
+            actual_md5, actual_size = file_digest(local), os.path.getsize(local)
+            landed_ok = (actual_size == identity[3] and actual_size > 0
+                         and (not identity[2] or actual_md5 == identity[2]))
+            if landed_ok:
+                nas_path = audio_storage.resolve_path(key, location="nas")
+                if item.mirrored_at is None or not os.path.isfile(nas_path):
+                    with open(local, "rb") as source:
+                        audio_storage.write_stream(key, source, location="nas")
+                landed_ok = file_digest(nas_path) == actual_md5 and os.path.getsize(nas_path) == actual_size
         except OSError:
+            item.mirror_state = "error"
+            db.commit()
+            failed += 1
+            continue
+        # Байты могли копироваться минуты. Обновление ключа или checksum за это
+        # время лишает квитанцию адресата; служебные поля на неё не влияют.
+        db.expire(item)
+        if (str(item.id), str(item.stored_key or ""), str(item.md5 or ""), int(item.size_bytes or 0)) != identity:
             failed += 1
             continue
         if landed_ok:
+            # Старые исходники без суммы получают проверенный текущий baseline
+            # только после совпадения локальных и NAS-байтов, а не из миграции.
+            item.md5 = actual_md5
             item.mirror_state = OK
             item.mirrored_at = utcnow_naive()
+            item.mirror_proof_json = make_mirror_proof(item, checksum=actual_md5, size=actual_size,
+                                                     root=audio_storage.nas_root())
             db.add(item)
             db.commit()
             mirrored += 1
@@ -155,14 +164,16 @@ def mirror_once(db) -> dict:
             item.mirror_state = MISMATCH
             db.add(item)
             db.commit()
-            # Уведомляем ровно на переходе: строкой выше отфильтрованы файлы,
-            # которые mismatch-ились раньше, поэтому каждый заход сюда первый.
             chapter = find_chapter_for_take(db, item)
             if chapter is not None:
                 notify_mirror_problem(db, chapter.id)
             failed += 1
-    left = db.query(AudioFile).filter(AudioFile.mirrored_at.is_(None), AudioFile.mirror_state != MISMATCH).count()
-    return {"mirrored": mirrored, "failed": failed, "left": max(0, left - missing_local)}
+    left = 0
+    for item in db.query(AudioFile).filter(AudioFile.mirror_state != MISMATCH):
+        if not mirror_proof_valid(item, root=audio_storage.nas_root()):
+            if os.path.isfile(audio_storage.resolve_path(str(item.stored_key or ""))):
+                left += 1
+    return {"mirrored": mirrored, "failed": failed, "left": left}
 
 
 def purge_deleted_once(db) -> dict:
