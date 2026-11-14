@@ -137,9 +137,10 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
     rows_of_files = db.query(
         AudioFile.id, AudioFile.chapter, AudioFile.role, AudioFile.role_ref, AudioFile.role_book_id, AudioFile.book_code, AudioFile.verify_state, AudioFile.md5,
         AudioFile.mirrored_at, AudioFile.mirror_state, AudioFile.uploaded_at,
-        AudioFile.canonical_filename, AudioFile.original_filename,
+        AudioFile.canonical_filename, AudioFile.original_filename, AudioFile.stored_key,
+        AudioFile.size_bytes, AudioFile.mirror_proof_json,
     ).filter(AudioFile.kind == TAKE).all()
-    for audio_id, label, role, role_ref, role_book_id, book_code, verify_state, md5, mirrored_at, mirror_state, uploaded_at, canonical_filename, original_filename in rows_of_files:
+    for audio_id, label, role, role_ref, role_book_id, book_code, verify_state, md5, mirrored_at, mirror_state, uploaded_at, canonical_filename, original_filename, stored_key, size_bytes, mirror_proof_json in rows_of_files:
         if not identities.owns_audio(SimpleNamespace(role_book_id=role_book_id, book_code=book_code)):
             continue
         if identities.typed and not identities.known_ref(role_ref):
@@ -153,7 +154,8 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
                 "audio_id": audio_id, "role": role,
                 "filename": canonical_filename or original_filename,
                 "mirror_state": mirror_state, "mirrored_at": mirrored_at,
-                "verify_state": verify_state,
+                "verify_state": verify_state, "stored_key": stored_key, "md5": md5,
+                "size_bytes": size_bytes, "mirror_proof_json": mirror_proof_json,
             })
         recorded.setdefault(chapter.id, set()).add(str(role or "").strip())
         audio_of_chapter.setdefault(chapter.id, []).append(str(audio_id))
@@ -787,19 +789,22 @@ def colour_tracks(tracks: list[SessionTrack], *, identities=None) -> None:
         track.hue = round(track.hue, 1)
 
 
-def build_chapter_session(db, chapter_id: str, *, sample_rate: int | None = None, relative: bool = False, include_audit: bool = True) -> str | None:
+def build_chapter_session(db, chapter_id: str, *, sample_rate: int | None = None, relative: bool = False, include_audit: bool = True, include_unplaced: bool = True,
+                          include_missing: bool = False) -> str | None:
     """Сессия Audition для главы: треки по ролям, клипы по репликам. `None` — главы нет.
 
     Тонкая обёртка над `build_chapter_session_with_stats` — большинству вызывающих число
     пропущенных маркеров не нужно, а сигнатура этой функции старая и на ней держится
     архивация и раздача главы.
     """
-    xml, _skipped = build_chapter_session_with_stats(db, chapter_id, sample_rate=sample_rate, relative=relative, include_audit=include_audit)
+    xml, _skipped = build_chapter_session_with_stats(db, chapter_id, sample_rate=sample_rate, relative=relative, include_audit=include_audit,
+                                                   include_unplaced=include_unplaced, include_missing=include_missing)
     return xml
 
 
 def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | None = None,
-                                     relative: bool = False, include_audit: bool = True) -> tuple[str | None, int]:
+                                     relative: bool = False, include_audit: bool = True, include_unplaced: bool = True,
+                                     include_missing: bool = False) -> tuple[str | None, int]:
     """То же самое, что `build_chapter_session`, и вдобавок число маркеров без места.
 
     `None, 0` — главы нет. Число пропущенных — так архивация (см. `archive_chapter_session`)
@@ -833,7 +838,7 @@ def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | 
 
     # Роли, по которым распознавания нет, кладём целым дублем: лучше так, чем никак.
     for row in status["roles"]:
-        if clips_by_role.get(row["role"]):
+        if not include_unplaced or clips_by_role.get(row["role"]):
             continue
         for item in by_role.get(row["role"], []):
             clips_by_role.setdefault(row["role"], []).append(SessionClip(
@@ -880,8 +885,37 @@ def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | 
             skipped += audit_skipped
         except Exception:
             logger.exception("Не удалось добавить маркеры проверки рассказчика главы %s", chapter_id)
+    if include_missing:
+        markers.extend(_missing_script_markers(db, chapter_id, placed, starts, end))
     xml = build_session_xml(title=title, sample_rate=sample_rate or session_rate(by_role), tracks=tracks, markers=markers)
     return xml, skipped
+
+
+def _missing_script_markers(db, chapter_id, placed, starts, end):
+    """Пустой клип не имеет точного аудиовремени: метка показывает адрес сценария."""
+    from app.services.asr_audit import classify_narrator_line
+    from app.services.asr_run import chapter_language
+    from app.services.role_identity import chapter_roles
+    from uuid import NAMESPACE_URL, uuid5
+
+    identities = chapter_roles(db, chapter_id)
+    language = chapter_language(db, chapter_id)
+    addresses = {(normalize_name(role), clip.segment_id, clip.role_index) for role, clip in placed}
+    replicas = chapter_replicas(db, chapter_id)
+    markers = []
+    for position, row in enumerate(replicas):
+        address = (normalize_name(row["role"]), row["segment_id"], row["role_index"])
+        if address in addresses:
+            continue
+        if (identities.is_narrator(row["role"], row.get("role_ref", ""))
+                and classify_narrator_line(row["text"], language=language) != "required"):
+            continue
+        start = next((starts[other["segment_id"]] for other in replicas[position:]
+                      if other["segment_id"] in starts), end)
+        markers.append(SessionMarker(name=f"MISSING · {row['role']}", start=float(start), duration=0.,
+            comment=f"Script location; no recorded clip. {row['text']}",
+            guid=f"xmp:id:{uuid5(NAMESPACE_URL, str(address))}"))
+    return markers
 
 
 #: частота сессии, когда ни у одного дубля главы она не снята
@@ -1547,6 +1581,10 @@ def archive_chapter_session(db, chapter_id: str, *, book_status: dict | None = N
     за то, что копия на NAS не разошлась по сумме, а перекрытие корней — за то, что
     это вообще две разные копии, а не одна под двумя именами.
     """
+    current = db.get(ScriptChapter, str(chapter_id or "").strip())
+    if current is not None and current.session_key:
+        from app.services.chapter_assembly import assemble_narrator_chapter
+        return assemble_narrator_chapter(db, current.id)
     from app.services.audio_integrity import chapter_files, chapter_has_broken_files, chapter_is_ready
     from app.services.audio_mirror import chapter_folder, roots_overlap
 
@@ -1644,7 +1682,7 @@ def archive_chapter_session(db, chapter_id: str, *, book_status: dict | None = N
     return {"written": True, "reason": "", "replaced": replaced}
 
 
-def archive_pending_chapter_sessions(db) -> dict:
+def archive_pending_chapter_sessions(db, *, narrator_only=False) -> dict:
     """Пройти фоновым кругом по главам с дублями и положить файл проекта тем, кто
     его ещё не получил. Единственный законный вызывающий — `app.workers.mirror.mirror_loop`:
     NFS не может быть в пути приёма (см. `archive_chapter_session`), а этот цикл — то
@@ -1661,6 +1699,8 @@ def archive_pending_chapter_sessions(db) -> dict:
     опубликованных глав книги значили бы шестьдесят пересчётов готовности каждый
     круг, хотя дубли есть у трёх.
     """
+    if narrator_only:
+        return _archive_pending_narrator_sessions(db)
     labels = {
         str(label or "").strip()
         for (label,) in db.query(AudioFile.chapter).filter(AudioFile.kind == TAKE).distinct().all()
@@ -1708,6 +1748,30 @@ def archive_pending_chapter_sessions(db) -> dict:
     return {"archived": archived, "skipped": skipped, "rebuilt": rebuilt}
 
 
+def _archive_pending_narrator_sessions(db) -> dict:
+    """Один штатный круг собирает черновики и восстанавливает очередь после commit."""
+    from app.services.chapter_assembly import assemble_narrator_chapter
+    chapters = db.query(ScriptChapter).filter(ScriptChapter.status == "published").all()
+    archived = skipped = rebuilt = 0
+    for chapter in chapters:
+        identity = str(chapter.id)
+        try:
+            result = assemble_narrator_chapter(db, identity)
+            if result and result["written"]:
+                archived += 1
+                rebuilt += bool(result.get("replaced"))
+            else:
+                skipped += 1
+            db.commit()
+            if result and (result["written"] or result["reason"] == "unchanged"):
+                _enqueue_archived_narrator_audit(identity, notify_narrator=False)
+        except Exception:
+            db.rollback()
+            skipped += 1
+            logger.exception("Не собран рабочий проект главы %s", identity)
+    return {"archived": archived, "skipped": skipped, "rebuilt": rebuilt}
+
+
 def _record_archived_narrator_audit(db, chapter_id: str, book_status: dict) -> bool:
     try:
         from app.config import settings
@@ -1721,13 +1785,13 @@ def _record_archived_narrator_audit(db, chapter_id: str, book_status: dict) -> b
         return False
 
 
-def _enqueue_archived_narrator_audit(chapter_id: str) -> None:
+def _enqueue_archived_narrator_audit(chapter_id: str, *, notify_narrator: bool = True) -> None:
     # Очередь пишет своим соединением: вызываем только после фиксации проекта,
     # иначе SQLite блокирует постановку платного прогона транзакцией архивации.
     try:
         from app.services.asr_audit_lifecycle import enqueue_audit
 
-        enqueue_audit(chapter_id)
+        enqueue_audit(chapter_id, **({"notify_narrator": False} if not notify_narrator else {}))
     except Exception:
         logger.exception("Не удалось поставить аудит архивированной главы %s", chapter_id)
 

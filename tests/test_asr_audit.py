@@ -105,9 +105,9 @@ def db():
     [
         ("Глава 3. Самое сложное", "title"),
         ("- сказал он.", "tag"),
-        ("– улыбнулся персонаж.", "tag"),
-        ("- тихо сказал персонаж, отодвинув стул.", "tag"),
-        ("- раздался звонкий голосок.", "tag"),
+        ("– улыбнулся персонаж.", "required"),
+        ("- тихо сказал персонаж, отодвинув стул.", "required"),
+        ("- раздался звонкий голосок.", "required"),
         ("- сказал персонаж. Затем он ушёл.", "required"),   # вторая фраза — факт
         ("- сказал он, когда вошел гость.", "required"),     # событийная клауза
         ("- сказал он" + " очень" * 20 + ".", "required"),   # длинная тирада
@@ -126,7 +126,7 @@ def test_classifier_edges(text, kind):
 
 NARRATION_FULL = "На площади зажглись фонари, и ветер стих до самого утра."
 NARRATION_PARTIAL = "На дороге наступила тишина, хотя впереди ещё много работы."
-TAG_LINE = "- улыбнулся персонаж."
+TAG_LINE = "- сказал он."
 TITLE_LINE = "Глава 12. Дорога"
 
 
@@ -229,11 +229,11 @@ def _run_audit(db, monkeypatch, *, confirm: bool):
 
 @pytest.mark.parametrize(("text", "expected"), [
     ("— сказал он.", "tag"),
-    ("— спросила женщина, закрывая дверь.", "tag"),
-    ("— ответил собеседник.", "tag"),
+    ("— спросила женщина, закрывая дверь.", "required"),
+    ("— ответил собеседник.", "required"),
     ("— прошипела она.", "tag"),
-    ("— кивнул проводник.", "tag"),
-    ("— послышался голос.", "tag"),
+    ("— кивнул проводник.", "required"),
+    ("— послышался голос.", "required"),
     ("— сказал он, когда погас свет.", "required"),
     ("— сказала она. За дверью было тихо.", "required"),
     ("Персонаж ответил не сразу.", "required"),
@@ -477,9 +477,9 @@ def test_required_indexes_remap_past_exempt_lines(db, monkeypatch):
     attrs[segs[2].id].span_end = len(first)
     _spy_sends(monkeypatch)
     def judge(system, user, schema):
-        assert "[0]" not in user and "[3]" not in user
+        assert "[0]" in user and "[3]" not in user
         assert "[1]" in user and "[2]" in user
-        return {"verdicts": [{"index": i, "status": "ok", "missing_words": [], "note": ""} for i in [1, 2]]}
+        return {"verdicts": [{"index": i, "status": "ok", "missing_words": [], "note": ""} for i in [0, 1, 2]]}
     audit = run_asr_audit(db, chapter_id,
         transcribe=lambda p: (_heard_with(NARRATION_PARTIAL, NARRATION_FULL), 1.), judge=judge)
     assert audit.status == "done"
@@ -862,7 +862,7 @@ def test_clean_repeat_invalidates_archive_to_remove_previous_confirmed_markers(d
     first, _ = _run_audit(db, monkeypatch, confirm=True)
     chapter = db.get(ScriptChapter, first.chapter_id)
     archived_xml = build_chapter_session(db, chapter.id, relative=True)
-    assert "РАССКАЗЧИК · пропуск" in archived_xml
+    assert "NARRATOR · text mismatch" in archived_xml
     # Проект с прежними метками уже сохранён; только новый аудит теперь может
     # подсказать фону, что эти метки надо удалить из архивной версии.
     chapter.session_archived_at = utcnow_naive()
@@ -874,7 +874,7 @@ def test_clean_repeat_invalidates_archive_to_remove_previous_confirmed_markers(d
             {"index": i, "status": "ok", "missing_words": [], "note": ""} for i in [0, 1]]})
     assert second.status == "done"
     assert chapter.session_outdated_at is not None
-    assert "РАССКАЗЧИК · пропуск" not in build_chapter_session(db, chapter.id, relative=True)
+    assert "NARRATOR · text mismatch" not in build_chapter_session(db, chapter.id, relative=True)
 
 
 
@@ -898,7 +898,7 @@ def test_latest_audit_is_not_current_after_script_changes(db):
     chapter_id = _make_ready_chapter(db)
     fingerprint = asr_audit.narrator_input_fingerprint(db, chapter_id)
     db.add(AsrAudit(chapter_id=chapter_id, status="done", model="test",
-                    lines_json=json.dumps({"narrator_input_fingerprint": fingerprint}),
+                    lines_json=json.dumps({"audit_policy_version": asr_audit.AUDIT_POLICY_VERSION, "narrator_input_fingerprint": fingerprint}),
                     findings_json=json.dumps({"flags": [], "confirmed": 0})))
     db.flush()
     assert asr_audit.latest_audits(db, [chapter_id])[chapter_id]["status"] == "done"
@@ -959,6 +959,7 @@ def test_latest_audits_checks_many_chapters_with_bounded_queries(db, cached_chap
     db.flush()
     for cid in chapter_ids:
         db.add(AsrAudit(chapter_id=cid, status="done", lines_json=json.dumps({
+            "audit_policy_version": asr_audit.AUDIT_POLICY_VERSION,
             "narrator_input_fingerprint": asr_audit.narrator_input_fingerprint(db, cid)})))
     db.flush()
     chapter_map = None if cached_chapters is None else {
@@ -1060,3 +1061,231 @@ def test_audit_failed_provider_call_records_unknown_cost(monkeypatch, tmp_path):
     with pytest.raises(TimeoutError):
         asr_audit._transcribe_fresh(str(tmp_path / "source.wav"), model="test", phrases=[])
     assert calls[0][1]["estimated"] is True
+
+
+def _replace_script_line(db, ordinal, text):
+    from app.models import AsrJob
+
+    segment = db.query(V2Segment).filter(V2Segment.ordinal == ordinal).one()
+    segment.text = text
+    db.query(V2Attribution).filter(V2Attribution.segment_id == segment.id).one().span_end = len(text)
+    job = db.query(AsrJob).filter(AsrJob.audio_file_id == "take-r").one()
+    payload = json.loads(job.alignment_json)
+    payload["lines"][ordinal]["text"] = text
+    job.alignment_json = json.dumps(payload)
+    db.flush()
+
+
+@pytest.mark.parametrize("expected,spoken,suspect,second,confirmed", [
+    ("- осклабился он и сказал.", "- оскалился он и сказал.", "осклабился",
+     "- оскалился он и сказал.", True),
+    ("- осклабился он и сказал.", "- оскалился он и сказал.", "осклабился",
+     "- осклабился он и сказал.", False),
+    ("- он поднял меч и сказал.", "- он сказал.", "поднял меч", "- он сказал.", True),
+    ("- он отнял меч.", "- он отнимал меч.", "отнял", "- он отнимал меч.", True),
+])
+def test_text_substitutions_forms_and_missing_actions_require_second_hearing(
+        db, monkeypatch, expected, spoken, suspect, second, confirmed):
+    chapter_id = _make_ready_chapter(db)
+    _replace_script_line(db, 0, expected)
+    _spy_sends(monkeypatch)
+    monkeypatch.setattr(asr_audit, "_cut_window", lambda *a, **kw: None)
+    calls = []
+
+    def judge(system, user, schema):
+        calls.append((system, user))
+        if "results" in schema["properties"]:
+            assert "лексическая замена" in system and "ошибка формы" in system
+            assert second in user
+            # Даже ошибочное обвинение судьи не перекрывает точное слово во втором STT.
+            return {"results": [{"index": 0, "confirmed": True, "note": "текст отличается"}]}
+        assert "осклабился" in system and "оскалился" in system
+        assert expected in user
+        return {"verdicts": [
+            {"index": 0, "status": "partial", "missing_words": [suspect], "note": "текст отличается"},
+            {"index": 1, "status": "ok", "missing_words": [], "note": ""}]}
+
+    audit = run_asr_audit(db, chapter_id,
+        transcribe=lambda path: (_heard_with(spoken, NARRATION_PARTIAL), 1.), judge=judge,
+        confirm_transcribe=lambda path: ({"text": second}, .5))
+    assert audit.status == "done"
+    flags, count = asr_audit._audit_findings(audit)
+    assert flags[0]["missing_words"] == [suspect]
+    assert flags[0]["confirmed"] is confirmed and count == int(confirmed)
+    assert len(calls) == 2 and audit.stt_cost_rub == 1.5
+    assert json.loads(audit.lines_json)["audit_policy_version"] == asr_audit.AUDIT_POLICY_VERSION
+
+
+def test_omitted_significant_action_cannot_hide_as_neutral_tag(db, monkeypatch):
+    from app.models import AsrJob
+
+    chapter_id = _make_ready_chapter(db)
+    text = "- отшвырнул он меч и сказал."
+    _replace_script_line(db, 0, text)
+    job = db.query(AsrJob).filter(AsrJob.audio_file_id == "take-r").one()
+    payload = json.loads(job.alignment_json)
+    payload["lines"][0] = {"index": 0, "text": text, "matched": False}
+    job.alignment_json = json.dumps(payload)
+    db.flush()
+    _spy_sends(monkeypatch)
+
+    def judge(system, user, schema):
+        assert "[0] " + text in user
+        return {"verdicts": [{"index": i, "status": "ok", "missing_words": [], "note": ""}
+                             for i in [0, 1]]}
+
+    audit = run_asr_audit(db, chapter_id,
+        transcribe=lambda path: (_heard_with(NARRATION_PARTIAL, ""), 1.), judge=judge,
+        confirm_transcribe=lambda path: pytest.fail("нет клипа для второго прослушивания"))
+    flags, count = asr_audit._audit_findings(audit)
+    assert audit.status == "done" and count == 0
+    assert flags[0]["index"] == 0 and flags[0]["status"] == "missing"
+    assert flags[0]["anchor"] is None and flags[0]["word_anchors"] == []
+    assert flags[0]["source_windows"] == []
+
+
+@pytest.mark.parametrize("spoken,status,confirmed", [
+    ("- спросил он.", "partial", True),
+    ("совсем другая строка", "missing", False),
+])
+def test_spoken_optional_tag_uses_its_source_and_original_index(db, monkeypatch, spoken, status, confirmed):
+    from app.models import AsrJob
+
+    chapter_id = _make_ready_chapter(db)
+    _add_fix(db)
+    job = db.query(AsrJob).filter(AsrJob.audio_file_id == "fix").one()
+    payload = json.loads(job.alignment_json)
+    payload["lines"][1] = {"index": 1, "matched": False, "text": NARRATION_PARTIAL}
+    payload["lines"][2] = {"index": 2, "matched": True, "text": TAG_LINE, "start": 0., "end": 3.}
+    job.alignment_json = json.dumps(payload)
+    db.flush()
+    _spy_sends(monkeypatch)
+    sources, cuts = [], []
+    monkeypatch.setattr(asr_audit, "_cut_window", lambda *a, **kw: cuts.append(a))
+
+    def transcribe(path):
+        sources.append(path)
+        return (_heard_with(spoken, "") if path.endswith("fix.wav")
+                else _heard_with(NARRATION_FULL, NARRATION_PARTIAL)), 1.
+
+    def judge(system, user, schema):
+        if "results" in schema["properties"]:
+            assert "Индекс строки: 2" in user and "можно опустить" in user
+            return {"results": [{"index": 2, "confirmed": True, "note": "замена глагола"}]}
+        assert "[2] " + TAG_LINE in user and "можно опустить" in user
+        assert "Подход 1: спросил он" in user or status == "missing"
+        return {"verdicts": [
+            {"index": i, "status": "ok", "missing_words": [], "note": ""} for i in [0, 1]
+        ] + [{"index": 2, "status": status, "missing_words": ["сказал"], "note": "замена глагола"}]}
+
+    audit = run_asr_audit(db, chapter_id, transcribe=transcribe, judge=judge,
+                         confirm_transcribe=lambda path: ({"text": spoken}, .5))
+    flags, count = asr_audit._audit_findings(audit)
+    assert audit.status == "done" and count == int(confirmed)
+    assert len(sources) == 2 and any(path.endswith("fix.wav") for path in sources)
+    if confirmed:
+        assert flags[0]["index"] == 2 and flags[0]["omission_optional"] is True
+        assert flags[0]["source_audio_file_id"] == "fix"
+        assert len(cuts) == 1 and cuts[0][0].endswith("fix.wav")
+    else:
+        assert flags == [] and cuts == []
+
+
+@pytest.mark.parametrize("version", [None, "narrator-text-v1"])
+def test_previous_policy_cannot_be_reported_as_current(db, version):
+    chapter_id = _make_ready_chapter(db)
+    metadata = {"narrator_input_fingerprint": asr_audit.narrator_input_fingerprint(db, chapter_id)}
+    if version is not None:
+        metadata["audit_policy_version"] = version
+    db.add(AsrAudit(chapter_id=chapter_id, status="done", lines_json=json.dumps(metadata)))
+    db.flush()
+    assert asr_audit.latest_audits(db, [chapter_id])[chapter_id]["status"] == "stale"
+    assert asr_audit.needs_run(db, chapter_id) is True
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("- хрипло пробормотал он.", "tag"),
+    ("- недовольно фыркнула она.", "tag"),
+    ("- пробормотал он и спрятал письмо.", "required"),
+])
+def test_neutral_delivery_tags_stay_optional_without_hiding_actions(text, expected):
+    assert classify_narrator_line(text) == expected
+
+
+@pytest.mark.parametrize("field,value", [("stored_key", "k/fix.wav"), ("location", "nas")])
+def test_source_path_changes_invalidate_both_fingerprint_paths(db, monkeypatch, field, value):
+    from app.models import AudioFile
+    monkeypatch.setattr(asr_audit.settings, "audio_nas_path", "/synthetic/nas")
+    chapter_id = _make_ready_chapter(db)
+    original = asr_audit.narrator_input_fingerprint(db, chapter_id)
+    setattr(db.get(AudioFile, "take-r"), field, value)
+    db.flush()
+    current = asr_audit.narrator_input_fingerprint(db, chapter_id)
+    assert current != original
+    assert asr_audit._narrator_fingerprints(db, [chapter_id])[chapter_id] == current
+
+
+def test_changed_source_bytes_after_payment_cannot_accuse_actor(db, monkeypatch, audio_sources):
+    chapter_id = _make_ready_chapter(db)
+    notices = _spy_sends(monkeypatch)
+    monkeypatch.setattr(asr_audit, "_cut_window", lambda *a, **kw: None)
+    def transcribe(path):
+        Path(path).write_bytes(b"X" * 10)
+        return _heard_with(NARRATION_FULL, NARRATION_PARTIAL), 1.
+    audit = run_asr_audit(db, chapter_id, transcribe=transcribe, judge=_judge(confirm=True),
+        confirm_transcribe=lambda path: ({"text": NARRATION_PARTIAL.replace("хотя ", "").replace("много ", "")}, .5))
+    assert audit.status == "failed" and audit.error_message == "narrator_source_changed_after_payment"
+    assert audit.stt_cost_rub == 1.5 and json.loads(audit.lines_json)["stt_calls"] == 2
+    assert not any(notice["direct"] for notice in notices)
+
+
+@pytest.mark.parametrize("boundary", ["before_fence", "inside_fence"])
+def test_final_audit_freshness_and_findings_share_one_writer(tmp_path, monkeypatch, boundary):
+    from sqlalchemy.exc import OperationalError
+    engine = create_engine(f"sqlite:///{tmp_path / 'fenced-audit.sqlite'}", connect_args={"timeout": 0})
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine)
+    notices, fence = [], []
+    with factory() as db:
+        chapter_id = _make_ready_chapter(db)
+        db.commit()
+        monkeypatch.setattr(asr_audit, "_cut_window", lambda *a, **kw: None)
+        monkeypatch.setattr(asr_audit, "_notify_owner", lambda *a, **kw: None)
+        monkeypatch.setattr(asr_audit, "_notify_narrator", lambda *a, **kw: notices.append(kw))
+        def mutate():
+            with factory() as other:
+                segment = other.query(V2Segment).filter(V2Segment.ordinal == 0).one()
+                segment.text = "A changed synthetic sentence."
+                other.query(V2Attribution).filter(V2Attribution.segment_id == segment.id).one().span_end = len(segment.text)
+                other.commit()
+        preflight = asr_audit._preflight_sources
+        count = 0
+        def checked(*a, **kw):
+            nonlocal count
+            result = preflight(*a, **kw)
+            count += 1
+            assert not db.in_transaction(), "audio hashes must stay outside the writer"
+            if boundary == "before_fence" and count == 2:
+                mutate()
+            return result
+        monkeypatch.setattr(asr_audit, "_preflight_sources", checked)
+        fingerprint = asr_audit.narrator_input_fingerprint
+        def checked_fingerprint(*a, **kw):
+            current = fingerprint(*a, **kw)
+            if boundary == "inside_fence":
+                with pytest.raises(OperationalError, match="locked"):
+                    mutate()
+                fence.append(True)
+            return current
+        monkeypatch.setattr(asr_audit, "narrator_input_fingerprint", checked_fingerprint)
+        audit = run_asr_audit(db, chapter_id,
+            transcribe=lambda path: (_heard_with(NARRATION_FULL, NARRATION_PARTIAL), 1.), judge=_judge(confirm=True),
+            confirm_transcribe=lambda path: ({"text": NARRATION_PARTIAL.replace("хотя ", "").replace("много ", "")}, .5))
+        assert audit.stt_cost_rub == 1.5 and json.loads(audit.lines_json)["stt_calls"] == 2
+        if boundary == "before_fence":
+            assert audit.status == "skipped" and audit.error_message == "narrator_input_changed_after_payment"
+            assert notices == []
+        else:
+            assert audit.status == "done" and fence == [True]
+            assert json.loads(audit.findings_json)["confirmed"] == 1
+    engine.dispose()

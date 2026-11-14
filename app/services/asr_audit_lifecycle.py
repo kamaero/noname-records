@@ -140,9 +140,31 @@ def _assembly_sources_available(db, chapter_id: str) -> bool:
     return True
 
 
-def record_audit_assembly(db, chapter_id: str, *, book_status: dict | None = None) -> bool:
+def narrator_assembly_snapshot(db, chapter_id: str) -> dict | None:
+    """Готовность других голосов не мешает проверке реально собранного рассказчика."""
+    import hashlib
+    from app.services.asr_audit import _narrator_snapshot, latest_narrator_take
+    from app.services.chapter_assembly import narrator_ready_reason
+    from app.services.asr_run import chapter_language
+
+    chapter = db.get(ScriptChapter, str(chapter_id or "").strip())
+    if chapter is None or narrator_ready_reason(db, chapter):
+        return None
+    snapshot = _narrator_snapshot(db, chapter.id)
+    if not snapshot["lines"]["required"] or not snapshot["clips"] or not snapshot["sources"]:
+        return None
+    sources = [{"id": key, "md5": source["md5"], "size": source["size_bytes"]}
+               for key, source in sorted(snapshot["sources"].items())]
+    digest = hashlib.sha256(json.dumps({"narrator": snapshot["fingerprint"], "sources": sources},
+        ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    return {"assembled_fingerprint": digest, "narrator_take_id": str(latest_narrator_take(db, chapter).id),
+            "narrator_input_fingerprint": snapshot["fingerprint"], "language": chapter_language(db, chapter.id)}
+
+
+def record_audit_assembly(db, chapter_id: str, *, book_status: dict | None = None, narrator_only=False) -> bool:
     """Вызывается только после реально записанного полного ZIP или проекта на NAS."""
-    snapshot = audit_assembly_snapshot(db, chapter_id, book_status=book_status)
+    snapshot = (narrator_assembly_snapshot(db, chapter_id) if narrator_only
+                else audit_assembly_snapshot(db, chapter_id, book_status=book_status))
     if snapshot is None:
         return False
     chapter = db.get(ScriptChapter, str(chapter_id))
@@ -154,8 +176,21 @@ def record_audit_assembly(db, chapter_id: str, *, book_status: dict | None = Non
 
 
 def assembled_audit_snapshot(db, chapter_id: str) -> dict | None:
-    snapshot = audit_assembly_snapshot(db, chapter_id)
     chapter = db.get(ScriptChapter, str(chapter_id or "").strip())
+    if chapter is not None and chapter.session_key:
+        from app.services import audio_storage, nas_health
+        location = chapter.session_location or "local"
+        if location == "nas" and nas_health.nas_online() is not True:
+            return None
+        if not audio_storage.file_exists(chapter.session_key, location=location):
+            return None
+    try:
+        snapshot = narrator_assembly_snapshot(db, chapter_id)
+    except Exception:
+        snapshot = None
+    if (chapter is None or snapshot is None
+            or snapshot["assembled_fingerprint"] != chapter.audit_assembly_fingerprint):
+        snapshot = audit_assembly_snapshot(db, chapter_id)
     if snapshot is None or chapter is None:
         return None
     if (chapter.audit_assembly_fingerprint != snapshot["assembled_fingerprint"]
@@ -165,11 +200,13 @@ def assembled_audit_snapshot(db, chapter_id: str) -> dict | None:
     return snapshot
 
 
-def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "") -> str | None:
+def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "", session_factory=None, notify_narrator: bool = True) -> str | None:
     if not settings.asr_audit_enabled:
         return None
+    from app.services.asr_audit import AUDIT_POLICY_VERSION
+    sessions = session_factory or SessionLocal
     chapter_id = str(chapter_id or "").strip()
-    with SessionLocal() as db:
+    with sessions() as db:
         snapshot = assembled_audit_snapshot(db, chapter_id)
         if snapshot is None:
             return None
@@ -178,7 +215,8 @@ def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "
             raise AuditUnavailable("audit_missing_key")
         run_key = f"asr-audit:{chapter_id}"
         run_id, now = str(uuid4()), utcnow_naive()
-        meta = dict(snapshot, chapter_id=chapter_id, force=bool(force), payment_state="not_started")
+        meta = dict(snapshot, chapter_id=chapter_id, force=bool(force), payment_state="not_started",
+                    audit_policy_version=AUDIT_POLICY_VERSION, notify_narrator=bool(notify_narrator))
         if initiator_id:
             meta["by"] = initiator_id
         active = exists(select(BackgroundRun.id).where(
@@ -196,6 +234,12 @@ def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "
             run_meta = case((func.json_valid(BackgroundRun.meta_json), BackgroundRun.meta_json), else_="{}")
             audit_meta = case((func.json_valid(AsrAudit.lines_json), AsrAudit.lines_json), else_="{}")
             run_fingerprint = func.json_extract(run_meta, "$.narrator_input_fingerprint")
+            uncertain = exists(select(BackgroundRun.id).where(
+                BackgroundRun.run_key == run_key,
+                BackgroundRun.status.notin_(["done", "queued", "running"]),
+                func.coalesce(func.json_extract(run_meta, "$.payment_state"), "unknown").notin_(["not_started", "completed"])))
+            run_policy = func.json_extract(run_meta, "$.audit_policy_version")
+            audit_policy = func.json_extract(audit_meta, "$.audit_policy_version")
             safe_skip = and_(
                 BackgroundRun.status == "skipped",
                 func.coalesce(func.json_extract(run_meta, "$.payment_state"), "unknown") == "not_started",
@@ -204,6 +248,7 @@ def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "
             )
             prior = exists(select(BackgroundRun.id).where(
                 BackgroundRun.run_key == run_key, ~safe_skip,
+                or_(BackgroundRun.status != "done", run_policy == AUDIT_POLICY_VERSION),
                 or_(run_fingerprint == snapshot["narrator_input_fingerprint"], run_fingerprint.is_(None)),
             ))
             known_unpaid_audit = and_(
@@ -216,8 +261,16 @@ def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "
                 AsrAudit.chapter_id == chapter_id,
                 func.json_extract(audit_meta, "$.narrator_input_fingerprint") == snapshot["narrator_input_fingerprint"],
                 ~known_unpaid_audit,
+                or_(AsrAudit.status != "done", audit_policy == AUDIT_POLICY_VERSION),
             ))
-            allowed = allowed & ~prior & ~prior_audit
+            uncertain_audit = exists(select(AsrAudit.id).where(
+                AsrAudit.chapter_id == chapter_id, AsrAudit.status.in_(["running", "failed", "skipped"]),
+                ~known_unpaid_audit,
+                ~and_(AsrAudit.status == "skipped", AsrAudit.error_message == "narrator_input_changed_after_payment"),
+                or_(func.coalesce(func.json_extract(audit_meta, "$.stt_calls"), 0) > 0,
+                    func.coalesce(func.json_extract(audit_meta, "$.cost_complete"), 0) != 1,
+                    AsrAudit.stt_cost_rub > 0)))
+            allowed = allowed & ~prior & ~prior_audit & ~uncertain & ~uncertain_audit
         stmt = insert(BackgroundRun).from_select(list(values), select(
             *(literal(value) for value in values.values())).where(allowed))
         reserved = db.execute(stmt).rowcount
@@ -244,13 +297,13 @@ def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "
     try:
         job = get_queue("consilium").enqueue(
             "app.worker_tasks.perform_asr_audit_task", chapter_id=chapter_id,
-            run_id=run_id, **snapshot, force=bool(force),
+            run_id=run_id, **snapshot, force=bool(force), audit_policy_version=AUDIT_POLICY_VERSION,
             **({"initiator_id": initiator_id} if initiator_id else {}), job_timeout=3600 * 4, result_ttl=86400)
         return job.id
     except Exception:
         # Падение между принятием Redis и ответом клиенту неоднозначно: резерв остаётся.
         logger.exception("Не подтверждена постановка аудита главы %s; повтор автоматически запрещён", chapter_id)
-        with SessionLocal() as db:
+        with sessions() as db:
             db.execute(update(BackgroundRun).where(BackgroundRun.id == run_id).values(
                 error_message="queue_outcome_unknown: owner review is required"))
             db.commit()
@@ -289,7 +342,7 @@ def record_payment_boundary(db, run_id: str, *, state: str, skip_reason: str = "
 
 def current_audit(db, chapter_id: str):
     """Метки берём только из завершённого аудита нынешнего текста и исходных клипов."""
-    from app.services.asr_audit import narrator_input_fingerprint
+    from app.services.asr_audit import AUDIT_POLICY_VERSION, narrator_input_fingerprint
 
     audits = db.query(AsrAudit).filter(
         AsrAudit.chapter_id == str(chapter_id), AsrAudit.status == "done",
@@ -304,6 +357,7 @@ def current_audit(db, chapter_id: str):
             meta = json.loads(audit.lines_json or "{}")
         except (ValueError, TypeError):
             continue
-        if isinstance(meta, dict) and meta.get("narrator_input_fingerprint") == fingerprint:
+        if (isinstance(meta, dict) and meta.get("narrator_input_fingerprint") == fingerprint
+                and meta.get("audit_policy_version") == AUDIT_POLICY_VERSION):
             return audit
     return None

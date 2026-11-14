@@ -63,6 +63,8 @@ class AudioFile(Base):
     mirrored_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     #: «» не копировали · «ok» сумма сошлась · «mismatch» копия на NAS битая
     mirror_state: Mapped[str] = mapped_column(String(16), nullable=False, default="", server_default="")
+    #: Квитанция содержит фактическую сумму и путь; служебные правки её не обнуляют.
+    mirror_proof_json: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="uploaded")
     #: когда файл прислали. Без `onupdate`: отметка о событии не меняется оттого, что мы
     #: правим строку, — с ним переклассификация проб задним числом сделала два десятка
@@ -268,6 +270,10 @@ class ScriptChapter(Base):
     session_archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     #: sha256 XML, положенного в архив последним. Пусто — архивировали до отпечатков.
     session_sha256: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    #: Новые рабочие версии дописываются; путь позволяет сохранить ручной монтаж.
+    session_key: Mapped[str] = mapped_column(String(700), nullable=False, default="", server_default="")
+    session_location: Mapped[str] = mapped_column(String(10), nullable=False, default="", server_default="")
+    session_input_sha256: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
     audit_assembly_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
     audit_assembly_take_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
     audit_narrator_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")

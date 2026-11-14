@@ -365,7 +365,7 @@ def test_asr_table_sixty_chapters_has_bounded_queries_and_current_audits(db, mod
     from time import perf_counter
     from sqlalchemy import event
     from app.models import AsrAudit, AsrJob
-    from app.services.asr_audit import narrator_input_fingerprint
+    from app.services.asr_audit import AUDIT_POLICY_VERSION, narrator_input_fingerprint
     from app.services.chapter_delivery import book_recording_status
     book = db.get(ScriptBook, "book")
     book.role_identity_mode = mode
@@ -386,6 +386,7 @@ def test_asr_table_sixty_chapters_has_bounded_queries_and_current_audits(db, mod
     db.flush()
     for cid in chapter_ids:
         db.add(AsrAudit(chapter_id=cid, status="done", lines_json=json.dumps({
+            "audit_policy_version": AUDIT_POLICY_VERSION,
             "narrator_input_fingerprint": narrator_input_fingerprint(db, cid)})))
     db.commit()
     db.expire_all()

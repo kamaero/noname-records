@@ -80,9 +80,9 @@ def _manual_chapter_result(session_factory, initiator_id: str, chapter_id: str, 
 def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
                            assembled_fingerprint: str = "", narrator_take_id: str = "",
                            narrator_input_fingerprint: str = "", force: bool = False,
-                           language: str | None = None, initiator_id: str = ""):
+                           language: str | None = None, initiator_id: str = "", audit_policy_version: str = ""):
     """Проверяем снимок сборки и захватываем оплачиваемую задачу ровно один раз."""
-    from app.services.asr_audit import run_asr_audit
+    from app.services.asr_audit import AUDIT_POLICY_VERSION, run_asr_audit
     from app.services.asr_audit_lifecycle import assembled_audit_snapshot, claim_audit_run, record_payment_boundary
 
     session_factory = SessionLocal
@@ -91,11 +91,19 @@ def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
         with session_factory() as db:
             if not claim_audit_run(db, run_id):
                 return
+            import json
+            run = db.get(BackgroundRun, run_id)
+            try:
+                run_meta = json.loads(run.meta_json or "{}") if run else {}
+                notify_narrator = run_meta.get("notify_narrator", True) is not False
+            except (ValueError, TypeError, AttributeError):
+                notify_narrator = True
             expected = {"assembled_fingerprint": assembled_fingerprint, "narrator_take_id": narrator_take_id,
                         "narrator_input_fingerprint": narrator_input_fingerprint}
             if language is not None:
                 expected["language"] = language
-            if assembled_audit_snapshot(db, chapter_id) != expected:
+            if ((audit_policy_version and audit_policy_version != AUDIT_POLICY_VERSION)
+                    or assembled_audit_snapshot(db, chapter_id) != expected):
                 db.rollback()
                 record_payment_boundary(db, run_id, state="not_started", skip_reason="assembly_changed_before_payment")
                 _finish_background_run(session_factory, BackgroundRun, run_id, "skipped",
@@ -112,15 +120,22 @@ def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
             with spend.context("asr_audit", book_id=book_id, chapter_id=chapter_id, run_id=run_id):
                 audit = run_asr_audit(db, chapter_id, expected_narrator_fingerprint=narrator_input_fingerprint,
                                       **({"language": language} if language is not None else {}),
+                                      **({"notify_narrator": False} if not notify_narrator else {}),
                                       **({"notify_result": personal_notice} if personal_notice is not None else {}))
             db.commit()
             if audit.status == "skipped" and audit.error_message in {"narrator_input_changed", "no_narrator_take"}:
                 record_payment_boundary(db, run_id, state="not_started", skip_reason=audit.error_message)
                 _manual_chapter_result(session_factory, initiator_id, chapter_id,
                                       "Strict check cancelled: narrator inputs changed or are missing; no payment was made.")
+            if (audit.status == "done" or audit.status == "skipped"
+                    and audit.error_message == "narrator_input_changed_after_payment"):
+                record_payment_boundary(db, run_id, state="completed")
             audit_status, message = audit.status, audit.error_message or "no issues"
         _finish_background_run(session_factory, BackgroundRun, run_id, audit_status,
                                f"audit {audit_status}: {message}")
+        if audit_status == "done":
+            from app.services.mirror_wakeup import request_mirror_wakeup
+            request_mirror_wakeup()
     except Exception as exc:
         _manual_chapter_result(session_factory, initiator_id, chapter_id,
                               f"Strict check incomplete ({type(exc).__name__}). Check the chapter log.")
@@ -157,6 +172,8 @@ def perform_asr_chapter_task(chapter_id: str, run_id: str = "", force: bool = Fa
         _finish_background_run(session_factory, BackgroundRun, run_id, "done",
                                f"transcribed {result['done']}, realigned {result.get('realigned', 0)}, "
                                f"failed {result['failed']}")
+        from app.services.mirror_wakeup import request_mirror_wakeup
+        request_mirror_wakeup()
         if personal_notice is not None and not reported:
             _manual_chapter_result(session_factory, initiator_id, chapter_id,
                 f"Transcription complete: takes {result.get('takes', 0)}, transcribed {result['done']}, "

@@ -14,6 +14,10 @@ Your studio runs its own copy. AI services use your own provider keys and may ch
 - Download chapter projects for Adobe Audition. Optional tools include sound and ambient work and Telegram notifications.
 - Find scene music, environment audio and effects with Openverse or YouTube. Preview candidates beside the script, confirm rights before downloading, and maintain chapter credits. Files are added to Audition manually.
 
+A narrator take starts a working chapter draft after its intake and transcription finish. Missing character voices, separate titles and script lines remain explicit project gaps; they do not delay the first draft. Automatic revisions keep earlier project files and verified media intact, including manual edits. Without a NAS, the installation stores drafts beside its local audio; configured NAS installations store drafts there. The ASR table reports the current saved draft and narrator-check result without a separate paid-audit button.
+
+If strict narrator checking is enabled, assembly queues it under your configured provider keys and spending limit. Lexical substitutions and incorrect word forms are checked alongside omissions; a second transcription must confirm a finding before it becomes a project marker. Entire short neutral dialogue tags may be omitted. Spoken tags are checked normally. Automatic assembly audits update the owner report and project markers without broadcasting retrospective notices to actors. An unknown previous payment outcome stops automatic paid retries and needs owner review.
+
 AI results need human review. Provider availability, model quality and costs depend on your configuration.
 
 ## Requirements

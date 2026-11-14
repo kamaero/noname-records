@@ -5,7 +5,7 @@ from typing import Any
 
 from app.services import audio_storage, nas_health
 from app.services.audio_mirror import mirror_once, purge_deleted_once
-from app.services.chapter_delivery import archive_pending_chapter_sessions
+from app.services.chapter_assembly import archive_pending_chapters as archive_pending_chapter_sessions
 from app.services.nas_notice import NasTransitionNotice
 from app.services.mirror_wakeup import wait_for_mirror_wakeup
 from app.workers.launcher import heartbeat_background_run, start_tracked_thread

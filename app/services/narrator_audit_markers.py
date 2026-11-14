@@ -70,7 +70,8 @@ def narrator_audit_session_markers(db, chapter_id: str, tracks) -> tuple[list[Se
     confirmed = [flag for flag in flags if isinstance(flag, dict) and flag.get("confirmed") is True]
     if not confirmed:
         return [], 0
-    current = {line["index"]: line for line in narrator_lines(db, chapter_id)["required"]}
+    lines = narrator_lines(db, chapter_id)
+    current = {line["index"]: line for line in [*lines["required"], *lines["tags"]]}
     replicas = [replica for replica in chapter_replicas(db, chapter_id) if identities.is_narrator(replica["role"])]
     narrator_clips = [(clip, clip.role or track.name) for track in tracks if identities.is_narrator(track.name)
                       for clip in track.clips]
@@ -136,7 +137,7 @@ def narrator_audit_session_markers(db, chapter_id: str, tracks) -> tuple[list[Se
                 project_start = clip.start + start - clip.source_in
                 key = f"noname-narrator:{chapter_id}:{source_id}:{flag.get('index')}:{number}:{project_start}:{word}"
                 markers.append(SessionMarker(
-                    name=f"РАССКАЗЧИК · пропуск «{word}» · {precision}",
+                    name=f"NARRATOR · text mismatch «{word}» · {precision}",
                     start=project_start,
                     duration=0.0 if approximate else end - start,
                     comment=f"{precision}. Ожидается: {flag.get('text', '')}. "
