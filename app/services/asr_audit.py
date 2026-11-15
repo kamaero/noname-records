@@ -193,7 +193,7 @@ def _narrator_snapshot(db, chapter_id: str) -> dict:
     from app.services.asr_run import chapter_replicas
 
     lines = narrator_lines(db, chapter_id)
-    layout = _script_layout(db, chapter_id)
+    layout = _script_layout(db, chapter_id, relative=True, metadata_only=True)
     if layout is None:
         raise AsrAuditError("chapter_not_found")
     replicas = [row for row in chapter_replicas(db, chapter_id) if identities.is_narrator(row["role"], row.get("role_ref", ""))]

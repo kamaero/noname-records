@@ -21,6 +21,7 @@ import { Paragraph } from "./Paragraph";
 import { StressConstructor } from "./StressConstructor";
 import { StressToggle } from "./StressToggle";
 import { RoleTraps } from "./RoleTraps";
+import { NarratorAudit } from "./NarratorAudit";
 import { LorePanel } from "./LorePanel";
 import { useLore } from "./loreApi";
 import { useBookCast } from "./editorApi";
@@ -421,6 +422,9 @@ export function RoleScriptPage() {
 
       <div className="v2r-body">
         <div className="v2r-main">
+          {myRoles.some((entry) => entry.name === role && entry.is_narrator) ? (
+            <NarratorAudit key={`${bookId}:${role}`} bookId={bookId} chapters={inChapters} />
+          ) : null}
           {/* шапка-панель при печати скрыта, а PDF без имени роли — безымянная стопка листов */}
           <div className="v2r-print-title">
             <div className="v2r-print-title-book">{data.book.title || "Book"}</div>

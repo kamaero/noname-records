@@ -4,9 +4,9 @@
 
 Переменные, чьё имя оканчивается на `KEY`/`TOKEN`/`SECRET`/`PASSWORD`, помечены как секретные — для них показано только «задан ли непустой default в коде», само значение default никогда не печатается.
 
-Всего переменных: **90** (Settings: 88, прочее: 2).
+Всего переменных: **91** (Settings: 89, прочее: 2).
 
-_Сгенерировано из коммита d1c9b32._
+_Сгенерировано из коммита 39db22d._
 
 ## Settings (`app/config.py`)
 
@@ -14,10 +14,10 @@ _Сгенерировано из коммита d1c9b32._
 |---|---|---|---|
 | `ADMIN_LOGIN` | `'admin'` | `app/config.py:83` |  |
 | `ADMIN_PASSWORD_HASH` | `''` | `app/config.py:84` |  |
-| `API_MAX_REQUEST_BYTES` | `str(100 * 1024 * 1024)` | `app/config.py:203` |  |
-| `API_RATE_LIMIT_DEFAULT` | `'240/minute'` | `app/config.py:201` |  |
-| `API_RATE_LIMIT_ENABLED` | `'true'` | `app/config.py:200` |  |
-| `API_RATE_LIMIT_STORAGE_URI` | `''` | `app/config.py:202` |  |
+| `API_MAX_REQUEST_BYTES` | `str(100 * 1024 * 1024)` | `app/config.py:206` |  |
+| `API_RATE_LIMIT_DEFAULT` | `'240/minute'` | `app/config.py:204` |  |
+| `API_RATE_LIMIT_ENABLED` | `'true'` | `app/config.py:203` |  |
+| `API_RATE_LIMIT_STORAGE_URI` | `''` | `app/config.py:205` |  |
 | `APP_BASE_URL` | `'http://localhost:8080'` | `app/config.py:79` |  |
 | `APP_NAME` | `'Noname Records'` | `app/config.py:72` |  |
 | `ASR_AUDIT_CONFIRM_MODEL` | `'microsoft/mai-transcribe-2'` | `app/config.py:124` |  |
@@ -29,7 +29,7 @@ _Сгенерировано из коммита d1c9b32._
 | `ASR_PROVIDER` | `'openai'` | `app/config.py:117` | Распознавание речи. Раньше эти переменные стояли в .env и не читались никем. |
 | `AUDIO_NAS_PATH` | `''` | `app/config.py:107` | Зеркало записей на второй диск или NAS: тот же ключ, другой корень. Пусто — зеркалирование выключено, приём при этом работает. |
 | `AUDIO_STORAGE_PATH` |  | `app/config.py:97` |  |
-| `AUTH_RATE_LIMIT` | `'10/minute'` | `app/config.py:209` | Отдельный строгий лимит на эндпоинты входа (защита от перебора). Не влияет на длительность уже выданной сессии — только на частоту попыток входа. |
+| `AUTH_RATE_LIMIT` | `'10/minute'` | `app/config.py:212` | Отдельный строгий лимит на эндпоинты входа (защита от перебора). Не влияет на длительность уже выданной сессии — только на частоту попыток входа. |
 | `AZURE_SPEECH_ENDPOINT` | `''` | `app/config.py:127` |  |
 | `AZURE_SPEECH_KEY` | секрет — default пуст | `app/config.py:126` |  |
 | `AZURE_SPEECH_LOCALE` | `'ru-RU'` | `app/config.py:128` |  |
@@ -75,30 +75,30 @@ _Сгенерировано из коммита d1c9b32._
 | `OPENAI_BASE_URL` | `'https://api.openai.com/v1'` | `app/config.py:136` |  |
 | `OPENROUTER_API_KEY` | секрет — default пуст | `app/config.py:132` |  |
 | `OPENROUTER_BASE_URL` | `'https://openrouter.ai/api/v1'` | `app/config.py:143` |  |
-| `OWNER_TELEGRAM_ID` | `''` | `app/config.py:195` |  |
+| `OWNER_TELEGRAM_ID` | `''` | `app/config.py:198` |  |
 | `PIPELINE_HOTFIX_MAX_MANUAL_ACTIONS_24H` | `'6'` | `app/config.py:168` |  |
-| `PRODUCTION` | `''` | `app/config.py:215` |  |
+| `PRODUCTION` | `''` | `app/config.py:218` |  |
 | `REDIS_URL` | `'redis://localhost:6379/0'` | `app/config.py:96` |  |
 | `ROUTERAI_API_KEY` | секрет — default пуст | `app/config.py:133` |  |
 | `ROUTERAI_BASE_URL` | `'https://routerai.ru/api/v1'` | `app/config.py:144` |  |
 | `SEAT_MODE` | `'studio'` | `app/config.py:88` | studio — VPS для студии (как всегда); one — настольная программа одного человека |
 | `SECRET_KEY` | секрет — есть непустой default в коде | `app/config.py:80` |  |
-| `STRESS_BASE_DICT_PATH` | `''` | `app/config.py:197` | Base stress dictionary for the v2 stress step (app/v2/stress_dict.py). |
-| `STRESS_FORMS_DB_PATH` | `''` | `app/config.py:199` | Wiktionary word forms with stress (app/v2/stress_forms.py); empty → data/stress_forms.sqlite. |
+| `STRESS_BASE_DICT_PATH` | `''` | `app/config.py:200` | Base stress dictionary for the v2 stress step (app/v2/stress_dict.py). |
+| `STRESS_FORMS_DB_PATH` | `''` | `app/config.py:202` | Wiktionary word forms with stress (app/v2/stress_forms.py); empty → data/stress_forms.sqlite. |
 | `STUDIO_CONTACT_NAME` | `''` | `app/config.py:76` | Контакт для вопросов и переноса сроков. Пусто — обращение к студии без имени. |
 | `STUDIO_NAME` | `os.getenv('APP_NAME', 'Noname Records')` | `app/config.py:74` | Название студии в письмах бота и подписях; по умолчанию — имя системы. |
 | `TELEGRAM_API_BASE` | `''` | `app/config.py:187` | Свой узел Bot API (`telegram-bot-api --local`): облако отдаёт ботам файлы только до 20 МБ, а демо и пробы в WAV больше. Пусто — облако Telegram, как было всегда. |
-| `TELEGRAM_AUTH_MAX_AGE_SECONDS` | `'3600'` | `app/config.py:212` | Окно свежести Telegram login (auth_date). Это окно рукопожатия входа, а не срок жизни сессии. 24ч было слишком большим окном для replay. |
+| `TELEGRAM_AUTH_MAX_AGE_SECONDS` | `'3600'` | `app/config.py:215` | Окно свежести Telegram login (auth_date). Это окно рукопожатия входа, а не срок жизни сессии. 24ч было слишком большим окном для replay. |
 | `TELEGRAM_AUTH_WHITELIST` | `''` | `app/config.py:190` |  |
 | `TELEGRAM_AUTH_WHITELIST_DEFAULT_ACCESS_SCOPE` | `'full'` | `app/config.py:192` |  |
 | `TELEGRAM_AUTH_WHITELIST_DEFAULT_ROLE` | `'author'` | `app/config.py:191` |  |
 | `TELEGRAM_BOT_TOKEN` | секрет — default пуст | `app/config.py:184` |  |
 | `TELEGRAM_BOT_USERNAME` | `''` | `app/config.py:183` |  |
 | `TELEGRAM_NOTIFY_CHAT_IDS` | `''` | `app/config.py:194` |  |
-| `TELEGRAM_SYSTEM_ADMIN_USER_IDS` | `''` | `app/config.py` | CSV of explicitly allowed active admin User IDs; empty means owner only. |
 | `TELEGRAM_NOTIFY_ENABLED` | `'true'` | `app/config.py:193` |  |
+| `TELEGRAM_SYSTEM_ADMIN_USER_IDS` | `''` | `app/config.py:197` | Роль admin сама по себе не подписывает на служебные тревоги: адресаты задаются явно стабильными user_id, а их права перепроверяются при отправке. |
 | `TELEGRAM_WEBHOOK_SECRET` | секрет — default пуст | `app/config.py:189` | Секрет webhook бота (заголовок X-Telegram-Bot-Api-Secret-Token). Пусто — адрес выключен. |
-| `UPLOAD_MAX_BYTES` | `str(2 * 1024 * 1024 * 1024)` | `app/config.py:206` | Не безлимит, а щедрый потолок: тело загрузки Starlette всё равно спулит во временный файл на диске сервера, и один кривой запрос мог забить его целиком. |
+| `UPLOAD_MAX_BYTES` | `str(2 * 1024 * 1024 * 1024)` | `app/config.py:209` | Не безлимит, а щедрый потолок: тело загрузки Starlette всё равно спулит во временный файл на диске сервера, и один кривой запрос мог забить его целиком. |
 | `ZAI_API_KEY` | секрет — default пуст | `app/config.py:131` |  |
 | `ZAI_BASE_URL` | `'https://api.z.ai/v1'` | `app/config.py:142` |  |
 

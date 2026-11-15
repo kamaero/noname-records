@@ -2,9 +2,9 @@
 
 Список получен через интроспекцию реального приложения — импортируется `app.main:app` и обходится `app.routes` (только `fastapi.routing.APIRoute`). Колонка «Обработчик» — модуль и имя функции, «Описание» — первая строка docstring обработчика, если она есть.
 
-Всего маршрутов: **162**, групп: **37**.
+Всего маршрутов: **185**, групп: **38**.
 
-_Сгенерировано из коммита 73b3bfa._
+_Сгенерировано из коммита 39db22d._
 
 ## `/` (1)
 
@@ -18,11 +18,12 @@ _Сгенерировано из коммита 73b3bfa._
 |---|---|---|---|
 | GET | `/admin` | `app.api.system_routes:build_system_routes_handlers.<locals>.admin_redirect` |  |
 
-## `/api/auditions` (1)
+## `/api/auditions` (2)
 
 | Методы | Путь | Обработчик | Описание |
 |---|---|---|---|
 | GET | `/api/auditions/feed` | `app.api.auditions_feed:api_auditions_feed` |  |
+| POST | `/api/auditions/reject` | `app.api.auditions_feed:api_auditions_reject` | «Отказать» / «Не отказывать» (`cancel: true`) по паре актёр + роль. Права — как у |
 
 ## `/api/books` (4)
 
@@ -124,6 +125,14 @@ _Сгенерировано из коммита 73b3bfa._
 | GET | `/api/settings/stress-model` | `app.api.stress_model:api_stress_model` |  |
 | POST | `/api/settings/stress-model` | `app.api.stress_model:api_stress_model_download` |  |
 
+## `/api/studio` (3)
+
+| Методы | Путь | Обработчик | Описание |
+|---|---|---|---|
+| GET | `/api/studio/calendar` | `app.api.studio_calendar:api_studio_calendar` |  |
+| GET | `/api/studio/recording-book` | `app.api.budget_api:build_budget_api_handlers.<locals>.api_recording_book` |  |
+| POST | `/api/studio/recording-book` | `app.api.budget_api:build_budget_api_handlers.<locals>.api_save_recording_book` | Какую книгу студия записывает сейчас. Переключает только админ: от этого |
+
 ## `/api/telegram` (1)
 
 | Методы | Путь | Обработчик | Описание |
@@ -157,8 +166,8 @@ _Сгенерировано из коммита 73b3bfa._
 
 | Методы | Путь | Обработчик | Описание |
 |---|---|---|---|
+| POST | `/api/v2/auditions/score` | `app.v2.api:api_v2_audition_score` | Оценка 1–10 актёру на роль. Каждый жмёт только свою дорожку: автор — верхнюю, |
 | GET | `/api/v2/auditions/{audio_id}/audio` | `app.v2.api:api_v2_audition_audio` | Сама запись. Отдаётся с поддержкой `Range` — иначе у плеера не двигается ползунок. |
-| POST | `/api/v2/auditions/{audio_id}/reaction` | `app.v2.api:api_v2_audition_reaction` | 👍/👎 на пробу. Ставит только автор — не «редактор»: `admin` тут не подразумевается, |
 
 ## `/api/v2/authors` (1)
 
@@ -166,7 +175,7 @@ _Сгенерировано из коммита 73b3bfa._
 |---|---|---|---|
 | GET | `/api/v2/authors/{author_id}/cast-discrepancies` | `app.v2.api:api_v2_cast_discrepancies` | `GET /api/v2/authors/{id}/cast-discrepancies` — где у персонажа цикла разные актёры. |
 
-## `/api/v2/books` (47)
+## `/api/v2/books` (52)
 
 | Методы | Путь | Обработчик | Описание |
 |---|---|---|---|
@@ -186,6 +195,7 @@ _Сгенерировано из коммита 73b3bfa._
 | POST | `/api/v2/books/{book_id}/character-map/rename` | `app.v2.api:api_v2_character_map_rename` | Переименовать роль. Согласие на переезд реплик приходит вторым заходом: |
 | POST | `/api/v2/books/{book_id}/character-map/update` | `app.v2.api:api_v2_character_map_update` | Поменять поля роли: расу, возраст, характер, голос, алиасы, диктора. |
 | POST | `/api/v2/books/{book_id}/characters` | `app.v2.api:api_v2_create_role` | Add a role to the book's cast — the reader's «новая роль». |
+| POST | `/api/v2/books/{book_id}/characters/{character_id}/auditions` | `app.v2.api:api_v2_move_auditions` | Пробы, подписанные иначе, чем роль в книге («Ийли»), — под эту роль («Иули»). |
 | GET | `/api/v2/books/{book_id}/consilium` | `app.v2.api:api_v2_consilium` | Находки консилиума по книге — сводка и список, при желании по одной главе. |
 | GET | `/api/v2/books/{book_id}/consilium/estimate` | `app.v2.api:api_v2_consilium_estimate` |  |
 | POST | `/api/v2/books/{book_id}/consilium/run` | `app.v2.api:api_v2_consilium_run` |  |
@@ -193,6 +203,7 @@ _Сгенерировано из коммита 73b3bfa._
 | GET | `/api/v2/books/{book_id}/disputed` | `app.v2.api:api_v2_disputed` | Lines the model would not name a speaker for, or named with a hedge. |
 | GET | `/api/v2/books/{book_id}/homographs` | `app.v2.api:api_v2_homographs` | «Спорные ударения»: what the model chose where two readings were possible. |
 | GET | `/api/v2/books/{book_id}/illustrations` | `app.v2.illustrations_api:api_v2_book_illustrations` | Все иллюстрации книги с подсказками — вход экрана привязки. |
+| GET, POST | `/api/v2/books/{book_id}/language` | `app.v2.api:api_v2_book_language` | Смена профиля касается будущих задач, сохранённые данные не переписываются. |
 | GET | `/api/v2/books/{book_id}/lore` | `app.v2.lore_api:api_v2_book_lore` | Оглавление статей и карточки сущностей для книги этого автора. |
 | GET | `/api/v2/books/{book_id}/lore/search` | `app.v2.lore_api:api_v2_lore_search` | Поиск по телам статей: слово и то, что вокруг него. |
 | POST | `/api/v2/books/{book_id}/model` | `app.v2.api:api_v2_set_model` | Point the book at one of the catalogued models. The next run uses it. |
@@ -215,10 +226,13 @@ _Сгенерировано из коммита 73b3bfa._
 | GET | `/api/v2/books/{book_id}/stress-queue` | `app.v2.api:api_v2_stress_queue` |  |
 | POST | `/api/v2/books/{book_id}/stress-skip` | `app.v2.api:api_v2_stress_skip` | «Ударение тут не нужно» — the word leaves this book's queue, or comes back. |
 | POST | `/api/v2/books/{book_id}/stress-term` | `app.v2.api:api_v2_stress_term` |  |
+| GET | `/api/v2/books/{book_id}/thanks` | `app.v2.lifecycle_api:api_v2_book_thanks` |  |
+| POST | `/api/v2/books/{book_id}/thanks` | `app.v2.lifecycle_api:api_v2_book_thanks_send` |  |
 | POST | `/api/v2/books/{book_id}/title` | `app.v2.api:api_v2_set_book_title` | Переименовать книгу: автор и название порознь, витрина собирается сама. |
 | POST | `/api/v2/books/{book_id}/unpublish` | `app.v2.api:api_v2_unpublish` |  |
+| POST | `/api/v2/books/{book_id}/voiced` | `app.v2.lifecycle_api:api_v2_book_voiced` |  |
 
-## `/api/v2/chapters` (15)
+## `/api/v2/chapters` (29)
 
 | Методы | Путь | Обработчик | Описание |
 |---|---|---|---|
@@ -228,16 +242,29 @@ _Сгенерировано из коммита 73b3bfa._
 | POST | `/api/v2/chapters/{chapter_id}/approve` | `app.v2.api:api_v2_chapter_approve` | The author's «проверено» on one chapter, or taking it back. |
 | GET | `/api/v2/chapters/{chapter_id}/archive.zip` | `app.v2.api:api_v2_chapter_archive` | Дубли главы одним архивом — исходник для сведения. |
 | POST | `/api/v2/chapters/{chapter_id}/asr` | `app.v2.api:api_v2_chapter_asr` | Поставить главу в очередь на распознавание. |
-| POST | `/api/v2/chapters/{chapter_id}/audit` | `app.v2.api:api_v2_chapter_audit` | Администратор: повторно запустить платную строгую проверку собранной главы. |
+| POST | `/api/v2/chapters/{chapter_id}/audit` | `app.v2.api:api_v2_chapter_audit` | Только владелец явно разрешает повтор платной проверки текущей сборки. |
+| GET | `/api/v2/chapters/{chapter_id}/narrator-audit` | `app.v2.narrator_audit_api:api_v2_narrator_audit` |  |
+| GET | `/api/v2/chapters/{chapter_id}/narrator-audit/{audit_id}/sources/{audio_id}.zip` | `app.v2.narrator_audit_api:api_v2_narrator_audit_download` |  |
+| GET | `/api/v2/chapters/{chapter_id}/narrator-audit/{audit_id}/sources/{audio_id}/labels.txt` | `app.v2.narrator_audit_api:api_v2_narrator_audit_labels` |  |
 | GET | `/api/v2/chapters/{chapter_id}/recording` | `app.v2.api:api_v2_chapter_recording` | Кто из говорящих ролей главы уже записан, а кто ещё нет. |
+| POST | `/api/v2/chapters/{chapter_id}/released` | `app.v2.lifecycle_api:api_v2_chapter_released` |  |
 | GET | `/api/v2/chapters/{chapter_id}/script` | `app.v2.api:api_v2_chapter_script` |  |
 | POST | `/api/v2/chapters/{chapter_id}/session-archive` | `app.v2.api:api_v2_chapter_session_archive` | `POST /api/v2/chapters/{id}/session-archive` — положить .sesx на NAS. |
 | GET | `/api/v2/chapters/{chapter_id}/session.sesx` | `app.v2.api:api_v2_chapter_session` | Сессия Audition для главы: треки по ролям, клипы по репликам. |
 | GET | `/api/v2/chapters/{chapter_id}/sound` | `app.v2.sound_api:api_v2_sound_chapter` | `GET /api/v2/chapters/{id}/sound` — маркеры главы: список, потерянные, места. |
 | POST | `/api/v2/chapters/{chapter_id}/sound/markers` | `app.v2.sound_api:api_v2_sound_marker_add` | `POST /api/v2/chapters/{id}/sound/markers` — ручная сцена/переход/звук. |
 | POST | `/api/v2/chapters/{chapter_id}/sound/run` | `app.v2.sound_api:api_v2_sound_chapter_run` | `POST /api/v2/chapters/{id}/sound/run` — перечитать одну главу (`mode="chapter"`). |
+| GET | `/api/v2/chapters/{chapter_id}/soundtrack` | `app.v2.soundtrack_api:api_v2_soundtrack_chapter` |  |
+| POST | `/api/v2/chapters/{chapter_id}/soundtrack` | `app.v2.soundtrack_api:api_v2_soundtrack_mutate` |  |
+| GET | `/api/v2/chapters/{chapter_id}/soundtrack/credits` | `app.v2.soundtrack_api:api_v2_soundtrack_credits` |  |
+| GET | `/api/v2/chapters/{chapter_id}/soundtrack/search` | `app.v2.soundtrack_api:api_v2_soundtrack_search` |  |
 | GET | `/api/v2/chapters/{chapter_id}/source` | `app.v2.api:api_v2_chapter_source` | The chapter's original text, blocked to line up with the script pane. |
 | POST | `/api/v2/chapters/{chapter_id}/verify` | `app.v2.api:api_v2_chapter_verify` | Сверить главу по кнопке. Ответ — сразу, работа — в фоне. |
+| POST | `/api/v2/chapters/{chapter_id}/youtube/download` | `app.v2.youtube_api:download` |  |
+| GET | `/api/v2/chapters/{chapter_id}/youtube/jobs` | `app.v2.youtube_api:jobs` |  |
+| GET | `/api/v2/chapters/{chapter_id}/youtube/jobs/{job_id}` | `app.v2.youtube_api:status` |  |
+| GET | `/api/v2/chapters/{chapter_id}/youtube/search` | `app.v2.youtube_api:search` |  |
+| GET | `/api/v2/chapters/{chapter_id}/youtube/{video}/detail` | `app.v2.youtube_api:detail` |  |
 
 ## `/api/v2/characters` (4)
 
