@@ -1289,3 +1289,205 @@ def test_final_audit_freshness_and_findings_share_one_writer(tmp_path, monkeypat
             assert audit.status == "done" and fence == [True]
             assert json.loads(audit.findings_json)["confirmed"] == 1
     engine.dispose()
+
+
+def _failed_resume_parent(db, monkeypatch):
+    chapter_id = _make_ready_chapter(db)
+    _spy_sends(monkeypatch)
+    parent = run_asr_audit(db, chapter_id,
+        transcribe=lambda path: (_heard_with(NARRATION_FULL, NARRATION_PARTIAL), 1.5),
+        judge=lambda *args: {"verdicts": [
+            {"index": 0, "status": "ok", "missing_words": [], "note": ""}]} )
+    assert parent.status == "failed"
+    assert parent.error_message == "incomplete_judge_response"
+    return chapter_id, parent
+
+
+def test_resume_partial_judgement_uses_only_missing_verdict_and_preserves_parent(db, monkeypatch):
+    chapter_id, parent = _failed_resume_parent(db, monkeypatch)
+    original = (parent.lines_json, parent.transcript_json, parent.stt_cost_rub, parent.status)
+    calls = []
+
+    def missing_only(system, user, schema):
+        calls.append(user)
+        assert NARRATION_PARTIAL in user
+        assert NARRATION_FULL not in user
+        return {"verdicts": [{"index": 1, "status": "ok", "missing_words": [], "note": ""}]}
+
+    result = run_asr_audit(db, chapter_id, resume_audit_id=parent.id,
+        transcribe=lambda *a: pytest.fail("повторное полное STT"), judge=missing_only)
+    assert result.status == "done"
+    assert result.id != parent.id
+    assert result.model == parent.model
+    assert result.stt_cost_rub == 0
+    meta = json.loads(result.lines_json)
+    assert meta["resume_from"] == parent.id and meta["reused_stt"] is True
+    assert meta["stt_calls"] == 0
+    assert len(meta["judge_checkpoint"]["verdicts"]) == 2
+    assert len(calls) == 1
+    db.refresh(parent)
+    assert original == (parent.lines_json, parent.transcript_json, parent.stt_cost_rub, parent.status)
+
+
+@pytest.mark.parametrize("damage", ["chapter", "status", "policy", "fingerprint", "source_ids", "foreign", "missing", "malformed", "timestamps", "nan"])
+def test_resume_invalid_cache_rejected_before_paid_work(db, monkeypatch, damage):
+    chapter_id, parent = _failed_resume_parent(db, monkeypatch)
+    meta, transcript = json.loads(parent.lines_json), json.loads(parent.transcript_json)
+    if damage == "chapter":
+        parent.chapter_id = "another-chapter"
+    elif damage == "status":
+        parent.status = "done"
+    elif damage == "policy":
+        meta["audit_policy_version"] = "old"
+    elif damage == "fingerprint":
+        meta["narrator_input_fingerprint"] = "old"
+    elif damage == "source_ids":
+        meta["source_audio_file_ids"] = ["foreign"]
+    elif damage == "foreign":
+        transcript["sources"]["foreign"] = transcript["sources"]["take-r"]
+    elif damage == "missing":
+        transcript["sources"] = {}
+    elif damage == "timestamps":
+        transcript["sources"]["take-r"]["segments"] = [{"text": "hello", "start": 0, "end": 1}]
+    elif damage == "nan":
+        transcript["sources"]["take-r"]["segments"][0]["words"][0]["end"] = float("nan")
+    parent.lines_json = json.dumps(meta)
+    parent.transcript_json = "[]" if damage == "malformed" else json.dumps(transcript)
+    db.commit()
+    before = db.query(AsrAudit).count()
+    with pytest.raises(asr_audit.AsrAuditError, match="resume_unavailable"):
+        run_asr_audit(db, chapter_id, resume_audit_id=parent.id,
+            transcribe=lambda *a: pytest.fail("STT"), judge=lambda *a: pytest.fail("judge"))
+    assert db.query(AsrAudit).count() == before
+
+
+def test_resume_revalidates_actual_recording_fingerprint(db, monkeypatch):
+    from app.models import AudioFile
+    chapter_id, parent = _failed_resume_parent(db, monkeypatch)
+    db.get(AudioFile, "take-r").md5 = "changed-content"
+    db.commit()
+    with pytest.raises(asr_audit.AsrAuditError, match="resume_unavailable"):
+        asr_audit.validated_resume(db, chapter_id, parent.id)
+
+
+def test_resume_legacy_cache_without_checkpoint_rejudges_without_full_stt(db, monkeypatch):
+    chapter_id, parent = _failed_resume_parent(db, monkeypatch)
+    meta = json.loads(parent.lines_json)
+    del meta["judge_checkpoint"]
+    parent.lines_json = json.dumps(meta)
+    db.commit()
+    result = run_asr_audit(db, chapter_id, resume_audit_id=parent.id,
+        transcribe=lambda *a: pytest.fail("STT"),
+        judge=lambda *a: {"verdicts": [
+            {"index": i, "status": "ok", "missing_words": [], "note": ""} for i in (0, 1)]})
+    assert result.status == "done"
+    assert result.stt_cost_rub == 0
+
+
+def test_resume_retains_independent_short_confirmation(db, monkeypatch):
+    chapter_id, parent = _failed_resume_parent(db, monkeypatch)
+    monkeypatch.setattr(asr_audit, "_cut_window", lambda *a, **k: "/tmp/window.mp3")
+    short_calls = []
+    result = run_asr_audit(db, chapter_id, resume_audit_id=parent.id,
+        transcribe=lambda *a: pytest.fail("STT"),
+        judge=lambda system, user, schema: ({"results": [{"index": 1, "confirmed": True, "note": "да"}]}
+            if "results" in json.dumps(schema) else {"verdicts": [
+                {"index": 1, "status": "partial", "missing_words": ["хотя"], "note": "пропуск"}]}),
+        confirm_transcribe=lambda path: short_calls.append(path) or ({"text": "неполный текст", "segments": []}, .5))
+    assert result.status == "done"
+    assert len(short_calls) == 1
+    assert short_calls[0].endswith(".mp3")
+    assert result.stt_cost_rub == .5
+    assert json.loads(result.lines_json)["stt_calls"] == 1
+
+
+def test_failed_resume_badge_reports_eligible_parent_and_active_reservation(db, monkeypatch):
+    from app.models import BackgroundRun
+    chapter_id, parent = _failed_resume_parent(db, monkeypatch)
+    badge = asr_audit.latest_audits(db, [chapter_id])[chapter_id]
+    assert badge["resume_available"] is True and badge["audit_id"] == parent.id
+    db.add(BackgroundRun(run_key=f"asr-audit:{chapter_id}", job_kind="asr_audit", entity_type="script_chapter",
+        entity_id=chapter_id, status="queued", thread_name="rq:consilium"))
+    db.commit()
+    badge = asr_audit.latest_audits(db, [chapter_id])[chapter_id]
+    assert badge["status"] == "queued" and badge["resume_available"] is False
+
+
+@pytest.mark.parametrize("all_zero", [False, True])
+def test_resume_accepts_scribe_zero_duration_tokens_with_usable_words(db, monkeypatch, all_zero):
+    chapter_id, parent = _failed_resume_parent(db, monkeypatch)
+    transcript = json.loads(parent.transcript_json)
+    words = [word for segment in transcript["sources"]["take-r"]["segments"] for word in segment["words"]]
+    for word in words if all_zero else words[:1]:
+        word["end"] = word["start"]
+    parent.transcript_json = json.dumps(transcript)
+    db.commit()
+    if all_zero:
+        with pytest.raises(asr_audit.AsrAuditError, match="resume_unavailable"):
+            asr_audit.validated_resume(db, chapter_id, parent.id)
+    else:
+        assert asr_audit.validated_resume(db, chapter_id, parent.id)["parent_id"] == parent.id
+
+
+def test_checkpoint_duplicate_index_is_not_reused(db, monkeypatch):
+    chapter_id = _make_ready_chapter(db)
+    _spy_sends(monkeypatch)
+    parent = run_asr_audit(db, chapter_id,
+        transcribe=lambda p: (_heard_with(NARRATION_FULL, NARRATION_PARTIAL), 1.5),
+        judge=lambda *a: {"verdicts": [
+            {"index": 0, "status": "ok", "missing_words": [], "note": ""},
+            {"index": 0, "status": "missing", "missing_words": [], "note": ""},
+            {"index": 1, "status": "ok", "missing_words": [], "note": ""}]})
+    assert parent.status == "failed"
+    assert [v["index"] for v in json.loads(parent.lines_json)["judge_checkpoint"]["verdicts"]] == [1]
+
+
+def test_resume_judge_timeout_keeps_previously_saved_checkpoint(db, monkeypatch):
+    chapter_id, parent = _failed_resume_parent(db, monkeypatch)
+    def timeout(*args):
+        raise RuntimeError("timeout")
+    result = run_asr_audit(db, chapter_id, resume_audit_id=parent.id,
+        transcribe=lambda *a: pytest.fail("STT"), judge=timeout)
+    assert result.status == "failed"
+    assert json.loads(result.lines_json)["judge_checkpoint"] == json.loads(parent.lines_json)["judge_checkpoint"]
+
+
+@pytest.mark.parametrize("damage", ["audit_language", "metadata_language", "normalizer"])
+def test_resume_keeps_public_language_provenance(db, monkeypatch, damage):
+    from app.services.asr_run import ALIGNMENT_VERSION
+    chapter_id, parent = _failed_resume_parent(db, monkeypatch)
+    metadata = json.loads(parent.lines_json)
+    if damage == "audit_language":
+        parent.language = "en"
+    elif damage == "metadata_language":
+        metadata["language"] = "en"
+    else:
+        metadata["normalizer_version"] = ALIGNMENT_VERSION + "-old"
+    parent.lines_json = json.dumps(metadata)
+    db.commit()
+    with pytest.raises(asr_audit.AsrAuditError, match="resume_unavailable"):
+        asr_audit.validated_resume(db, chapter_id, parent.id)
+
+
+def test_english_resume_reuses_stt_and_keeps_english_judge(db, monkeypatch):
+    chapter_id = _make_ready_chapter(db)
+    db.get(ScriptBook, BOOK).language = "en"
+    texts = ["The lights came on beside the quiet bridge.", "The captain waited beside the gate.",
+             "said Aster.", "Chapter 12. The crossing"]
+    for segment in db.query(V2Segment).filter(V2Segment.chapter_id == chapter_id):
+        segment.text = texts[segment.ordinal]
+        for attribution in db.query(V2Attribution).filter(V2Attribution.segment_id == segment.id):
+            attribution.span_end = len(segment.text)
+    db.commit()
+    _spy_sends(monkeypatch)
+    parent = run_asr_audit(db, chapter_id,
+        transcribe=lambda path: (_heard_with(texts[0], texts[1]), 1.5),
+        judge=lambda *args: {"verdicts": [{"index": 0, "status": "ok", "missing_words": [], "note": ""}]})
+    assert parent.status == "failed"
+    def judge(system, user, schema):
+        assert "return all notes in English" in system
+        return {"verdicts": [{"index": 1, "status": "ok", "missing_words": [], "note": ""}]}
+    result = run_asr_audit(db, chapter_id, resume_audit_id=parent.id,
+        transcribe=lambda *args: pytest.fail("full STT repeated"), judge=judge)
+    assert result.status == "done" and result.language == "en"
+    assert json.loads(result.lines_json)["stt_calls"] == 0

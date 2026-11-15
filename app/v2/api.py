@@ -602,14 +602,24 @@ def api_v2_chapter_asr(request: Request, chapter_id: str):
     return JSONResponse({"ok": True, "job_id": job_id})
 
 
-def api_v2_chapter_audit(request: Request, chapter_id: str):
+async def api_v2_chapter_audit(request: Request, chapter_id: str):
     """Только владелец явно разрешает повтор платной проверки текущей сборки."""
     if not _is_authenticated(request):
         return unauthorized_response()
     if "admin" not in session_roles(request):
         return forbidden_response()
+    body = await _json_body_or_empty(request)
+    if body is None or set(body) - {"resume_audit_id"}:
+        return bad_request_response("invalid_body")
+    if "resume_audit_id" in body and (not isinstance(body["resume_audit_id"], str) or not body["resume_audit_id"].strip()):
+        return bad_request_response("invalid_resume_audit_id")
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(_enqueue_chapter_audit, request, chapter_id, body.get("resume_audit_id", ""))
+
+
+def _enqueue_chapter_audit(request: Request, chapter_id: str, resume_audit_id: str):
     from app.config import settings
-    from app.services.asr_audit import enqueue_asr_audit
+    from app.services.asr_audit import AsrAuditError, enqueue_asr_audit, validated_resume
     from app.services.asr_audit_lifecycle import assembled_audit_snapshot, AuditUnavailable
 
     if not settings.asr_audit_enabled:
@@ -618,10 +628,18 @@ def api_v2_chapter_audit(request: Request, chapter_id: str):
     with SessionLocal() as db:
         if db.get(ScriptChapter, chapter_id) is None:
             return not_found_response("chapter_not_found")
+        if resume_audit_id:
+            try:
+                validated_resume(db, chapter_id, resume_audit_id)
+            except AsrAuditError:
+                return error_response("resume_unavailable", status_code=409)
         if assembled_audit_snapshot(db, chapter_id) is None:
             return error_response("chapter_not_assembled", status_code=409)
     try:
-        job_id = enqueue_asr_audit(chapter_id, force=True, initiator_id=_actor(request)[0])
+        job_id = enqueue_asr_audit(chapter_id, force=not bool(resume_audit_id), initiator_id=_actor(request)[0],
+                                   **({"resume_audit_id": resume_audit_id} if resume_audit_id else {}))
+    except AsrAuditError:
+        return error_response("resume_unavailable", status_code=409)
     except AuditUnavailable as exc:
         return error_response(str(exc), status_code=409)
     if not job_id:

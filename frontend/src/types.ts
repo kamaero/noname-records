@@ -923,6 +923,8 @@ export type SaveBookBudgetPayload = {
 
 /** Готовность записи по главам: у роли есть дубль или нет. */
 export type AsrAuditState = {
+  audit_id?: string;
+  resume_available?: boolean;
   status: string;
   flags: number;
   confirmed: number;
