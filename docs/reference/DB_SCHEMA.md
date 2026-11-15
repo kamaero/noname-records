@@ -2,9 +2,9 @@
 
 Получено интроспекцией `SQLAlchemy`-метаданных: импортируются `app.models` и `app.v2.models`, дальше используется `Base.metadata` (та же `Base`, что в `app/db.py`).
 
-Всего таблиц: **54**.
+Всего таблиц: **69**.
 
-_Сгенерировано из коммита 73b3bfa._
+_Сгенерировано из коммита 39db22d._
 
 ## Таблицы
 
@@ -21,6 +21,7 @@ _Сгенерировано из коммита 73b3bfa._
 | `duration_seconds` | INTEGER | нет |  |  | python:0 |
 | `error` | TEXT | нет |  |  | python:'' |
 | `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `language_snapshot` | VARCHAR(2) | нет |  |  | python:'ru'; server:ru |
 | `marker_id` | VARCHAR(36) | нет |  |  |  |
 | `prompt` | TEXT | нет |  |  | python:'' |
 | `song_id` | VARCHAR(120) | нет |  |  | python:'' |
@@ -32,6 +33,33 @@ _Сгенерировано из коммита 73b3bfa._
 
 - `ix_ambient_tracks_chapter_status`: chapter_id, status
 - `ix_ambient_tracks_marker`: marker_id
+
+### `asr_audits` — `app.models.AsrAudit`
+
+Строгая проверка рассказчика собранной главы (LLM-судья поверх свежего STT).
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `audio_file_id` | VARCHAR(36) | нет |  |  | python:'' |
+| `chapter_id` | VARCHAR(36) | нет |  |  | python:'' |
+| `confirm_model` | VARCHAR(120) | нет |  |  | python:'' |
+| `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `error_message` | VARCHAR(255) | нет |  |  | python:'' |
+| `findings_json` | TEXT | нет |  |  | python:''; server: |
+| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `judge_model` | VARCHAR(120) | нет |  |  | python:'' |
+| `language` | VARCHAR(2) | нет |  |  | python:'ru'; server:ru |
+| `lines_json` | TEXT | нет |  |  | python:''; server: |
+| `model` | VARCHAR(120) | нет |  |  | python:'' |
+| `status` | VARCHAR(40) | нет |  |  | python:'queued' |
+| `stt_cost_rub` | FLOAT | нет |  |  | python:0.0; server:0 |
+| `transcript_json` | TEXT | нет |  |  | python:''; server: |
+| `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+
+Индексы:
+
+- `ix_asr_audits_chapter_id`: chapter_id
+- `ix_asr_audits_status`: status
 
 ### `asr_jobs` — `app.models.AsrJob`
 
@@ -53,9 +81,11 @@ The base class of the class hierarchy.
 | `expected_role` | VARCHAR(120) | нет |  |  | python:'' |
 | `heard_json` | VARCHAR | нет |  |  | python:''; server: |
 | `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `language` | VARCHAR(2) | нет |  |  | python:'ru'; server:ru |
 | `model` | VARCHAR(120) | нет |  |  | python:'whisper-1' |
 | `provider` | VARCHAR(40) | нет |  |  | python:'openai' |
 | `review_reason` | VARCHAR(255) | нет |  |  | python:'' |
+| `role_ref` | VARCHAR(80) | нет |  |  | python:''; server: |
 | `similarity` | FLOAT | нет |  |  | python:0.0 |
 | `status` | VARCHAR(40) | нет |  |  | python:'queued' |
 | `timing_fit` | FLOAT | нет |  |  | python:0.0 |
@@ -80,6 +110,8 @@ The base class of the class hierarchy.
 | `channels` | INTEGER | нет |  |  | python:0; server:0 |
 | `chapter` | VARCHAR(60) | нет |  |  |  |
 | `codec` | VARCHAR(40) | нет |  |  | python:''; server: |
+| `correction_mode` | VARCHAR(16) | нет |  |  | python:''; server: |
+| `correction_source_id` | VARCHAR(36) | нет |  |  | python:''; server: |
 | `duration_seconds` | FLOAT | нет |  |  | python:0.0; server:0 |
 | `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
 | `kind` | VARCHAR(16) | нет |  |  | python:'take'; server:take |
@@ -87,10 +119,13 @@ The base class of the class hierarchy.
 | `location` | VARCHAR(8) | нет |  |  | python:'local'; server:nas |
 | `md5` | VARCHAR(32) | нет |  |  | python:''; server: |
 | `mime_type` | VARCHAR(120) | нет |  |  |  |
+| `mirror_proof_json` | TEXT | нет |  |  | python:''; server: |
 | `mirror_state` | VARCHAR(16) | нет |  |  | python:''; server: |
 | `mirrored_at` | DATETIME | да |  |  |  |
 | `original_filename` | VARCHAR(255) | нет |  |  |  |
 | `role` | VARCHAR(120) | нет |  |  |  |
+| `role_book_id` | VARCHAR(36) | нет |  |  | python:''; server: |
+| `role_ref` | VARCHAR(80) | нет |  |  | python:''; server: |
 | `sample_rate` | INTEGER | нет |  |  | python:0; server:0 |
 | `size_bytes` | INTEGER | нет |  |  |  |
 | `status` | VARCHAR(40) | нет |  |  | python:'uploaded' |
@@ -124,24 +159,6 @@ The base class of the class hierarchy.
 - `ix_audit_log_entity`: entity_type, entity_id
 - `ix_audit_log_user_id`: user_id
 
-### `audition_reactions` — `app.models.AuditionReaction`
-
-👍/👎 автора на одну пробу. Снятая реакция — удалённая строка, а не ноль.
-
-| Колонка | Тип | Nullable | PK | FK | Умолчание |
-|---|---|---|---|---|---|
-| `audio_file_id` | VARCHAR(36) | нет |  |  |  |
-| `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
-| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
-| `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
-| `value` | INTEGER | нет |  |  |  |
-| `voter_name` | VARCHAR(120) | нет |  |  | python:'' |
-| `voter_uid` | VARCHAR(36) | нет |  |  |  |
-
-Индексы:
-
-- `ix_audition_reactions_audio`: audio_file_id
-
 ### `audition_rejections` — `app.models.AuditionRejection`
 
 Вежливый отказ одному актёру на одну роль книги — не больше одного на всю жизнь пары.
@@ -151,6 +168,7 @@ The base class of the class hierarchy.
 | `actor_name` | VARCHAR(120) | нет |  |  |  |
 | `book_code` | VARCHAR(40) | нет |  |  | python:'' |
 | `book_id` | VARCHAR(36) | нет |  |  |  |
+| `cause` | VARCHAR(12) | нет |  |  | python:''; server: |
 | `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
 | `due_at` | DATETIME | нет |  |  |  |
 | `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
@@ -162,6 +180,29 @@ The base class of the class hierarchy.
 Индексы:
 
 - `ix_audition_rejections_due`: status, due_at
+
+### `audition_scores` — `app.models.AuditionScore`
+
+Оценка 1–10 актёру на роль — одна на дорожку: автор и студия.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `actor_name` | VARCHAR(120) | нет |  |  |  |
+| `book_id` | VARCHAR(36) | нет |  |  |  |
+| `comment` | TEXT | нет |  |  | python:''; server: |
+| `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `lane` | VARCHAR(10) | нет |  |  |  |
+| `reason` | VARCHAR(10) | нет |  |  | python:''; server: |
+| `role` | VARCHAR(120) | нет |  |  |  |
+| `score` | INTEGER | нет |  |  |  |
+| `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `voter_name` | VARCHAR(120) | нет |  |  | python:'' |
+| `voter_uid` | VARCHAR(36) | нет |  |  |  |
+
+Индексы:
+
+- `ix_audition_scores_book`: book_id
 
 ### `author_characters` — `app.models.AuthorCharacter`
 
@@ -294,6 +335,19 @@ The base class of the class hierarchy.
 - `ix_book_illustrations_book`: book_id, ordinal
 - `ix_book_illustrations_character`: character_id
 
+### `book_thanks_sent` — `app.models.BookThanksSent`
+
+Кому из дикторов уже ушло благодарственное письмо за книгу.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `actor_name` | VARCHAR(120) | нет |  |  | python:'' |
+| `book_id` | VARCHAR(36) | нет |  |  |  |
+| `delivered` | BOOLEAN | нет |  |  | python:False; server:0 |
+| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `sent_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `telegram_user_id` | VARCHAR(32) | нет |  |  |  |
+
 ### `bot_broadcasts` — `app.models.BotBroadcast`
 
 Рассылка из бота: админ выбирает книгу или всех, пишет текст, подтверждает.
@@ -312,6 +366,16 @@ The base class of the class hierarchy.
 | `state` | VARCHAR(10) | нет |  |  | python:'choose' |
 | `text` | TEXT | нет |  |  | python:'' |
 
+### `bot_comment_waits` — `app.models.BotCommentWait`
+
+Бот ждёт от человека комментарий к пробе: он нажал «✍️ Своими словами», и его следующее сообщение — текст для студии. Одна строка на человека: новое нажатие перебивает прежнее. Живёт недолго (`audition_card.COMMENT_TTL`) — иначе случайное сообщение через неделю легло бы комментарием к давно забытой пробе.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `audio_id` | VARCHAR(36) | нет |  |  |  |
+| `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `tid` | VARCHAR(32) | нет | да |  |  |
+
 ### `bot_contacts` — `app.models.BotContact`
 
 Кто писал боту: id, как назван в Telegram, когда впервые и когда последний раз.
@@ -325,6 +389,53 @@ The base class of the class hierarchy.
 | `tg_name` | VARCHAR(200) | нет |  |  | python:'' |
 | `username` | VARCHAR(64) | нет |  |  | python:'' |
 
+### `bot_demo_intakes` — `app.models.BotDemoIntake`
+
+Приём демо, пересланных владельцем (проект Б): один вопрос об имени на пачку от одного отправителя. Узнанному диктору приём заводится сразу решённым — у каждой позиции есть приём.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `foreign_note` | VARCHAR(200) | нет |  |  | python:''; server: |
+| `id` | VARCHAR(12) | нет | да |  | python:<lambda>() |
+| `pending_name` | VARCHAR(120) | нет |  |  | python:''; server: |
+| `sender_key` | VARCHAR(160) | нет |  |  |  |
+| `state` | VARCHAR(12) | нет |  |  | python:'ask'; server:ask |
+| `telegram_user_id` | VARCHAR(32) | нет |  |  | python:''; server: |
+| `tg_name` | VARCHAR(120) | нет |  |  | python:''; server: |
+| `tg_username` | VARCHAR(64) | нет |  |  | python:''; server: |
+| `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `user_id` | VARCHAR(36) | нет |  |  | python:''; server: |
+
+Индексы:
+
+- `ix_bot_demo_intakes_state`: state
+
+### `bot_demo_items` — `app.models.BotDemoItem`
+
+Одно пересланное демо, ссылка или текст. Номер сообщения — в чате владельца с ботом: повтор вебхука несёт тот же номер, и уникальный индекс не даёт второго демо.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `file_name` | VARCHAR(255) | нет |  |  | python:''; server: |
+| `file_size` | INTEGER | нет |  |  | python:0; server:0 |
+| `id` | VARCHAR(12) | нет | да |  | python:<lambda>() |
+| `intake_id` | VARCHAR(12) | нет |  |  |  |
+| `kind` | VARCHAR(8) | нет |  |  |  |
+| `mime_type` | VARCHAR(80) | нет |  |  | python:''; server: |
+| `ref` | VARCHAR(1024) | нет |  |  | python:''; server: |
+| `result` | VARCHAR(255) | нет |  |  | python:''; server: |
+| `source_message_id` | INTEGER | нет |  |  |  |
+| `state` | VARCHAR(12) | нет |  |  | python:'waiting'; server:waiting |
+| `text` | TEXT | нет |  |  | python:''; server: |
+| `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+
+Индексы:
+
+- `ix_bot_demo_items_intake`: intake_id
+- `uq_bot_demo_items_msg` (unique): source_message_id, kind, ref
+
 ### `bot_intros` — `app.models.BotIntro`
 
 Бот спросил «Как вас зовут?» и ждёт ответа (см. `app/services/bot_intro.py`).
@@ -333,6 +444,39 @@ The base class of the class hierarchy.
 |---|---|---|---|---|---|
 | `asked_at` | DATETIME | нет |  |  | python:utcnow_naive() |
 | `telegram_user_id` | VARCHAR(32) | нет | да |  |  |
+
+### `bot_uploads` — `app.models.BotUpload`
+
+Файл пробы, присланный боту (пакет C2): ждёт выбора роли, потом — воркера.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `actor_name` | VARCHAR(120) | нет |  |  | python:''; server: |
+| `audio_id` | VARCHAR(36) | нет |  |  | python:''; server: |
+| `book_id` | VARCHAR(36) | нет |  |  | python:''; server: |
+| `character_id` | VARCHAR(36) | нет |  |  | python:''; server: |
+| `correction_mode` | VARCHAR(16) | нет |  |  | python:''; server: |
+| `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `duration` | INTEGER | нет |  |  | python:0; server:0 |
+| `file_id` | VARCHAR(255) | нет |  |  |  |
+| `file_name` | VARCHAR(255) | нет |  |  | python:''; server: |
+| `file_size` | INTEGER | нет |  |  | python:0; server:0 |
+| `file_unique_id` | VARCHAR(64) | нет |  |  | python:''; server: |
+| `id` | VARCHAR(12) | нет | да |  | python:<lambda>() |
+| `kind` | VARCHAR(10) | нет |  |  |  |
+| `md5` | VARCHAR(32) | нет |  |  | python:''; server: |
+| `mime_type` | VARCHAR(80) | нет |  |  | python:''; server: |
+| `purpose` | VARCHAR(10) | нет |  |  | python:'audition'; server:audition |
+| `result_json` | TEXT | нет |  |  | python:''; server: |
+| `role_name` | VARCHAR(120) | нет |  |  | python:''; server: |
+| `state` | VARCHAR(10) | нет |  |  | python:'choose'; server:choose |
+| `stored_key` | VARCHAR(255) | нет |  |  | python:''; server: |
+| `telegram_user_id` | VARCHAR(32) | нет |  |  |  |
+| `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+
+Индексы:
+
+- `ix_bot_uploads_user`: telegram_user_id
 
 ### `character_budget_snapshot` — `app.models.CharacterBudgetSnapshot`
 
@@ -381,6 +525,8 @@ The base class of the class hierarchy.
 | `operator_note` | VARCHAR | нет |  |  | python:'' |
 | `race` | VARCHAR(120) | нет |  |  | python:'' |
 | `temperament` | VARCHAR(255) | нет |  |  | python:'' |
+| `text_profile` | VARCHAR | нет |  |  | python:'' |
+| `text_profile_by` | VARCHAR(16) | нет |  |  | python:'' |
 | `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
 
 Индексы:
@@ -496,6 +642,28 @@ The base class of the class hierarchy.
 | `telegram_username` | VARCHAR(64) | нет |  |  | python:'' |
 | `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
 | `user_id` | VARCHAR(36) | нет | да |  |  |
+
+### `fee_payments` — `app.models.FeePayment`
+
+Выплата диктору — журнал «Сметы» (спека 2026-10-06-payouts). Строк по роли сколько угодно: аванс, окончательная выплата, зачёт аванса без роли. Сумма — на момент отметки: пересчёт сметы потом выплаченное не меняет, меняется только остаток.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `actor_name` | VARCHAR(120) | нет |  |  |  |
+| `amount_rub` | INTEGER | нет |  |  | python:0; server:0 |
+| `book_id` | VARCHAR(36) | нет |  |  | python:''; server: |
+| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `kind` | VARCHAR(16) | нет |  |  |  |
+| `note` | VARCHAR(200) | нет |  |  | python:''; server: |
+| `paid_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `paid_by` | VARCHAR(120) | нет |  |  | python:''; server: |
+| `role_key` | VARCHAR(36) | нет |  |  | python:''; server: |
+| `role_name` | VARCHAR(255) | нет |  |  | python:''; server: |
+| `telegram_user_id` | VARCHAR(32) | нет |  |  | python:''; server: |
+
+Индексы:
+
+- `ix_fee_payments_role`: book_id, role_key, actor_name
 
 ### `llm_usage_logs` — `app.models.LlmUsageLog`
 
@@ -704,13 +872,17 @@ The base class of the class hierarchy.
 
 | Колонка | Тип | Nullable | PK | FK | Умолчание |
 |---|---|---|---|---|---|
+| `accepted_at` | DATETIME | да |  |  |  |
 | `actor_name` | VARCHAR(120) | нет |  |  |  |
 | `book_id` | VARCHAR(36) | нет |  |  |  |
 | `character_id` | VARCHAR(36) | нет |  |  |  |
 | `close_reason` | VARCHAR(12) | да |  |  |  |
 | `closed_at` | DATETIME | да |  |  |  |
 | `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `declined_at` | DATETIME | да |  |  |  |
 | `due_at` | DATETIME | нет |  |  |  |
+| `extend_request_at` | DATETIME | да |  |  |  |
+| `extend_request_days` | INTEGER | да |  |  |  |
 | `extended_by` | VARCHAR(120) | нет |  |  | python:''; server: |
 | `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
 | `kind` | VARCHAR(10) | нет |  |  |  |
@@ -775,6 +947,7 @@ The base class of the class hierarchy.
 | `cast_checked_at` | DATETIME | да |  |  |  |
 | `cast_checked_by` | VARCHAR(120) | нет |  |  | python:'' |
 | `chapter_count` | INTEGER | нет |  |  | python:0 |
+| `chapter_title_actor_name` | VARCHAR(120) | нет |  |  | python:''; server: |
 | `char_map_version` | INTEGER | нет |  |  | python:0 |
 | `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
 | `created_by_name` | VARCHAR(120) | нет |  |  | python:'' |
@@ -785,6 +958,7 @@ The base class of the class hierarchy.
 | `genre_guidelines` | VARCHAR | нет |  |  | python:'' |
 | `has_chapters` | VARCHAR(5) | нет |  |  | python:'false' |
 | `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `language` | VARCHAR(2) | нет |  |  | python:'ru'; server:ru |
 | `last_notified_status` | VARCHAR(40) | нет |  |  | python:'' |
 | `llm_model` | VARCHAR(120) | нет |  |  | python:'' |
 | `llm_provider` | VARCHAR(40) | нет |  |  | python:'' |
@@ -795,6 +969,7 @@ The base class of the class hierarchy.
 | `pipeline_mode` | VARCHAR(40) | нет |  |  | python:'standard' |
 | `previous_pipeline_run_id` | VARCHAR(36) | нет |  |  | python:'' |
 | `pronunciation_notes` | VARCHAR | нет |  |  | python:'' |
+| `role_identity_mode` | VARCHAR(16) | нет |  |  | python:'legacy'; server:legacy |
 | `source_filename` | VARCHAR(255) | нет |  |  |  |
 | `source_format` | VARCHAR(20) | нет |  |  |  |
 | `status` | VARCHAR(40) | нет |  |  | python:'uploaded' |
@@ -803,6 +978,7 @@ The base class of the class hierarchy.
 | `total_chars` | INTEGER | нет |  |  | python:0 |
 | `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
 | `validation_profile` | VARCHAR(40) | нет |  |  | python:'operator_only' |
+| `voiced_at` | DATETIME | да |  |  |  |
 
 ### `script_chapters` — `app.models.ScriptChapter`
 
@@ -810,6 +986,9 @@ The base class of the class hierarchy.
 
 | Колонка | Тип | Nullable | PK | FK | Умолчание |
 |---|---|---|---|---|---|
+| `audit_assembly_fingerprint` | VARCHAR(64) | нет |  |  | python:''; server: |
+| `audit_assembly_take_id` | VARCHAR(36) | нет |  |  | python:''; server: |
+| `audit_narrator_fingerprint` | VARCHAR(64) | нет |  |  | python:''; server: |
 | `book_id` | VARCHAR(36) | нет |  |  |  |
 | `chapter_index` | INTEGER | нет |  |  |  |
 | `chapter_title` | VARCHAR(255) | нет |  |  |  |
@@ -819,7 +998,11 @@ The base class of the class hierarchy.
 | `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
 | `delivered_at` | DATETIME | да |  |  |  |
 | `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `released_at` | DATETIME | да |  |  |  |
 | `session_archived_at` | DATETIME | да |  |  |  |
+| `session_input_sha256` | VARCHAR(64) | нет |  |  | python:''; server: |
+| `session_key` | VARCHAR(700) | нет |  |  | python:''; server: |
+| `session_location` | VARCHAR(10) | нет |  |  | python:''; server: |
 | `session_markers_skipped` | INTEGER | нет |  |  | python:0; server:0 |
 | `session_outdated_at` | DATETIME | да |  |  |  |
 | `session_sha256` | VARCHAR(64) | нет |  |  | python:''; server: |
@@ -944,6 +1127,114 @@ The base class of the class hierarchy.
 
 - `ix_sound_places_book`: book_id
 
+### `soundtrack_entries` — `app.models.SoundtrackEntry`
+
+ID сцены намеренно без каскада: повторная разметка не уничтожает кредиты.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `book_id` | VARCHAR(36) | нет |  |  |  |
+| `chapter_id` | VARCHAR(36) | нет |  |  |  |
+| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `layer` | VARCHAR(16) | нет |  |  |  |
+| `overrides` | JSON | нет |  |  | python:dict() |
+| `removed` | BOOLEAN | нет |  |  | python:False |
+| `scene_id` | VARCHAR(36) | нет |  |  | python:'' |
+| `scene_title` | VARCHAR(300) | нет |  |  | python:'' |
+| `used` | BOOLEAN | нет |  |  | python:False |
+| `work_id` | VARCHAR(36) | нет |  |  |  |
+
+Индексы:
+
+- `ix_soundtrack_entries_book_id`: book_id
+- `ix_soundtrack_entries_chapter_id`: chapter_id
+
+### `soundtrack_rejections` — `app.models.SoundtrackRejection`
+
+The base class of the class hierarchy.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `book_id` | VARCHAR(36) | нет |  |  |  |
+| `chapter_id` | VARCHAR(36) | нет |  |  |  |
+| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `layer` | VARCHAR(16) | нет |  |  |  |
+| `openverse_id` | VARCHAR(36) | нет |  |  |  |
+| `scene_id` | VARCHAR(36) | нет |  |  | python:'' |
+
+Индексы:
+
+- `ix_soundtrack_rejections_book_id`: book_id
+- `ix_soundtrack_rejections_chapter_id`: chapter_id
+
+### `soundtrack_requests` — `app.models.SoundtrackRequest`
+
+The base class of the class hierarchy.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `book_id` | VARCHAR(36) | нет |  |  |  |
+| `chapter_id` | VARCHAR(36) | нет |  |  |  |
+| `fingerprint` | VARCHAR(64) | нет |  |  |  |
+| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `request_id` | VARCHAR(80) | нет |  |  |  |
+| `response` | JSON | нет |  |  | python:dict() |
+
+Индексы:
+
+- `ix_soundtrack_requests_book_id`: book_id
+- `ix_soundtrack_requests_chapter_id`: chapter_id
+
+### `soundtrack_snapshots` — `app.models.SoundtrackSnapshot`
+
+Запись только добавляется: разблокирование не меняет утверждённую историю.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `book_id` | VARCHAR(36) | нет |  |  |  |
+| `chapter_id` | VARCHAR(36) | нет |  |  |  |
+| `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `entries` | JSON | нет |  |  | python:list() |
+| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `version` | INTEGER | нет |  |  |  |
+
+Индексы:
+
+- `ix_soundtrack_snapshots_book_id`: book_id
+- `ix_soundtrack_snapshots_chapter_id`: chapter_id
+
+### `soundtrack_states` — `app.models.SoundtrackState`
+
+Версия общей правки защищает закрепление от параллельного изменения списка.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `book_id` | VARCHAR(36) | нет |  |  |  |
+| `chapter_id` | VARCHAR(36) | нет | да |  |  |
+| `locked` | BOOLEAN | нет |  |  | python:False |
+| `snapshot_id` | VARCHAR(36) | да |  |  |  |
+| `version` | INTEGER | нет |  |  | python:0 |
+
+Индексы:
+
+- `ix_soundtrack_states_book_id`: book_id
+
+### `soundtrack_works` — `app.models.SoundtrackWork`
+
+Оригинальные кредиты не затираются пользовательскими исправлениями.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `book_id` | VARCHAR(36) | нет |  |  |  |
+| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `identity` | VARCHAR(100) | нет |  |  |  |
+| `original` | JSON | нет |  |  | python:dict() |
+| `source` | VARCHAR(16) | нет |  |  |  |
+
+Индексы:
+
+- `ix_soundtrack_works_book_id`: book_id
+
 ### `spend_entries` — `app.models.SpendEntry`
 
 Один платный вызов нейросети и сколько он стоил.
@@ -995,6 +1286,15 @@ The base class of the class hierarchy.
 | `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
 | `updated_by` | VARCHAR(120) | нет |  |  | python:'' |
 
+### `studio_calendar_profile` — `app.models.StudioCalendarProfile`
+
+Пояс фиксируется один раз: обновление не меняет исторические месяцы и сроки.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `id` | VARCHAR(36) | нет | да |  | python:'default' |
+| `timezone` | VARCHAR(100) | нет |  |  | python:''; server: |
+
 ### `studio_settings` — `app.models.StudioSettings`
 
 Studio-wide defaults, one row (`id == "default"`).
@@ -1009,6 +1309,7 @@ Studio-wide defaults, one row (`id == "default"`).
 | `onboarding_hidden` | BOOLEAN | нет |  |  | python:False |
 | `onboarding_no_limit` | BOOLEAN | нет |  |  | python:False |
 | `onboarding_result_seen_at` | DATETIME | да |  |  |  |
+| `recording_book_id` | VARCHAR(36) | нет |  |  | python:''; server: |
 | `role_deadline_date` | VARCHAR(10) | нет |  |  | python:'2026-12-31'; server:2026-12-31 |
 | `sample_book_id` | VARCHAR(36) | нет |  |  | python:''; server: |
 | `spend_warned_month` | VARCHAR(16) | нет |  |  | python:''; server: |
@@ -1070,6 +1371,7 @@ The base class of the class hierarchy.
 | `confidence` | FLOAT | нет |  |  | python:0.0 |
 | `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
 | `id` | VARCHAR(36) | нет | да |  |  |
+| `role_ref` | VARCHAR(80) | нет |  |  | python:''; server: |
 | `segment_id` | VARCHAR(80) | нет |  |  |  |
 | `source` | VARCHAR(20) | нет |  |  | python:'llm' |
 | `span_end` | INTEGER | нет |  |  | python:0 |
@@ -1095,6 +1397,7 @@ One pass of the v2 book pipeline: which step it is on and how far it got.
 | `error` | TEXT | нет |  |  | python:'' |
 | `finished_at` | DATETIME | да |  |  |  |
 | `id` | VARCHAR(36) | нет | да |  |  |
+| `language_snapshot` | VARCHAR(2) | да |  |  |  |
 | `prompt_tokens` | INTEGER | нет |  |  | python:0 |
 | `started_at` | DATETIME | да |  |  |  |
 | `status` | VARCHAR(20) | нет |  |  | python:'queued' |
@@ -1162,6 +1465,33 @@ A word the author has waved off: «ударение тут не нужно, ег
 
 - `ix_v2_stress_skips_book_word` (unique): book_id, word
 
+### `youtube_soundtrack_downloads` — `app.models.YoutubeSoundtrackDownload`
+
+Журнал ручного подтверждения и фонового приёма трека конкретной сцены.
+
+| Колонка | Тип | Nullable | PK | FK | Умолчание |
+|---|---|---|---|---|---|
+| `audio_file_id` | VARCHAR(36) | да |  |  |  |
+| `book_id` | VARCHAR(36) | нет |  |  |  |
+| `chapter_id` | VARCHAR(36) | нет |  |  |  |
+| `confirmed_by` | VARCHAR(120) | нет |  |  |  |
+| `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `error_code` | VARCHAR(80) | нет |  |  | python:'' |
+| `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
+| `layer` | VARCHAR(16) | нет |  |  |  |
+| `metadata_json` | JSON | нет |  |  | python:dict() |
+| `request_id` | VARCHAR(80) | нет |  |  |  |
+| `rights_note` | TEXT | нет |  |  |  |
+| `scene_id` | VARCHAR(36) | нет |  |  |  |
+| `status` | VARCHAR(16) | нет |  |  | python:'queued' |
+| `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `video_id` | VARCHAR(11) | нет |  |  |  |
+
+Индексы:
+
+- `ix_youtube_download_chapter`: chapter_id, created_at
+- `ix_youtube_soundtrack_downloads_book_id`: book_id
+
 ## Ревизии Alembic
 
 По порядку (`revision` → `down_revision`, от `0001_baseline`), первая строка docstring файла ревизии.
@@ -1214,3 +1544,27 @@ A word the author has waved off: «ударение тут не нужно, ег
 | `0044_provider_keys_step_models` | Ключи нейросетей и модели шагов — на сайте. | `0044_provider_keys_step_models.py` |
 | `0045_spend` | Журнал трат, цены моделей и месячный лимит. | `0045_spend.py` |
 | `0046_onboarding` | «Первые шаги»: книга-пример и флаги карточки в studio_settings. | `0046_onboarding.py` |
+| `0047_audition_scores` | пробы: оценка 1–10 на пару «актёр + роль» вместо 👍/👎 на файл | `0047_audition_scores.py` |
+| `0048_rejection_cause` | отказ по пробе: повод письма (утверждение другого или оценки ниже 7) | `0048_rejection_cause.py` |
+| `0049_score_reason` | оценка пробы: причина низкой оценки автора (голос, манера, всё сразу) | `0049_score_reason.py` |
+| `0050_deadline_buttons` | сроки: отметки кнопок бота — взята, отказ, запрос продления (пакет B) | `0050_deadline_buttons.py` |
+| `0051_bot_uploads` | бот: файлы проб ждут выбора роли (пакет C2) | `0051_bot_uploads.py` |
+| `0052_fee_payments` | «Смета»: журнал выплат дикторам — авансы, выплаты, зачёты (06.10) | `0052_fee_payments.py` |
+| `0053_character_text_profile` | Характеристика роли по тексту книги — черновик нейросети (07.10) | `0053_character_text_profile.py` |
+| `0054_audition_comment` | Комментарий автора к пробе и ожидание его в боте (11.10) | `0054_audition_comment.py` |
+| `0055_bot_demos` | бот: демо дикторов, пересланные владельцем (проект Б, 23.10) | `0055_bot_demos.py` |
+| `0056_recording_book` | настройки студии: книга, которая сейчас записывается | `0056_recording_book.py` |
+| `0057_bot_takes` | bot_uploads: дубли из бота рядом с пробами | `0057_bot_takes.py` |
+| `0058_book_lifecycle` | Жизненный цикл книги: «Глава сдана», «Озвучена» и учёт благодарностей | `0058_book_lifecycle.py` |
+| `0059_audition_rejection_cause` | Добавить AuditionRejection.cause — повод письма (approval/scores/manual) | `0059_audition_rejection_cause.py` |
+| `0060_asr_audits` | Строгая проверка рассказчика: собственный след аудита независим от боевой сверки. | `0060_asr_audits.py` |
+| `0061_book_language` | Язык книги сохраняет русское поведение прежних установок. | `0061_book_language.py` |
+| `0062_studio_calendar` | Календарь выбирается для пустой новой установки, старые данные остаются UTC+3. | `0062_studio_calendar.py` |
+| `0063_typed_role_identity` | Явная идентичность ролей новых EN книг; старые данные остаются legacy. | `0063_typed_role_identity.py` |
+| `0064_v2_run_language_snapshot` | Профиль оплачиваемого прогона отделён от редактируемого языка книги. | `0064_v2_run_language_snapshot.py` |
+| `0065_ambient_language_snapshot` | Сохранённая музыка помнит профиль, по которому был оплачен её промпт. | `0065_ambient_language_snapshot.py` |
+| `0066_soundtrack` | Выбор саундтрека и неизменяемые снимки кредитов главы. | `0066_soundtrack.py` |
+| `0067_youtube_soundtrack` | Подтверждённые пользователем загрузки саундтрека. | `0067_youtube_soundtrack.py` |
+| `0068_chapter_titles` | Отдельный диктор названий глав на уровне книги. | `0068_chapter_titles.py` |
+| `0069_narrator_assembly` | Рабочие версии проекта сохраняют путь независимо от прежнего ручного файла. | `0069_narrator_assembly.py` |
+| `0070_narrator_correction_mode` | Новые полные пересъёмки не переосмысляют исторические короткие фиксы. | `0070_narrator_correction_mode.py` |

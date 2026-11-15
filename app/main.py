@@ -44,6 +44,9 @@ from app.v2.lore_api import (
     api_v2_lore_image,
     api_v2_lore_search,
 )
+from app.v2.narrator_audit_api import (
+    api_v2_narrator_audit, api_v2_narrator_audit_download, api_v2_narrator_audit_labels,
+)
 from app.v2.api import (
     api_v2_book_chapters,
     api_v2_cast,
@@ -380,6 +383,11 @@ app.add_api_route("/api/v2/books/{book_id}/auditions", api_v2_book_auditions, me
 app.add_api_route("/api/v2/auditions/{audio_id}/audio", api_v2_audition_audio, methods=["GET"])
 app.add_api_route("/api/v2/auditions/score", api_v2_audition_score, methods=["POST"])
 app.add_api_route("/api/v2/takes/{audio_id}/audio", api_v2_take_audio, methods=["GET"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/narrator-audit", api_v2_narrator_audit, methods=["GET"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/narrator-audit/{audit_id}/sources/{audio_id}.zip",
+                  api_v2_narrator_audit_download, methods=["GET"])
+app.add_api_route("/api/v2/chapters/{chapter_id}/narrator-audit/{audit_id}/sources/{audio_id}/labels.txt",
+                  api_v2_narrator_audit_labels, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/recording", api_v2_book_recording, methods=["GET"])
 app.add_api_route("/api/studio/calendar", api_studio_calendar, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/language", api_v2_book_language, methods=["GET", "POST"])

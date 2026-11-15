@@ -18,6 +18,8 @@ A narrator take starts a working chapter draft after its intake and transcriptio
 
 If strict narrator checking is enabled, assembly queues it under your configured provider keys and spending limit. Lexical substitutions and incorrect word forms are checked alongside omissions; a second transcription must confirm a finding before it becomes a project marker. Short neutral dialogue tags may be wholly or partly omitted. A spoken substitution must agree in both independent transcriptions and pass the text review before an actor receives a notice. Notices show the source filename, approximate source time, expected word, heard word and script context; mandatory script gaps remain in project markers. Automatic assembly audits update the owner report and project markers without broadcasting retrospective notices to actors. An unknown previous payment outcome stops automatic paid retries and needs owner review.
 
+Assigned narrators can review confirmed recording findings on their role script page and download Audacity labels as TXT without audio, or the original WAV with matching labels as ZIP. Label times refer to the named original recording, not the chapter mix.
+
 AI results need human review. Provider availability, model quality and costs depend on your configuration.
 
 ## Requirements

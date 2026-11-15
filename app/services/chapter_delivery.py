@@ -986,7 +986,7 @@ def session_rate(by_role: dict[str, list]) -> int:
     return max(counts, key=lambda rate: (counts[rate], rate))
 
 
-def _script_layout(db, chapter_id: str, *, relative: bool = False):
+def _script_layout(db, chapter_id: str, *, relative: bool = False, metadata_only: bool = False):
     """Раскладка главы по сценарию — общая для `.sesx` и `scene_spans`.
 
     `None` — главы нет. Иначе `(status, book, by_role, placed, starts, end)`: статус записи,
@@ -1028,7 +1028,7 @@ def _script_layout(db, chapter_id: str, *, relative: bool = False):
 
     replicas = chapter_replicas(db, chapter_id)
     starts: dict[str, float] = {}
-    placed = _place_by_script(replicas, by_role, heard, relative=relative,
+    placed = _place_by_script(replicas, by_role, heard, relative=relative, metadata_only=metadata_only,
                               files_by_id={str(item.id): item for item in audio_files}, starts=starts,
                               title_approaches=title_approaches)
     # Конец сцены до конца главы — это конец РАЗЛОЖЕННЫХ по сценарию клипов, а не целых
@@ -1327,7 +1327,7 @@ def _clip_name(text: str, number: int, total: int) -> str:
     return head if total <= 1 else f"{head} · take {number}/{total}"
 
 
-def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=None,
+def _place_by_script(replicas, by_role, heard, *, relative: bool, metadata_only: bool = False, files_by_id=None,
                      starts: dict[str, float] | None = None, title_approaches=None) -> list[tuple[str, SessionClip]]:
     """Разложить реплики по таймлайну одну за другой, как они идут в главе.
 
@@ -1346,6 +1346,7 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
     но другой, ещё свободной роли, встанет по часам — то есть раньше. Поэтому запись —
     минимум увиденных офсетов, а не первый из них.
     """
+    # Проверке сверки нужны только тайминги и ID; путь не требует доступа к хранилищу.
     files_by_id = files_by_id or {}
     title_approaches = title_approaches or {}
     speech = _speech_by_file(heard)
@@ -1417,7 +1418,7 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
                         review = bool(approach.get("review_only"))
                         name = ("Review · " if review else "") + str(approach.get("observed_text") or approach.get("text") or replica.get("text") or "")
                         placed.append((role, SessionClip(name=_clip_name(name, number, len(approaches)),
-                            path=audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local")),
+                            path=("" if metadata_only else audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local"))),
                             start=offset, source_in=source_in, source_out=source_out,
                             relative=str(item.canonical_filename or "") if relative else "", audio_file_id=str(item.id),
                             segment_id="" if review else str(replica.get("segment_id") or ""),
@@ -1449,7 +1450,7 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
                         continue
                     placed.append((role, SessionClip(
                         name=_clip_name(" ".join(row["text"] for row in group), number, len(groups)),
-                        path=audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local")),
+                        path=("" if metadata_only else audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local"))),
                         start=offset, source_in=source_in, source_out=source_out,
                         relative=str(item.canonical_filename or "") if relative else "",
                         audio_file_id=str(item.id), segment_id=str(replica.get("segment_id") or ""),
@@ -1485,7 +1486,7 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, files_by_id=No
             clock += max(1.0, len(str(replica.get("text") or "")) / CHARS_PER_SECOND) + GAP_SECONDS
             continue
         item, takes = found
-        path = audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local"))
+        path = ("" if metadata_only else audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local")))
         # Подходы ложатся встык от начала реплики: монтажёр слушает их подряд и удаляет
         # лишние. Система не решает, какой лучше, — на дорожке лежит «дубль 1», а не
         # «наш выбор», и это видно по имени клипа.
