@@ -347,6 +347,7 @@ def notify_take_missing(db, job) -> dict | None:
     if audio is None or chapter is None:
         return None
     book = db.get(ScriptBook, chapter.book_id)
+    from app.services.role_identity import chapter_roles
     return asr_notice.notify_missing_lines(
         db,
         actor_name=str(audio.actor_name or ""),
@@ -355,6 +356,8 @@ def notify_take_missing(db, job) -> dict | None:
         book_title=str(getattr(book, "title", "") or ""),
         book_id=str(chapter.book_id),
         lines=alignment["lines"],
+        language=asr_language(getattr(job, "language", None) or getattr(book, "language", "ru")),
+        narrator=chapter_roles(db, chapter.id).is_narrator(str(audio.role or ""), getattr(audio, "role_ref", "")),
     )
 
 

@@ -170,11 +170,16 @@ def test_audit_queue_persists_manual_initiator_without_changing_auto_kwargs(fact
 @pytest.mark.parametrize("initiator", ["admin-2", ""])
 def test_audit_report_splits_to_initiator_or_keeps_legacy_owner_path(factory, sends, initiator):
     personal = worker._initiator_notice(factory, initiator)
+    confirmed = [{"text": "word", "missing_words": ["word"], "status": "partial", "confirmed": True,
+                  "source_windows": [{"source_audio_file_id": str(index), "start": 100., "end": 110.}],
+                  "confirmation_evidence": [{"source_audio_file_id": str(index), "start": 100., "end": 110.,
+                      "primary_text": "wrongword", "secondary_text": "wrongword", "confirmed": True}]}
+                 for index in range(60)]
     with factory() as db:
         asr_audit._notify_owner(db,
             chapter=SimpleNamespace(chapter_title="Test", book_id="book", id="chapter"),
             book=SimpleNamespace(title="Test"), audit=SimpleNamespace(status="done", error_message="", stt_cost_rub=0, lines_json="{}"),
-            lines={"required": []}, flags=[{"text": "word " * 1600, "missing_words": ["word"] * 900}], confirmed=[],
+            lines={"required": []}, flags=confirmed, confirmed=confirmed,
             **({"notify_result": personal} if personal is not None else {}))
     assert len(sends) > 1
     assert all(targets == ({"chat_ids": ["202"], "direct": True} if initiator else {}) for _, targets in sends)
@@ -234,12 +239,13 @@ def test_actual_audit_changes_only_operator_report_and_keeps_narrator_letter(fac
         db.flush()
         letters = _spy_sends(monkeypatch)
         audit = asr_audit.run_asr_audit(db, chapter_id,
-            transcribe=lambda path: (_heard_with(NARRATION_FULL, NARRATION_PARTIAL), 1.5),
+            transcribe=lambda path: (_heard_with(NARRATION_FULL, NARRATION_PARTIAL.replace("хотя", "пока")), 1.5),
             judge=_judge(confirm=True),
-            confirm_transcribe=lambda path: ({"text": NARRATION_PARTIAL.replace("хотя ", "").replace("много ", ""), "segments": []}, 0.5),
+            confirm_transcribe=lambda path: ({"text": NARRATION_PARTIAL.replace("хотя", "пока"), "segments": []}, 0.5),
             notify_result=personal.append)
         assert audit.status == "done"
-    assert len(personal) == 1 and "confirmed 1" in personal[0]
+    assert len(personal) == 1 and "confirmed spoken errors: 1" in personal[0]
     assert len(letters) == 1
     assert letters[0]["chat_ids"] == ["111"] and letters[0]["direct"] is True
-    assert "Lines flagged by the strict word-for-word check" in letters[0]["text"]
+    assert "Expected: «хотя»" in letters[0]["text"]
+    assert "Heard: «пока»" in letters[0]["text"]
