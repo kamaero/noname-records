@@ -93,9 +93,10 @@ def _deliver(db, *, actor_name: str, text: str, count: int, about: str, role: st
     return {"notified": True, "reason": "sent", "actor_name": str(actor_name or ""), "missing": count}
 
 
-def missing_lines_notice(*, role: str, chapter: str, book_title: str, lines: list[dict], link: str = "") -> str:
+def missing_lines_notice(*, role: str, chapter: str, book_title: str, lines: list[dict], link: str = "",
+                         language: str = "ru", narrator: bool | None = None) -> str:
     """Что диктор прочтёт. Пусто — сообщать не о чем, и незачем беспокоить."""
-    missing = [str(line.get("text") or "").strip() for line in lines or [] if not line.get("matched")]
+    missing = [str(line.get("text") or "").strip() for line in _coverage_lines(role, lines, language=language, narrator=narrator) if not line.get("matched")]
     missing = [text for text in missing if text]
     return _lines_letter(
         header="🎧 Lines not found in the recording: {count}", role=role, chapter=chapter, book_title=book_title,
@@ -103,32 +104,40 @@ def missing_lines_notice(*, role: str, chapter: str, book_title: str, lines: lis
     )
 
 
-def audit_findings_notice(*, role: str, chapter: str, book_title: str, texts: list[str],
-                          link: str = "") -> str:
-    """Строгая проверка: слова/фразы, которых дословно не нашлось в записи.
-
-    Не путать с `missing_lines_notice`: та — про целые реплики боевой сверки, эта —
-    про дословность чтения по Сценарию. Формулировка говорит о проверке, а не о браке:
-    находка уже подтверждена второй моделью, но место всё равно сверяется со сценарием.
-    """
-    return _lines_letter(
-        header="🔍 Lines flagged by the strict word-for-word check: {count}",
-        role=role, chapter=chapter, book_title=book_title, texts=texts,
-        call_to_action="Check these passages against the script and send a correction (_fix).", link=link,
-    )
+def audit_findings_notice(*, role: str, chapter: str, book_title: str, items=None,
+                          texts=None, link: str = "") -> str:
+    """Нельзя восстановить услышанное слово из старого списка строк сценария."""
+    return "\n\n".join(audit_findings_messages(role=role, chapter=chapter, book_title=book_title,
+                                              items=items or [], link=link))
 
 
 def notify_audit_findings(db, *, actor_name: str, role: str, chapter: str, book_title: str,
-                          book_id: str, texts: list[str]) -> dict:
-    """Отправить письмо о подтверждённых находках аудита тому, кто читал роль."""
-    text = audit_findings_notice(role=role, chapter=chapter, book_title=book_title,
-                                 texts=texts, link=role_script_link(book_id, role))
-    count = len([t for t in texts or [] if str(t or "").strip()])
-    return _deliver(
-        db, actor_name=actor_name, text=text, count=count,
-        about="please contact the actor about strict check findings; their name is ambiguous",
-        role=role, chapter=chapter, book_title=book_title,
-    )
+                          book_id: str, items=None, texts=None, send=None) -> dict:
+    """Адресат разрешается один раз: многосоставное письмо не дублирует релей."""
+    link = role_script_link(book_id, role)
+    messages = audit_findings_messages(role=role, chapter=chapter, book_title=book_title,
+                                       items=items or [], link=link)
+    count = len([item for item in items or [] if item.get("expected") and item.get("heard")])
+    result = {"notified": False, "reason": "nothing_missing", "actor_name": str(actor_name or ""), "missing": count}
+    if not messages:
+        return result
+    candidates = resolve_actor_candidates(db, actor_name)
+    if len(candidates) > 1:
+        relay = _ambiguous_relay_text(about="please contact the actor about confirmed spoken errors; their name is ambiguous",
+                                     role=role, chapter=chapter, book_title=book_title,
+                                     actor_name=actor_name, candidates=[label for _, label in candidates])
+        result.update(reason="ambiguous", relayed=relay_to_owner_and_agents(
+            db, relay))
+        return result
+    if not candidates or not candidates[0][0]:
+        result["reason"] = "no_telegram"
+        return result
+    for message in messages:
+        if not (send or send_telegram_message)(db, message, chat_ids=[candidates[0][0]], direct=True):
+            result["reason"] = "not_sent"
+            return result
+    result.update(notified=True, reason="sent")
+    return result
 
 
 def notify_missing_lines(
@@ -140,6 +149,8 @@ def notify_missing_lines(
     book_title: str,
     book_id: str,
     lines: list[dict],
+    language: str = "ru",
+    narrator: bool | None = None,
 ) -> dict:
     """Отправить письмо тому, кто читал. Возвращает, дошло ли, — и почему нет.
 
@@ -148,9 +159,10 @@ def notify_missing_lines(
     """
     text = missing_lines_notice(
         role=role, chapter=chapter, book_title=book_title, lines=lines,
-        link=role_script_link(book_id, role),
+        link=role_script_link(book_id, role), language=language, narrator=narrator,
     )
-    missing = sum(1 for line in lines or [] if not line.get("matched"))
+    missing = sum(1 for line in _coverage_lines(role, lines, language=language, narrator=narrator)
+                  if not line.get("matched") and str(line.get("text") or "").strip())
     return _deliver(
         db, actor_name=actor_name, text=text, count=missing,
         about="please contact the actor about missing lines; their name is ambiguous",
@@ -182,3 +194,80 @@ def notify_moved_lines(db, *, actor_name: str, role: str, chapter: str, book_tit
         about="please contact the actor about reassigned lines; their name is ambiguous",
         role=role, chapter=chapter, book_title=book_title,
     )
+
+
+def _coverage_lines(role: str, lines: list[dict], *, language: str = "ru", narrator: bool | None = None) -> list[dict]:
+    from app.services.shared_runtime import is_narrator_name
+
+    if not (is_narrator_name(role) if narrator is None else narrator):
+        return lines or []
+    # Поздний импорт разрывает зависимость аудита от собственного письма.
+    from app.services.asr_audit import classify_narrator_line
+    return [line for line in lines or [] if classify_narrator_line(
+        "- " + str(line.get("text") or "").strip("-–— ,;:.!?… "), language=language) != "tag"]
+
+
+def _utf16_size(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _short(text: str, limit: int) -> str:
+    text = str(text or "").strip()
+    if _utf16_size(text) <= limit:
+        return text
+    while _utf16_size(text) > limit - 1:
+        text = text[:max(0, len(text) - max(1, (_utf16_size(text) - limit) // 2))]
+    return text.rstrip() + "…"
+
+
+def _source_time(value) -> str:
+    import math
+    try:
+        seconds = float(value)
+        if not math.isfinite(seconds) or seconds < 0:
+            raise ValueError
+        seconds = int(seconds)
+        return f"{seconds // 3600:02d}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
+    except (TypeError, ValueError, OverflowError):
+        return "time unknown"
+
+
+def _error_row(item: dict) -> str:
+    start, end = _source_time(item.get("start")), _source_time(item.get("end"))
+    time = start if start == end else f"{start}–{end}"
+    return "\n".join([
+        f"• {_short(item.get('filename') or 'Source file not specified', 180)} · ≈ {time}",
+        f"Expected: «{_short(item.get('expected'), 600)}»",
+        f"Heard: «{_short(item.get('heard'), 600)}»",
+        f"Context: {_short(item.get('context'), 350)}",
+    ])
+
+
+def audit_findings_messages(*, role: str, chapter: str, book_title: str, items: list[dict],
+                            link: str = "", summary: str = "") -> list[str]:
+    """Все оговорки доходят отдельными целыми пунктами в пределах Telegram UTF-16."""
+    items = [item for item in items or [] if item.get("expected") and item.get("heard")]
+    if not items and not summary:
+        return []
+    header = _short(summary or "\n".join([
+        f"🔍 Confirmed spoken errors: {len(items)}",
+        f"Role: {role}", f"{book_title} · {chapter}".strip(" ·"),
+    ]), 750)
+    footer = ("Times refer approximately to the source recording. "
+              "Listen to these passages and check the linked script. "
+              "If a correction is needed, record the whole line and upload it as _fix.") if items and not summary else ""
+    if link:
+        footer += "\n" + _short(link, 400)
+    # Место под нумерацию резервируется до упаковки; длина emoji — две единицы.
+    capacity = 3500 - _utf16_size(header + footer) - 80
+    groups, current = [], []
+    for item in items:
+        row = _error_row(item)
+        if current and _utf16_size("\n\n".join([*current, row])) > capacity:
+            groups.append(current)
+            current = []
+        current.append(row)
+    groups.append(current)
+    return ["\n\n".join(part for part in [header + (f"\nPart {number}/{len(groups)}" if len(groups) > 1 else ""),
+                                            "\n\n".join(group), footer] if part)
+            for number, group in enumerate(groups, 1)]

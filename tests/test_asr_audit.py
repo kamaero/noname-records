@@ -245,7 +245,7 @@ def test_classifier_with_independent_synthetic_cases(text, expected):
     assert classify_narrator_line(text) == expected
 
 
-def test_audit_done_flags_confirms_and_letters_both(db, monkeypatch):
+def test_audit_done_keeps_required_omission_without_actor_letter(db, monkeypatch):
     audit, box = _run_audit(db, monkeypatch, confirm=True)
 
     assert audit.status == "done"
@@ -254,15 +254,13 @@ def test_audit_done_flags_confirms_and_letters_both(db, monkeypatch):
     assert len(flags) == 1 and flags[0]["status"] == "partial"
     assert flags[0]["confirmed"] is True
     assert confirmed_count == 1
-    # Владельцу — отчёт, рассказчику — письмо (лично, direct).
-    assert len(box) == 2
-    owner_text = next(m["text"] for m in box if not m["direct"])
+    assert len(box) == 1 and not box[0]["direct"]
+    owner_text = box[0]["text"]
     assert "Strict narrator check" in owner_text
-    assert "confirmed 1" in owner_text
-    letter = next(m for m in box if m["direct"])
-    assert letter["chat_ids"] == ["111"]
-    assert "Lines flagged by the strict word-for-word check" in letter["text"]
-    assert "2.00" in owner_text  # цена обоих прогонов STT названа
+    assert "confirmed spoken errors: 0" in owner_text
+    assert "other confirmed differences: 1" in owner_text
+    assert "Expected:" not in owner_text
+    assert "2.00" in owner_text
 
 
 def test_audit_without_confirmation_sends_no_actor_letter(db, monkeypatch):
@@ -272,7 +270,8 @@ def test_audit_without_confirmation_sends_no_actor_letter(db, monkeypatch):
     assert confirmed_count == 0 and flags[0]["confirmed"] is False
     # Письмо ушло только владельцу — рассказчика без подтверждения не обвиняем.
     assert len(box) == 1
-    assert "unconfirmed" in box[0]["text"]
+    assert "confirmed spoken errors: 0" in box[0]["text"]
+    assert "Expected:" not in box[0]["text"]
 
 
 def test_audit_failed_keeps_error_and_notifies_owner(db, monkeypatch):
@@ -555,9 +554,9 @@ def test_notification_failure_does_not_lose_audit_or_block_narrator(db, monkeypa
     monkeypatch.setattr(asr_audit, "_notify_owner", owner)
     monkeypatch.setattr(asr_audit, "_notify_narrator", lambda *a, **kw: notified.append(kw))
     audit = run_asr_audit(db, chapter_id,
-        transcribe=lambda p: (_heard_with(NARRATION_FULL, NARRATION_PARTIAL), 1.5),
+        transcribe=lambda p: (_heard_with(NARRATION_FULL, NARRATION_PARTIAL.replace("хотя", "пока")), 1.5),
         judge=_judge(confirm=True),
-        confirm_transcribe=lambda p: ({"text": "На дороге наступила тишина впереди ещё работы."}, .5))
+        confirm_transcribe=lambda p: ({"text": NARRATION_PARTIAL.replace("хотя", "пока")}, .5))
     assert audit.status == "done" and audit.stt_cost_rub == 2.
     assert len(notified) == 1
 

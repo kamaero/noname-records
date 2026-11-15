@@ -236,6 +236,8 @@ def _snapshot_from_parts(lines, replicas, placed, book, audio_source, *, identit
             raise AsrAuditError(f"narrator_source_scope_mismatch:{source_id}")
         sources[source_id] = {key: getattr(audio, key) for key in
             ("id", "stored_key", "location", "actor_name", "role", "uploaded_at", "md5", "size_bytes", "verify_state")}
+        sources[source_id]["notice_filename"] = (getattr(audio, "canonical_filename", "") or
+                                                     getattr(audio, "original_filename", ""))
         clips.append({"index": int(index), "role": role, "role_index": role_index,
                       "segment_id": str(clip.segment_id),
                       "source_audio_file_id": source_id, "start": float(clip.source_in),
@@ -827,11 +829,14 @@ def _judge_required(*, required: list[dict], alignment: dict, heard: dict,
 
 
 def _confirm_flags(*, flags: list[dict], source_path: str = "", judge,
-                   confirm_transcribe, record_cost=None, source_paths=None, language: str = "ru") -> list[dict]:
+                   confirm_transcribe, record_cost=None, source_paths=None, source_transcripts=None, language: str = "ru") -> list[dict]:
     from app.services.asr_align import normalize_words
+
+    from app.services.asr_error_evidence import omission_only, primary_window
 
     confirmed = []
     for flag in flags:
+        flag["confirmation_evidence"] = []
         windows = flag.get("source_windows")
         if windows is None:
             windows = [flag["anchor"]] if flag.get("anchor") else []
@@ -841,6 +846,15 @@ def _confirm_flags(*, flags: list[dict], source_path: str = "", judge,
         all_confirmed = True
         notes = []
         for number, anchor in enumerate(windows, 1):
+            source_id = str(anchor.get("source_audio_file_id") or "")
+            primary = primary_window((source_transcripts or {}).get(source_id) or {},
+                                     anchor["start"], anchor["end"], language=language)
+            if (flag.get("omission_optional") and source_transcripts is not None
+                    and source_id in source_transcripts
+                    and omission_only(flag["text"], primary["text"], language=language)):
+                all_confirmed = False
+                notes.append("optional dialogue tag is wholly or partly omitted without substitutions")
+                break
             descriptor, window = tempfile.mkstemp(prefix="asr-audit-win-", suffix=".mp3")
             os.close(descriptor)
             billed = False
@@ -873,6 +887,11 @@ def _confirm_flags(*, flags: list[dict], source_path: str = "", judge,
                 words_present = bool(suspect_words) and not (set(suspect_words) - set(spoken_words))
                 accepted = verdict["confirmed"] and not words_present
                 notes.append(f"Подход {number}: " + ("the disputed words are present in the second transcript" if words_present else verdict["note"]))
+                flag["confirmation_evidence"].append({
+                    "source_audio_file_id": source_id, "start": anchor["start"], "end": anchor["end"],
+                    "primary_text": primary["text"], "primary_words": primary["words"],
+                    "secondary_text": transcript, "confirmed": accepted,
+                })
                 all_confirmed = all_confirmed and accepted
                 if not accepted:
                     break
@@ -943,7 +962,7 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
     audit.audio_file_id = str(take.id)
     model, confirm_model, judge_model = audit.model, audit.confirm_model, audit.judge_model
     book_row = db.get(ScriptBook, chapter.book_id)
-    book = SimpleNamespace(title=str(getattr(book_row, "title", "") or ""))
+    book = SimpleNamespace(title=str(getattr(book_row, "title", "") or ""), language=language)
     lines = {"required": [], "tags": [], "titles": []}
     flags, confirmed = [], []
     meta = {"audit_policy_version": AUDIT_POLICY_VERSION, "take_id": str(take.id), "take_uploaded_at": str(take.uploaded_at or ""),
@@ -1022,7 +1041,8 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
             lambda: _transcribe_fresh(path, model=confirm_model, phrases=glossary,
                                       **({"language": language} if language != "ru" else {})), retry_errors={"asr_http_429"}))
         confirmed = _confirm_flags(flags=flags, source_paths=source_paths, judge=judge_call,
-                                   confirm_transcribe=confirm_call, record_cost=record_cost, language=language)
+                                   confirm_transcribe=confirm_call, record_cost=record_cost,
+                                   source_transcripts=transcripts, language=language)
         # Пока модели слушали, редактор мог заменить фикс или текст. Оплаченное
         # сохраняем, но старые выводы не должны обвинить уже исправившегося диктора.
         if _preflight_sources(snapshot["sources"], source_paths) != source_evidence:
@@ -1062,27 +1082,31 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
     notice_audit = SimpleNamespace(status=audit.status, error_message=audit.error_message,
                                   stt_cost_rub=audit.stt_cost_rub, lines_json=audit.lines_json)
     db.commit()
+    source_names = {key: item.get("notice_filename", "") for key, item in (snapshot or {}).get("sources", {}).items()}
     try:
         _notify_owner(db, chapter=chapter, book=book, audit=notice_audit, lines=lines,
-                      flags=flags, confirmed=confirmed, **({"notify_result": notify_result} if notify_result is not None else {}))
+                      flags=flags, confirmed=confirmed, source_names=source_names, **({"notify_result": notify_result} if notify_result is not None else {}))
         db.commit()
     except Exception:
         db.rollback()
         logger.exception("Не отправлен отчёт владельцу по главе %s", chapter.id)
+    from app.services.asr_error_evidence import confirmed_error_items
     if confirmed and completed and notify_narrator:
         recipients = {}
         for flag in confirmed:
-            source_ids = {w["source_audio_file_id"] for w in flag.get("source_windows") or []}
+            source_ids = {item["source_audio_file_id"] for item in confirmed_error_items([flag], language=language)}
             for source_id in source_ids:
                 person = snapshot["sources"][source_id]
                 actor = str(person["actor_name"] or "")
-                entry = recipients.setdefault(actor, {"take": SimpleNamespace(**person), "flags": []})
+                entry = recipients.setdefault(actor, {"take": SimpleNamespace(**person), "flags": [], "source_ids": set()})
+                entry["source_ids"].add(source_id)
                 if flag not in entry["flags"]:
                     entry["flags"].append(flag)
         for entry in recipients.values():
             try:
                 entry["take"].role = "Рассказчик"
-                _notify_narrator(db, chapter=chapter, book=book, take=entry["take"], confirmed=entry["flags"])
+                _notify_narrator(db, chapter=chapter, book=book, take=entry["take"], confirmed=entry["flags"],
+                                 allowed_source_ids=entry["source_ids"], source_names=source_names)
                 db.commit()
             except Exception:
                 db.rollback()
@@ -1108,7 +1132,7 @@ def _chapter_link(book_id: str, chapter_id: str) -> str:
 
 
 def _notify_owner(db, *, chapter, book, audit, lines: dict, flags: list[dict],
-                  confirmed: list[dict], notify_result=None) -> None:
+                  confirmed: list[dict], notify_result=None, source_names=None) -> None:
     """Отчёт владельцу — всегда: чистый результат тоже новость, он закрывает контур."""
     from app.services.telegram import send_telegram_message
 
@@ -1118,50 +1142,43 @@ def _notify_owner(db, *, chapter, book, audit, lines: dict, flags: list[dict],
     except (TypeError, ValueError):
         meta = {}
     price = f"{audit.stt_cost_rub:.2f} ₽" if meta.get("cost_complete", True) else "unconfirmed"
-    counts = (f"Lines checked: {len(lines['required'])} · flags: {len(flags)} "
-              f"(confirmed {len(confirmed)}) · STT cost {price} (excluding LLM)")
+    from app.services.asr_error_evidence import confirmed_error_items
+    from app.services.asr_notice import audit_findings_messages
+
+    language = getattr(book, "language", "ru")
+    items = (confirmed_error_items(confirmed, source_names=source_names, language=language)
+             if audit.status == "done" else [])
+    other = sum(1 for flag in confirmed if not confirmed_error_items([flag], language=language))
+    counts = (f"Lines checked: {len(lines['required'])} · confirmed spoken errors: {len(items)} "
+              f"· other confirmed differences: {other} · STT cost {price} (excluding LLM)")
     if audit.status == "failed":
         counts = f"Check incomplete: {audit.error_message} · STT cost {price} (excluding LLM)"
     elif audit.status == "skipped":
         counts = f"Stale result: narrator inputs changed during the check · STT cost {price} (excluding LLM)"
-    if not flags:
-        text = f"{header}\n{counts}"
-    else:
-        rows = []
-        for flag in flags:
-            mark = "confirmed" if flag.get("confirmed") else "unconfirmed"
-            words = ", ".join(flag.get("missing_words") or []) or flag.get("status") or ""
-            rows.append(f"• ({mark}) [{words}] {_quote(flag.get('text'), 90)}")
-        text = "\n".join([header, counts, "", *rows])
-    if confirmed and audit.status == "done":
-        text += "\n\nMarkers will appear in the next chapter assembly. Download the archive again to update an existing project."
-    link = _chapter_link(str(chapter.book_id), str(chapter.id))
-    if link:
-        text += f"\n\n{link}"
-    # Без `direct`: адресат подменяется владельцем — ровно то, что нужно отчёту.
-    # Telegram отвергает длинное сообщение целиком; владельцу нужны все находки,
-    # поэтому дробим отчёт, а не скрываем хвост после шестой строки.
-    remaining = text
-    while remaining:
-        boundary = min(len(remaining), 3500)
-        if boundary < len(remaining):
-            boundary = remaining.rfind("\n", 0, boundary) or boundary
-        if notify_result is None:
-            send_telegram_message(db, remaining[:boundary])
-        else:
-            notify_result(remaining[:boundary])
-        remaining = remaining[boundary:].lstrip("\n")
+    messages = audit_findings_messages(role="Narrator", chapter=chapter.chapter_title,
+                                      book_title=getattr(book, "title", ""), items=items,
+                                      link=_chapter_link(str(chapter.book_id), str(chapter.id)),
+                                      summary=header + "\n" + counts)
+    for message in messages:
+        sent = (send_telegram_message(db, message) if notify_result is None else notify_result(message))
+        if sent is False or sent == 0:
+            break
 
 
-def _notify_narrator(db, *, chapter, book, take, confirmed: list[dict]) -> dict | None:
-    """Письмо рассказчику только о подтверждённых пропусках.
+def _notify_narrator(db, *, chapter, book, take, confirmed: list[dict],
+                     allowed_source_ids=None, source_names=None) -> dict | None:
+    """Письмо рассказчику только о доказанных произнесённых заменах.
 
     Неподтверждённый флаг — это пока обвинение без второго свидетеля; диктору о нём
     не пишут, смотрит владелец. Письмо своё (`audit_findings_notice`), а не боевое
     «не нашлось реплик»: та — про целые реплики, эта — про дословность чтения.
     """
     from app.services import asr_notice
+    from app.services.asr_error_evidence import confirmed_error_items
 
+    items = confirmed_error_items(confirmed, source_names=source_names,
+                                  allowed_source_ids=allowed_source_ids,
+                                  language=getattr(book, "language", "ru"))
     return asr_notice.notify_audit_findings(
         db,
         actor_name=str(take.actor_name or ""),
@@ -1169,7 +1186,7 @@ def _notify_narrator(db, *, chapter, book, take, confirmed: list[dict]) -> dict 
         chapter=str(chapter.chapter_title or ""),
         book_title=str(getattr(book, "title", "") or ""),
         book_id=str(chapter.book_id),
-        texts=[item["text"] for item in confirmed],
+        items=items,
     )
 
 
