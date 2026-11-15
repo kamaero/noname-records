@@ -405,6 +405,59 @@ def _assembled_transcript(snapshot: dict, transcripts: dict) -> tuple[dict, dict
             "sources": transcripts}, alignment
 
 
+def validated_resume(db, chapter_id: str, parent_id: str, *, snapshot=None) -> dict:
+    """Продолжаем только точный оплаченный вход, без нового полного STT."""
+    from app.models import AsrAudit
+    from app.services.asr_run import ALIGNMENT_VERSION
+
+    try:
+        parent = db.get(AsrAudit, parent_id)
+        snapshot = snapshot if snapshot is not None else _narrator_snapshot(db, chapter_id)
+        if parent is None or parent.chapter_id != chapter_id or parent.status != "failed":
+            raise ValueError("parent")
+        meta = json.loads(parent.lines_json or "{}")
+        heard = json.loads(parent.transcript_json or "{}")
+        if (not isinstance(meta, dict) or not isinstance(heard, dict)
+                or meta.get("audit_policy_version") != AUDIT_POLICY_VERSION
+                or meta.get("narrator_input_fingerprint") != snapshot["fingerprint"]
+                or not str(parent.model or "").strip()
+                or parent.language != snapshot.get("language", "ru")
+                or meta.get("language") != snapshot.get("language", "ru")
+                or meta.get("normalizer_version") != ALIGNMENT_VERSION):
+            raise ValueError("input")
+        selected = {row["index"] for row in _audit_lines(snapshot)}
+        expected = {clip["source_audio_file_id"] for clip in snapshot["clips"] if clip["index"] in selected}
+        saved_ids = meta.get("source_audio_file_ids")
+        transcripts = heard.get("sources")
+        if (not expected or not isinstance(saved_ids, list) or len(saved_ids) != len(set(saved_ids))
+                or set(saved_ids) != set(snapshot["sources"])
+                or not isinstance(transcripts, dict) or set(transcripts) != expected):
+            raise ValueError("sources")
+        for payload in transcripts.values():
+            if not isinstance(payload, dict) or not isinstance(payload.get("segments"), list):
+                raise ValueError("transcript")
+            words, timed_words = 0, 0
+            for segment in payload["segments"]:
+                if not isinstance(segment, dict) or not isinstance(segment.get("words"), list):
+                    raise ValueError("timestamps")
+                for word in segment["words"]:
+                    if not isinstance(word, dict) or not isinstance(word.get("word"), str) or not word["word"].strip():
+                        raise ValueError("word")
+                    start, end = word.get("start"), word.get("end")
+                    if (type(start) not in (int, float) or type(end) not in (int, float)
+                            or not math.isfinite(start) or not math.isfinite(end) or start < 0 or end < start):
+                        raise ValueError("timestamps")
+                    words += 1
+                    timed_words += end > start
+            from app.services.asr_align import word_stream
+            if not words or not timed_words or not word_stream(payload["segments"], language=snapshot.get("language", "ru")):
+                raise ValueError("timestamps")
+        return {"parent_id": str(parent.id), "model": parent.model, "transcripts": transcripts,
+                "judge_checkpoint": meta.get("judge_checkpoint")}
+    except (ValueError, TypeError, KeyError, AttributeError, AsrAuditError) as exc:
+        raise AsrAuditError("resume_unavailable") from exc
+
+
 def _attach_source_windows(flags: list, alignment: dict) -> None:
     for flag in flags:
         line = next(r for r in alignment["lines"] if r["index"] == flag["index"])
@@ -699,34 +752,77 @@ def _word_anchors(text: str, missing_words: list[str], anchor: dict | None, stre
 
 
 def _judge_required(*, required: list[dict], alignment: dict, heard: dict,
-                    glossary: list[str], judge, language: str = "ru") -> list[dict]:
+                    glossary: list[str], judge, checkpoint=None, save_checkpoint=None, judge_model="", language: str = "ru") -> list[dict]:
     from app.services.asr_align import word_stream
 
     stream = word_stream(heard.get("segments") or [], language=language)
     excerpts = _build_excerpts(alignment.get("lines") or [], stream)
+    system = _JUDGE_SYSTEM + ("\nThe book is in English. Compare its English wording and contractions; return all notes in English." if language == "en" else "")
+    signature = hashlib.sha256(json.dumps({"policy": AUDIT_POLICY_VERSION, "system": system, "language": language,
+        "schema": _VERDICT_SCHEMA, "required": required, "excerpts": excerpts,
+        "glossary": glossary, "judge_model": judge_model}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    expected = {item["index"] for item in required}
+    cached = {}
+    if isinstance(checkpoint, dict) and checkpoint.get("signature") == signature:
+        try:
+            rows = checkpoint.get("verdicts")
+            indices = {row["index"] for row in rows}
+            if not indices.issubset(expected):
+                raise AsrAuditError("uncorrelated_judge_response")
+            cached = _verdicts({"verdicts": rows}, "verdicts", indices)
+        except (AsrAuditError, TypeError, KeyError, AttributeError):
+            cached = {}
+    if save_checkpoint is not None:
+        save_checkpoint({"signature": signature, "verdicts": list(cached.values())})
     flags = []
-    for offset in range(0, len(required), JUDGE_BATCH):
-        batch = required[offset:offset + JUDGE_BATCH]
-        system = _JUDGE_SYSTEM + ("\nThe book is in English. Compare its English wording and contractions; return all notes in English." if language == "en" else "")
+    missing = [item for item in required if item["index"] not in cached]
+    for offset in range(0, len(missing), JUDGE_BATCH):
+        batch = missing[offset:offset + JUDGE_BATCH]
         answer = judge(system, _judge_user_prompt(batch, excerpts, glossary), _VERDICT_SCHEMA)
-        by_index = _verdicts(answer, "verdicts", {item["index"] for item in batch})
-        for item in batch:
-            verdict = by_index[item["index"]]
-            aligned = next((line for line in alignment.get("lines") or []
-                            if line.get("index") == item["index"]), {})
-            if aligned.get("windows") == []:
-                # Нейросеть не может оправдать строку, для которой в проекте нет
-                # клипа: соседнее похожее предложение не звучит вместо неё.
-                verdict = {"status": "missing", "missing_words": [],
-                           "note": "required line is not placed in the assembled chapter"}
-            if verdict["status"] == "ok" or (item.get("omission_optional") and verdict["status"] == "missing"):
-                continue
-            anchor = _anchor_of(alignment, item["index"], stream=stream)
-            flags.append({**item, "status": verdict["status"],
-                          "missing_words": verdict["missing_words"], "note": verdict["note"],
-                          "anchor": anchor,
-                          "word_anchors": _word_anchors(item["text"], verdict["missing_words"], anchor, stream, language=language),
-                          "confirmed": False, "confirm_note": ""})
+        batch_expected = {item["index"] for item in batch}
+        valid, error, seen, duplicates = {}, None, set(), set()
+        if not isinstance(answer, dict) or not isinstance(answer.get("verdicts"), list):
+            raise AsrAuditError("invalid_judge_response")
+        for row in answer["verdicts"]:
+            try:
+                index = row.get("index") if isinstance(row, dict) else None
+                if type(index) is int and index in seen:
+                    duplicates.add(index)
+                    valid.pop(index, None)
+                    raise AsrAuditError("uncorrelated_judge_response")
+                if type(index) is not int or index not in batch_expected:
+                    raise AsrAuditError("uncorrelated_judge_response")
+                seen.add(index)
+                valid.update(_verdicts({"verdicts": [row]}, "verdicts", {index}))
+            except AsrAuditError as exc:
+                error = exc
+        for index in duplicates:
+            valid.pop(index, None)
+        cached.update(valid)
+        # Часть строгого ответа уже оплачена: фиксируем её до остановки.
+        if save_checkpoint is not None:
+            save_checkpoint({"signature": signature, "verdicts": list(cached.values())})
+        if error is not None:
+            raise error
+        if set(valid) != batch_expected:
+            raise AsrAuditError("incomplete_judge_response")
+    for item in required:
+        verdict = cached[item["index"]]
+        aligned = next((line for line in alignment.get("lines") or []
+                        if line.get("index") == item["index"]), {})
+        if aligned.get("windows") == []:
+            # Нейросеть не может оправдать строку, для которой в проекте нет
+            # клипа: соседнее похожее предложение не звучит вместо неё.
+            verdict = {"status": "missing", "missing_words": [],
+                       "note": "required line is not placed in the assembled chapter"}
+        if verdict["status"] == "ok" or (item.get("omission_optional") and verdict["status"] == "missing"):
+            continue
+        anchor = _anchor_of(alignment, item["index"], stream=stream)
+        flags.append({**item, "status": verdict["status"],
+                      "missing_words": verdict["missing_words"], "note": verdict["note"],
+                      "anchor": anchor,
+                      "word_anchors": _word_anchors(item["text"], verdict["missing_words"], anchor, stream, language=language),
+                      "confirmed": False, "confirm_note": ""})
     return flags
 
 
@@ -799,7 +895,7 @@ def _confirm_flags(*, flags: list[dict], source_path: str = "", judge,
 
 def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
                   confirm_transcribe=None, expected_narrator_fingerprint: str = "",
-                  language: str | None = None, notify_result=None, notify_narrator: bool = True) -> "object":
+                  language: str | None = None, notify_result=None, notify_narrator: bool = True, resume_audit_id: str = "") -> "object":
     """Снимок входа и результат фиксируются короткими транзакциями.
 
     Платные вызовы могут идти минуты: незакрытый flush на SQLite блокировал бы
@@ -821,7 +917,8 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
     except Exception as exc:
         snapshot = None
         snapshot_error = exc
-    audit = AsrAudit(chapter_id=chapter.id, status="running", model=settings.asr_audit_model,
+    resume = validated_resume(db, chapter.id, resume_audit_id, snapshot=snapshot) if resume_audit_id else None
+    audit = AsrAudit(chapter_id=chapter.id, status="running", model=resume["model"] if resume else settings.asr_audit_model,
                      confirm_model=settings.asr_audit_confirm_model, judge_model=settings.llm_audit_model,
                      language=language)
     db.add(audit)
@@ -853,6 +950,8 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
             "classified_at": iso_utc(utcnow_naive()), "cost_complete": True,
             "cost_scope": "stt_only", "stt_calls": 0, "language": language,
             "normalizer_version": ALIGNMENT_VERSION}
+    if resume:
+        meta.update(resume_from=resume["parent_id"], reused_stt=True)
     costs = []
 
     def record_cost(cost):
@@ -889,8 +988,8 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
         transcribe_call = transcribe or (lambda path: _transcribe_retrying(
             lambda: _transcribe_fresh(path, model=model, phrases=glossary,
                                       **({"language": language} if language != "ru" else {})), retry_errors={"asr_http_429"}))
-        transcripts = {}
-        for source_id, source in source_paths.items():
+        transcripts = dict(resume["transcripts"]) if resume else {}
+        for source_id, source in ([] if resume else source_paths.items()):
             try:
                 payload, cost = _transcription_result(transcribe_call(source))
             except Exception:
@@ -909,8 +1008,15 @@ def run_asr_audit(db, chapter_id: str, *, transcribe=None, judge=None,
         audit.transcript_json = json.dumps(heard, ensure_ascii=False)
         db.commit()
         judge_call = judge or (lambda system, user, schema: default_judge_ask(system, user, schema, model=judge_model))
+        def save_checkpoint(checkpoint):
+            meta["judge_checkpoint"] = checkpoint
+            audit.lines_json = json.dumps(meta, ensure_ascii=False)
+            db.commit()
+
         flags = _judge_required(required=selected, alignment=alignment, heard=heard,
-                                glossary=glossary, judge=judge_call, language=language)
+                                glossary=glossary, judge=judge_call, language=language, judge_model=judge_model,
+                                checkpoint=resume.get("judge_checkpoint") if resume else None,
+                                save_checkpoint=save_checkpoint)
         _attach_source_windows(flags, alignment)
         confirm_call = confirm_transcribe or (lambda path: _transcribe_retrying(
             lambda: _transcribe_fresh(path, model=confirm_model, phrases=glossary,
@@ -1122,6 +1228,8 @@ def latest_audits(db, chapter_ids: list[str], *, identities_by_book=None, chapte
                 audit_status = "stale"
         out[cid] = {
             "status": audit_status,
+            "audit_id": str(row.id),
+            "resume_available": False,
             "flags": len(flags),
             "confirmed": confirmed,
             "model": str(row.model or ""),
@@ -1129,19 +1237,25 @@ def latest_audits(db, chapter_ids: list[str], *, identities_by_book=None, chapte
             "updated_at": iso_utc(row.updated_at) or "",
             "error_message": str(row.error_message or ""),
         }
+        if audit_status == "failed":
+            try:
+                validated_resume(db, cid, str(row.id))
+                out[cid]["resume_available"] = True
+            except Exception:
+                pass
     runs = db.query(BackgroundRun).filter(BackgroundRun.job_kind == "asr_audit",
         BackgroundRun.entity_id.in_(ids)).order_by(BackgroundRun.created_at.asc()).all()
     latest_runs = {str(run.entity_id): run for run in runs}
     for cid, run in latest_runs.items():
         previous = latest.get(cid)
-        if previous is not None and previous.created_at >= run.created_at:
+        if previous is not None and previous.created_at >= run.created_at and run.status not in {"queued", "running"}:
             continue
         error = str(run.error_message or "")
         status = "unknown" if error.startswith("queue_outcome_unknown") else str(run.status)
         if status == "done":
             status = "unknown"
             error = "The check result was not saved; owner review is required"
-        out[cid] = {"status": status, "flags": 0, "confirmed": 0, "model": "",
+        out[cid] = {"status": status, "audit_id": "", "resume_available": False, "flags": 0, "confirmed": 0, "model": "",
                     "stt_cost_rub": None, "updated_at": iso_utc(run.updated_at) or "",
                     "error_message": error}
     return out
@@ -1166,7 +1280,8 @@ def enqueue_asr_audit_if_due(db, chapter_id: str) -> str | None:
     return enqueue_asr_audit(chapter_id)
 
 
-def enqueue_asr_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "") -> str | None:
+def enqueue_asr_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "", resume_audit_id: str = "") -> str | None:
     from app.services.asr_audit_lifecycle import enqueue_audit
 
-    return enqueue_audit(chapter_id, force=force, **({"initiator_id": initiator_id} if initiator_id else {}))
+    return enqueue_audit(chapter_id, force=force, **({"initiator_id": initiator_id} if initiator_id else {}),
+                         **({"resume_audit_id": resume_audit_id} if resume_audit_id else {}))

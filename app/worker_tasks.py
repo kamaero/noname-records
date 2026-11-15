@@ -80,9 +80,9 @@ def _manual_chapter_result(session_factory, initiator_id: str, chapter_id: str, 
 def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
                            assembled_fingerprint: str = "", narrator_take_id: str = "",
                            narrator_input_fingerprint: str = "", force: bool = False,
-                           language: str | None = None, initiator_id: str = "", audit_policy_version: str = ""):
+                           language: str | None = None, initiator_id: str = "", audit_policy_version: str = "", resume_audit_id: str = ""):
     """Проверяем снимок сборки и захватываем оплачиваемую задачу ровно один раз."""
-    from app.services.asr_audit import AUDIT_POLICY_VERSION, run_asr_audit
+    from app.services.asr_audit import AUDIT_POLICY_VERSION, AsrAuditError, run_asr_audit
     from app.services.asr_audit_lifecycle import assembled_audit_snapshot, claim_audit_run, record_payment_boundary
 
     session_factory = SessionLocal
@@ -96,8 +96,18 @@ def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
             try:
                 run_meta = json.loads(run.meta_json or "{}") if run else {}
                 notify_narrator = run_meta.get("notify_narrator", True) is not False
+                reserved_resume_id = run_meta.get("resume_audit_id", "")
             except (ValueError, TypeError, AttributeError):
                 notify_narrator = True
+                reserved_resume_id = None
+            # Старый воркер отвергает новый аргумент до оплаты; новый не должен
+            # подменять продолжение полным STT при потере или изменении аргумента.
+            if (type(resume_audit_id) is not str or type(reserved_resume_id) is not str
+                    or resume_audit_id != reserved_resume_id):
+                db.rollback()
+                record_payment_boundary(db, run_id, state="not_started", skip_reason="resume_job_mismatch")
+                _finish_background_run(session_factory, BackgroundRun, run_id, "skipped", "resume_job_mismatch")
+                return
             expected = {"assembled_fingerprint": assembled_fingerprint, "narrator_take_id": narrator_take_id,
                         "narrator_input_fingerprint": narrator_input_fingerprint}
             if language is not None:
@@ -111,6 +121,15 @@ def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
                 _manual_chapter_result(session_factory, initiator_id, chapter_id,
                                       "Strict check cancelled: chapter inputs changed; no payment was made.")
                 return
+            if resume_audit_id:
+                from app.services.asr_audit import validated_resume
+                try:
+                    validated_resume(db, chapter_id, resume_audit_id)
+                except AsrAuditError:
+                    db.rollback()
+                    record_payment_boundary(db, run_id, state="not_started", skip_reason="resume_unavailable")
+                    _finish_background_run(session_factory, BackgroundRun, run_id, "skipped", "resume_unavailable")
+                    return
             record_payment_boundary(db, run_id, state="possibly_paid")
             from app.models import ScriptChapter
             from app.services import spend
@@ -118,10 +137,21 @@ def perform_asr_audit_task(chapter_id: str, run_id: str = "", *,
             book_id = str(chapter.book_id) if chapter else ""
             db.commit()
             with spend.context("asr_audit", book_id=book_id, chapter_id=chapter_id, run_id=run_id):
-                audit = run_asr_audit(db, chapter_id, expected_narrator_fingerprint=narrator_input_fingerprint,
-                                      **({"language": language} if language is not None else {}),
-                                      **({"notify_narrator": False} if not notify_narrator else {}),
-                                      **({"notify_result": personal_notice} if personal_notice is not None else {}))
+                try:
+                    audit = run_asr_audit(db, chapter_id, expected_narrator_fingerprint=narrator_input_fingerprint,
+                                          **({"resume_audit_id": resume_audit_id} if resume_audit_id else {}),
+                                          **({"language": language} if language is not None else {}),
+                                          **({"notify_narrator": False} if not notify_narrator else {}),
+                                          **({"notify_result": personal_notice} if personal_notice is not None else {}))
+                except AsrAuditError as exc:
+                    # Между preflight и входом в сервис кэш мог измениться. Его
+                    # проверка стоит до любых вызовов модели и нового AsrAudit.
+                    if not resume_audit_id or str(exc) != "resume_unavailable":
+                        raise
+                    db.rollback()
+                    record_payment_boundary(db, run_id, state="not_started", skip_reason="resume_unavailable")
+                    _finish_background_run(session_factory, BackgroundRun, run_id, "skipped", "resume_unavailable")
+                    return
             db.commit()
             if audit.status == "skipped" and audit.error_message in {"narrator_input_changed", "no_narrator_take"}:
                 record_payment_boundary(db, run_id, state="not_started", skip_reason=audit.error_message)

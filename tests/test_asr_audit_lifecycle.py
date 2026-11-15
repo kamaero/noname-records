@@ -599,3 +599,167 @@ def test_exhausted_budget_never_starts_paid_task(factory, queue, monkeypatch):
         run = db.query(BackgroundRun).one()
         assert run.status == "skipped"
         assert json.loads(run.meta_json)["payment_state"] == "not_started"
+
+
+def test_resume_explicitly_allows_uncertain_parent_payment_but_shares_active_guard(factory, queue, monkeypatch):
+    from app.services import asr_audit
+    monkeypatch.setattr(asr_audit, "validated_resume", lambda *a, **kw: {})
+    assert lifecycle.enqueue_audit("chapter")
+    with factory() as db:
+        run = db.query(BackgroundRun).one()
+        run.status = "failed"
+        meta = json.loads(run.meta_json)
+        meta["payment_state"] = "possibly_paid"
+        run.meta_json = json.dumps(meta)
+        db.commit()
+    assert lifecycle.enqueue_audit("chapter") is None
+    assert lifecycle.enqueue_audit("chapter", resume_audit_id="parent")
+    assert lifecycle.enqueue_audit("chapter", force=True) is None
+    assert lifecycle.enqueue_audit("chapter", resume_audit_id="parent") is None
+    with factory() as db:
+        resumed = db.query(BackgroundRun).filter(BackgroundRun.status == "queued").one()
+        assert json.loads(resumed.meta_json)["resume_audit_id"] == "parent"
+
+
+def test_worker_revalidates_resume_before_payment_and_service(factory, queue, monkeypatch):
+    import app.worker_tasks as worker
+    from app.services import asr_audit
+    monkeypatch.setattr(asr_audit, "validated_resume", lambda *a, **kw: {})
+    assert lifecycle.enqueue_audit("chapter", resume_audit_id="parent")
+    def unavailable(*args, **kwargs):
+        raise asr_audit.AsrAuditError("resume_unavailable")
+    monkeypatch.setattr(asr_audit, "validated_resume", unavailable)
+    monkeypatch.setattr(worker, "SessionLocal", factory)
+    monkeypatch.setattr(asr_audit, "run_asr_audit", lambda *a, **kw: pytest.fail("paid service"))
+    worker.perform_asr_audit_task(**queue[0])
+    worker.perform_asr_audit_task(**queue[0])
+    with factory() as db:
+        run = db.query(BackgroundRun).one()
+        assert run.status == "skipped"
+        assert json.loads(run.meta_json)["payment_state"] == "not_started"
+
+
+def test_resume_route_rejects_malformed_body_and_denies_nonadmin(monkeypatch):
+    from fastapi.testclient import TestClient
+    from app.auth import session_serializer
+    from app.main import app
+    import app.v2.api as api
+    from app.services import asr_audit
+    calls = []
+    monkeypatch.setattr(lifecycle.settings, "asr_audit_enabled", True)
+    class Session:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def get(self, *args):
+            return SimpleNamespace(id="chapter")
+    monkeypatch.setattr(api, "SessionLocal", Session)
+    monkeypatch.setattr(lifecycle, "assembled_audit_snapshot", lambda *a: dict(SNAPSHOT))
+    monkeypatch.setattr(asr_audit, "validated_resume", lambda *a, **kw: {})
+    monkeypatch.setattr(asr_audit, "enqueue_asr_audit", lambda cid, **kw: calls.append(kw) or "job")
+    for role in ("author", "agent", "dictor"):
+        client = TestClient(app)
+        client.cookies.set("session", session_serializer.dumps({"uid": "u", "sub": "u", "roles": [role]}))
+        assert client.post("/api/v2/chapters/chapter/audit", json={"resume_audit_id": "parent"}).status_code == 403
+    client = TestClient(app)
+    client.cookies.set("session", session_serializer.dumps({"uid": "u", "sub": "u", "roles": ["admin"]}))
+    for body in ([], {"resume_audit_id": None}, {"resume_audit_id": ""}, {"resume_audit_id": True}, {"force": True}):
+        assert client.post("/api/v2/chapters/chapter/audit", json=body).status_code == 400
+    assert client.post("/api/v2/chapters/chapter/audit", content="{").status_code == 400
+    assert not calls
+    assert client.post("/api/v2/chapters/chapter/audit", json={"resume_audit_id": "parent"}).status_code == 200
+    assert calls == [{"force": False, "initiator_id": "u", "resume_audit_id": "parent"}]
+    def unavailable(*a, **kw):
+        raise asr_audit.AsrAuditError("resume_unavailable")
+    monkeypatch.setattr(asr_audit, "validated_resume", unavailable)
+    response = client.post("/api/v2/chapters/chapter/audit", json={"resume_audit_id": "parent"})
+    assert response.status_code == 409 and response.json()["error"] == "resume_unavailable"
+    assert len(calls) == 1
+
+
+def test_worker_claim_passes_resume_provenance_once(factory, queue, monkeypatch):
+    import app.worker_tasks as worker
+    from app.services import asr_audit
+    seen = []
+    monkeypatch.setattr(asr_audit, "validated_resume", lambda *a, **kw: {})
+    assert lifecycle.enqueue_audit("chapter", resume_audit_id="parent")
+    monkeypatch.setattr(worker, "SessionLocal", factory)
+    monkeypatch.setattr(asr_audit, "run_asr_audit", lambda *a, **kw:
+        seen.append(kw) or SimpleNamespace(status="done", error_message=""))
+    monkeypatch.setattr("app.services.mirror_wakeup.request_mirror_wakeup", lambda: None)
+    worker.perform_asr_audit_task(**queue[0])
+    worker.perform_asr_audit_task(**queue[0])
+    assert len(seen) == 1 and seen[0]["resume_audit_id"] == "parent"
+    with factory() as db:
+        assert json.loads(db.query(BackgroundRun).one().meta_json)["payment_state"] == "completed"
+
+
+def test_worker_service_entry_revalidation_failure_is_unpaid(factory, queue, monkeypatch):
+    import app.worker_tasks as worker
+    from app.services import asr_audit
+    monkeypatch.setattr(asr_audit, "validated_resume", lambda *a, **kw: {})
+    assert lifecycle.enqueue_audit("chapter", resume_audit_id="parent")
+    monkeypatch.setattr(worker, "SessionLocal", factory)
+    def reject(*a, **kw):
+        raise asr_audit.AsrAuditError("resume_unavailable")
+    monkeypatch.setattr(asr_audit, "run_asr_audit", reject)
+    worker.perform_asr_audit_task(**queue[0])
+    with factory() as db:
+        run = db.query(BackgroundRun).one()
+        assert run.status == "skipped"
+        assert json.loads(run.meta_json)["payment_state"] == "not_started"
+
+
+def test_queued_resume_is_rejected_by_old_worker_before_paid_calls(factory, queue, monkeypatch):
+    from app.services import asr_audit
+    monkeypatch.setattr(asr_audit, "validated_resume", lambda *a, **kw: {})
+    assert lifecycle.enqueue_audit("chapter", resume_audit_id="parent")
+    assert queue[0]["resume_audit_id"] == "parent"
+    def old_worker(chapter_id, run_id="", *, assembled_fingerprint="", narrator_take_id="",
+                   narrator_input_fingerprint="", force=False, language=None, initiator_id="", audit_policy_version=""):
+        pytest.fail("old worker reached paid body")
+    with pytest.raises(TypeError, match="resume_audit_id"):
+        old_worker(**queue[0])
+
+
+@pytest.mark.parametrize("task_resume_id", [None, "different-parent", ""])
+def test_worker_resume_task_argument_must_match_reserved_parent(factory, queue, monkeypatch, task_resume_id):
+    from app import worker_tasks
+    from app.services import asr_audit
+    monkeypatch.setattr(asr_audit, "validated_resume", lambda *a, **kw: {})
+    assert lifecycle.enqueue_audit("chapter", resume_audit_id="parent")
+    kwargs = dict(queue[0])
+    if task_resume_id is None:
+        del kwargs["resume_audit_id"]
+    else:
+        kwargs["resume_audit_id"] = task_resume_id
+    monkeypatch.setattr(worker_tasks, "SessionLocal", factory)
+    monkeypatch.setattr(asr_audit, "run_asr_audit", lambda *a, **kw: pytest.fail("paid service"))
+    worker_tasks.perform_asr_audit_task(**kwargs)
+    with factory() as db:
+        run = db.query(BackgroundRun).one()
+        assert run.status == "skipped"
+        assert json.loads(run.meta_json)["payment_state"] == "not_started"
+
+
+def test_fresh_queue_keeps_old_worker_arguments(factory, queue):
+    assert lifecycle.enqueue_audit("chapter")
+    assert "resume_audit_id" not in queue[0]
+
+
+
+def test_worker_rejects_unexpected_resume_argument_for_fresh_job(factory, queue, monkeypatch):
+    from app import worker_tasks
+    from app.services import asr_audit
+    assert lifecycle.enqueue_audit("chapter")
+    kwargs = dict(queue[0], resume_audit_id="other-parent")
+    monkeypatch.setattr(worker_tasks, "SessionLocal", factory)
+    monkeypatch.setattr(asr_audit, "run_asr_audit", lambda *a, **kw: pytest.fail("paid service"))
+    worker_tasks.perform_asr_audit_task(**kwargs)
+    with factory() as db:
+        run = db.query(BackgroundRun).one()
+        metadata = json.loads(run.meta_json)
+        assert run.status == "skipped"
+        assert metadata["payment_state"] == "not_started"
+        assert metadata["skip_reason"] == "resume_job_mismatch"

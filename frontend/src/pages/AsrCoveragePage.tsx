@@ -10,7 +10,7 @@
  * записана» и «роль записана целиком» — не одно и то же, и сегодня мы знаем только
  * первое.
  */
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiGet, apiPostJson, describeApiError } from "../api/client";
@@ -88,9 +88,9 @@ export function AsrCoveragePage() {
     enabled: Boolean(bookId),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
-    // Эмбиент сочиняется минутами на трек: пока идёт хоть одна глава, ход обновляется сам.
+    // Долгие проверки и эмбиент обновляются сами: очередь не должна застывать до перезагрузки страницы.
     refetchInterval: (query) =>
-      (query.state.data?.chapters ?? []).some((chapter) => chapter.ambient_state === "running") ? 5_000 : false,
+      (query.state.data?.chapters ?? []).some((chapter) => chapter.ambient_state === "running" || chapter.audit?.status === "queued" || chapter.audit?.status === "running") ? 5_000 : false,
   });
 
   const recognise = useMutation({
@@ -107,6 +107,54 @@ export function AsrCoveragePage() {
     onError: (error) =>
       pushToast({ tone: "error", title: "Could not start", detail: describeApiError(error, "the server did not respond") }),
   });
+
+  // Блокируем повтор до перерисовки: два быстрых нажатия не должны создать
+  // две платные проверки, даже если сервер ещё не успел вернуть очередь.
+  const auditRequestInFlight = useRef(false);
+  const runAudit = useMutation({
+    mutationFn: ({ chapter, resumeAuditId }: { chapter: BookRecordingChapter; resumeAuditId?: string }) =>
+      apiPostJson<{ ok: boolean; job_id?: string }>(
+        `/api/v2/chapters/${encodeURIComponent(chapter.chapter_id)}/audit`,
+        resumeAuditId ? { resume_audit_id: resumeAuditId } : {},
+      ),
+    onSuccess: async (_result, { chapter, resumeAuditId }) => {
+      pushToast({
+        tone: "success",
+        title: resumeAuditId ? "Resumed check queued" : "Full check queued",
+        detail: `Chapter ${chapter.chapter_index}. The result will appear here automatically.`,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
+    },
+    onError: async (error) => {
+      const messages: Record<string, string> = {
+        already_queued: "A check is already queued or running. Wait for its result.",
+        resume_unavailable: "The saved transcription is no longer reusable. Refresh the page; use the circular arrow for a new full paid check.",
+        chapter_not_assembled: "Wait for the chapter to assemble first.",
+        audit_disabled: "Narrator checking is disabled. Check your server settings.",
+      };
+      pushToast({
+        tone: "error",
+        title: "Check not started",
+        detail: error instanceof ApiError && messages[error.errorCode]
+          ? messages[error.errorCode] : describeApiError(error, "The server did not respond. Refresh and check the status before retrying."),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
+    },
+    onSettled: () => { auditRequestInFlight.current = false; },
+  });
+
+  const requestAudit = (chapter: BookRecordingChapter, resume = false) => {
+    if (!isAdmin || auditRequestInFlight.current || runAudit.isPending
+      || chapter.audit?.status === "queued" || chapter.audit?.status === "running") return;
+    const resumeAuditId = resume && chapter.audit?.resume_available ? chapter.audit.audit_id : undefined;
+    if (resume && !resumeAuditId) return;
+    const confirmation = resumeAuditId
+      ? `Resume the narrator check for chapter ${chapter.chapter_index} using the saved transcription? Full audio recognition will not be repeated. Text review and short confirmation transcriptions may still incur charges. The exact cost is unknown in advance.`
+      : `Start a full paid narrator check for chapter ${chapter.chapter_index}? All audio will be transcribed again, then a model will review the text. Transcription and text review will be charged again. The exact cost is unknown in advance.${chapter.audit?.status === "unknown" ? " The previous check has an unknown outcome and may already have incurred charges. This run may charge you again." : ""}`;
+    if (!window.confirm(confirmation)) return;
+    auditRequestInFlight.current = true;
+    runAudit.mutate({ chapter, resumeAuditId });
+  };
 
   /* «Сдана» = сведена, прослушана и выложена; её ставит человек, а не скачивание архива.
      Когда сдана последняя опубликованная глава, спрашиваем про «Озвучена»: сервер сам
@@ -355,14 +403,14 @@ export function AsrCoveragePage() {
         nowrap: true,
         render: (row) => {
           const audit = row.audit;
-          const busy = audit?.status === "queued" || audit?.status === "running" || audit?.status === "unknown";
+          const busy = audit?.status === "queued" || audit?.status === "running";
           const label = !audit ? "—" : audit.status === "unknown" ? "outcome unknown" : busy ? "auditing…"
             : audit.status === "stale" ? "outdated"
             : audit.status === "failed" ? "audit failed"
             : audit.status === "skipped" ? "skipped"
             : audit.status === "done" ? `${audit.confirmed} ${audit.confirmed === 1 ? "error" : "errors"}` : "no result";
           const title = !audit ? "No audit yet"
-            : audit.status === "unknown" ? "Outcome unknown; no automatic retry. Check the task log."
+            : audit.status === "unknown" ? "The previous check and payment outcome are unknown. Review the task log before starting a new full check."
             : audit.status === "stale" ? "The script or recording changed; assembly will refresh the narrator check"
             : audit.status === "failed" ? "The run stopped. See the task log for details"
             : audit.status === "skipped" ? (audit.error_message?.includes("narrator_input_changed_after_payment")
@@ -372,6 +420,22 @@ export function AsrCoveragePage() {
           return (
             <span className="asr-links">
               <span className={audit?.confirmed ? "num asr-holes" : "cast-muted"} title={title}>{label}</span>
+              {isAdmin && row.recorded_roles > 0 ? <>
+                {audit?.resume_available && audit.audit_id ? (
+                  <button type="button" className="asr-run asr-audit-resume"
+                    disabled={busy || runAudit.isPending}
+                    aria-label={`Resume the narrator check for chapter ${row.chapter_index} using the saved transcription`}
+                    title="Resume without full audio recognition; text review and short confirmation checks may incur charges"
+                    onKeyDown={(event) => event.stopPropagation()}
+                    onClick={stopRow(() => requestAudit(row, true))}>resume</button>
+                ) : null}
+                <button type="button" className="asr-run asr-audit-refresh"
+                  disabled={busy || runAudit.isPending}
+                  aria-label={`Start a full paid narrator check for chapter ${row.chapter_index}`}
+                  title="Full paid check: transcribe all audio again and review the text"
+                  onKeyDown={(event) => event.stopPropagation()}
+                  onClick={stopRow(() => requestAudit(row))}><Icon name="refresh" /></button>
+              </> : null}
 
             </span>
           );

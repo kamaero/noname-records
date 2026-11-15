@@ -200,13 +200,16 @@ def assembled_audit_snapshot(db, chapter_id: str) -> dict | None:
     return snapshot
 
 
-def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "", session_factory=None, notify_narrator: bool = True) -> str | None:
+def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "", session_factory=None, notify_narrator: bool = True, resume_audit_id: str = "") -> str | None:
     if not settings.asr_audit_enabled:
         return None
     from app.services.asr_audit import AUDIT_POLICY_VERSION
     sessions = session_factory or SessionLocal
     chapter_id = str(chapter_id or "").strip()
     with sessions() as db:
+        if resume_audit_id:
+            from app.services.asr_audit import validated_resume
+            validated_resume(db, chapter_id, resume_audit_id)
         snapshot = assembled_audit_snapshot(db, chapter_id)
         if snapshot is None:
             return None
@@ -217,6 +220,8 @@ def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "
         run_id, now = str(uuid4()), utcnow_naive()
         meta = dict(snapshot, chapter_id=chapter_id, force=bool(force), payment_state="not_started",
                     audit_policy_version=AUDIT_POLICY_VERSION, notify_narrator=bool(notify_narrator))
+        if resume_audit_id:
+            meta["resume_audit_id"] = resume_audit_id
         if initiator_id:
             meta["by"] = initiator_id
         active = exists(select(BackgroundRun.id).where(
@@ -228,7 +233,7 @@ def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "
             "heartbeat_at": now, "error_message": "",
         }
         allowed = ~active
-        if not force:
+        if not force and not resume_audit_id:
             # skipped бывает и после оплаты. Разрешение на автоматический повтор
             # даёт только явная сохранённая причина остановки ДО платного шага.
             run_meta = case((func.json_valid(BackgroundRun.meta_json), BackgroundRun.meta_json), else_="{}")
@@ -298,7 +303,8 @@ def enqueue_audit(chapter_id: str, *, force: bool = False, initiator_id: str = "
         job = get_queue("consilium").enqueue(
             "app.worker_tasks.perform_asr_audit_task", chapter_id=chapter_id,
             run_id=run_id, **snapshot, force=bool(force), audit_policy_version=AUDIT_POLICY_VERSION,
-            **({"initiator_id": initiator_id} if initiator_id else {}), job_timeout=3600 * 4, result_ttl=86400)
+            **({"initiator_id": initiator_id} if initiator_id else {}),
+            **({"resume_audit_id": resume_audit_id} if resume_audit_id else {}), job_timeout=3600 * 4, result_ttl=86400)
         return job.id
     except Exception:
         # Падение между принятием Redis и ответом клиенту неоднозначно: резерв остаётся.

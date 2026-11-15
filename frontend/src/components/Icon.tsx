@@ -23,6 +23,7 @@ export type IconName =
   | "filter"
   | "arrow"
   | "back"
+  | "refresh"
   | "clock"
   | "dots"
   | "play"
@@ -109,6 +110,7 @@ const PATHS: Record<IconName, JSX.Element> = {
   filter: <path d="M3 5h18l-7 8v6l-4-2v-4z" />,
   arrow: <path d="M5 12h14M13 6l6 6-6 6" />,
   back: <path d="M19 12H5M11 6l-6 6 6 6" />,
+  refresh: <path d="M20 10a8 8 0 1 0-1.8 7M20 4v6h-6" />,
   clock: (
     <>
       <circle cx="12" cy="12" r="9" />
