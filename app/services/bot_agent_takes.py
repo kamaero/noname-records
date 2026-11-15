@@ -40,6 +40,9 @@ def _cancel(row) -> list[dict]:
 def _queue(db, chat_id, row, ch, now) -> list[Outgoing]:
     if not take_format.allowed_filename(row.file_name, kind=row.kind):
         return [send(chat_id, take_format.REQUIRED)]
+    choice = bot_takes.correction_choice(db, chat_id, row, ch, now, prefix=AT_PREFIX)
+    if choice is not None:
+        return choice
     if not bot_takes._claim(db, row.id, ch, now):
         return []
     return bot_takes._queued(db, chat_id, row)
@@ -137,6 +140,19 @@ def press(db, *, tid: str, chat_id, data: str, now: datetime) -> list[Outgoing]:
         return []
     if action == "p":
         return _role_page(db, chat_id, row, roles, int(arg) if arg.isdigit() else 0)
+    if action in {"f", "s"}:
+        ch = next((ch for ch in roles if ch.id == arg), None)
+        from app.services.role_identity import book_roles
+        if ch is None or row.character_id != ch.id or not book_roles(db, book.id).is_narrator(ch.name):
+            return []
+        from app.services.audio_uploads import extract_filename_chapter_index, fix_number
+        if not extract_filename_chapter_index(row.file_name) or fix_number(row.file_name) is None:
+            return []
+        mode = "full" if action == "f" else "patch"
+        refusal = bot_takes.full_choice_refusal(db, row, ch) if mode == "full" else ""
+        if refusal:
+            return [send(chat_id, refusal)]
+        return bot_takes._queued(db, chat_id, row) if bot_takes._claim(db, row.id, ch, now, correction_mode=mode) else []
     if action == "r":
         ch = next((ch for ch in roles if ch.id == arg), None)
         if ch is None:

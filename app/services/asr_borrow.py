@@ -41,14 +41,22 @@ def chapter_done_jobs(db, chapter_id: str) -> list[tuple]:
     )
     from app.services.role_identity import chapter_roles
     identities = chapter_roles(db, chapter_id)
+    from app.models import ScriptChapter
+    from app.services.narrator_recording import chapter_takes, clean_alignment, allowed_sources
+    chapter = db.get(ScriptChapter, chapter_id)
+    files = chapter_takes(db, chapter)
+    allowed = {str(item.id) for item in files}
     out = []
     for job, audio in rows:
+        if str(audio.id) not in allowed:
+            continue
         if not identities.owns_audio(audio):
             continue
         try:
             alignment = json.loads(job.alignment_json or "{}")
         except ValueError:
             continue
+        alignment = clean_alignment(alignment, allowed_sources(db, chapter, files, audio))
         if alignment.get("lines") is not None:
             out.append((job, audio, alignment))
     return out
@@ -228,6 +236,7 @@ def borrow_across_roles(db, chapter_id: str) -> dict:
     from app.services.role_identity import chapter_roles
     identities = chapter_roles(db, chapter_id)
     jobs = chapter_done_jobs(db, chapter_id)
+    narrator_barrier = any(getattr(audio, "correction_mode", "") == "full" for _job, audio, _al in jobs)
     actors = _cast_actors(db, chapter_id)
     # Сначала — свои файлы роли: реплика, дописанная отдельным дублем, не ищется у соседей.
     touched = _copy_from_siblings(jobs, identities=identities)
@@ -253,6 +262,8 @@ def borrow_across_roles(db, chapter_id: str) -> dict:
         language = asr_language(job.language)
         unheard = unheard_profiles[language]
         role = _job_role(job, identities)
+        if narrator_barrier and identities.is_narrator(role, getattr(job, "role_ref", "")):
+            continue
         wanted_actor = actors.get(role, "")
         indices = sorted(unheard.get(role, set()))
         if not wanted_actor or not indices:

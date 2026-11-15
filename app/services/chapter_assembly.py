@@ -27,17 +27,24 @@ def narrator_ready_reason(db, chapter):
 
     identities = chapter_roles(db, chapter.id)
     take = latest_narrator_take(db, chapter)
+    from app.services.narrator_recording import chapter_takes, full_intents, order_key
+    files = chapter_takes(db, chapter)
+    full = max((item for item in files if item.correction_mode == "full"), key=order_key, default=None)
+    intent = max(full_intents(db, chapter), key=lambda row: (row.created_at, row.id), default=None)
+    if intent is not None and (full is None or (intent.created_at, intent.id) > order_key(full)):
+        return "narrator_intake_pending" if intent.state in {"queued", "processing", "choose"} else "narrator_intake_failed"
     if take is None:
         return "missing_narrator_recording"
     active = db.query(BotUpload).filter(BotUpload.book_id == chapter.book_id,
         BotUpload.purpose == "take", BotUpload.state.in_(["choose", "queued", "processing"])).all()
     if any(identities.is_narrator(row.role_name) for row in active):
         return "narrator_intake_pending"
-    job = db.query(AsrJob).filter(AsrJob.audio_file_id == take.id,
-        or_(AsrJob.chapter_id == chapter.id, AsrJob.chapter_id.is_(None), AsrJob.chapter_id == ""))\
-        .order_by(AsrJob.created_at.desc(), AsrJob.id.desc()).first()
-    if job is None or job.status != "done":
-        return "narrator_asr_pending" if job is None or job.status in {"queued", "running"} else "narrator_asr_failed"
+    for source in {item.id: item for item in [full, take] if item is not None}.values():
+        job = db.query(AsrJob).filter(AsrJob.audio_file_id == source.id,
+            or_(AsrJob.chapter_id == chapter.id, AsrJob.chapter_id.is_(None), AsrJob.chapter_id == ""))\
+            .order_by(AsrJob.created_at.desc(), AsrJob.id.desc()).first()
+        if job is None or job.status != "done":
+            return "narrator_asr_pending" if job is None or job.status in {"queued", "running"} else "narrator_asr_failed"
     return ""
 
 

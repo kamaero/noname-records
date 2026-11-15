@@ -28,6 +28,9 @@ class AudioFile(Base):
     role_ref: Mapped[str] = mapped_column(String(80), nullable=False, default="", server_default="")
     actor_name: Mapped[str] = mapped_column(String(120), nullable=True, default="")
     line_index: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    #: Пустое значение сохраняет исторический смысл коротких фиксов.
+    correction_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="", server_default="")
+    correction_source_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", server_default="")
     canonical_filename: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     #: «take» — дубль утверждённой роли; «audition» — проба на роль, у неё нет главы
     kind: Mapped[str] = mapped_column(String(16), nullable=False, default="take", server_default="take")
@@ -397,6 +400,7 @@ class BotUpload(Base):
     id: Mapped[str] = mapped_column(String(12), primary_key=True, default=lambda: uuid.uuid4().hex[:12])
     telegram_user_id: Mapped[str] = mapped_column(String(32), nullable=False)
     file_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    correction_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="", server_default="")
     file_unique_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
     kind: Mapped[str] = mapped_column(String(10), nullable=False)  # audio | voice | document
     mime_type: Mapped[str] = mapped_column(String(80), nullable=False, default="", server_default="")

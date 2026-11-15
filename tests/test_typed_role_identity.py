@@ -403,7 +403,8 @@ def test_asr_table_sixty_chapters_has_bounded_queries_and_current_audits(db, mod
     assert len(status["chapters"]) == 61
     current = {r["chapter_id"]: r for r in status["chapters"]}
     assert all(current[cid]["audit"]["status"] == "done" for cid in chapter_ids)
-    assert len(queries) <= 15
+    # Два постоянных чтения намерений полной пересъёмки сохраняют ограничение O(1).
+    assert len(queries) <= 17
     report_path = Path("/tmp/noname-typed-asr-performance.json")
     report = json.loads(report_path.read_text()) if report_path.exists() else {}
     report[mode] = {"chapters": 61, "audits": 60, "sql_queries": len(queries), "elapsed_seconds": elapsed}

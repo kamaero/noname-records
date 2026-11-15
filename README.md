@@ -108,3 +108,7 @@ Before publication, run `scripts/release_audit.py --tree --history --release` wi
 ## License
 
 [GNU AGPL-3.0](LICENSE).
+
+## Narrator chapter replacements
+
+A narrator chapter recording marked `_fix` is a full replacement by default for new uploads. Its filename must explicitly name the chapter, for example `Sample_Chapter1_Narrator_fix.wav`. On the website, choose **Short correction only** for a few corrected lines; in Telegram, choose **Full chapter replacement** or **Short correction only** before processing. A full replacement excludes every earlier narrator source in that chapter. Lines absent from the replacement remain visible as gaps. Later short corrections supplement that replacement. Original files, paid transcripts and previous chapter projects are retained. Historical uploads preserve their previous short-correction behavior. Other roles and separate title recordings keep their current behavior.

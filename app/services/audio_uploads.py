@@ -492,10 +492,16 @@ def store_audio_file(
     kind: str = TAKE,
     safe_name,
     size_hint: int = 0,
+    correction_mode: str | None = None,
 ) -> AudioFile:
     from app.services.role_identity import audio_role_identity
     # До записи на диск: неоднозначный код книги не должен оставлять сиротский файл.
     role_book_id, role_ref = audio_role_identity(db, book_code, role)
+    # Служебные старые приёмы без явного режима сохраняют прежнюю семантику.
+    if correction_mode is not None:
+        from app.services.narrator_recording import resolve_mode
+        correction_mode = resolve_mode(db, book_code=book_code, role=role, chapter=chapter,
+            filename=original_filename, mode=correction_mode, kind=kind)
     # Короткая пересъёмка называется по своему номеру, а не встаёт в очередь дублей
     # роли: диктор прислал `..._fixN` — значит это правка одной реплики, не вторая
     # полная запись.
@@ -567,6 +573,7 @@ def store_audio_file(
         chapter=chapter.strip(),
         role=role.strip(),
         role_ref=role_ref,
+        correction_mode=correction_mode or "",
         role_book_id=role_book_id,
         actor_name=actor_name.strip(),
         line_index=line_index,

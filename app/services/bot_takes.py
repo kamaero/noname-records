@@ -84,15 +84,57 @@ def _role_from_filename(filename: str, roles: list[Character], book: ScriptBook)
     return hits[0] if len(hits) == 1 else None
 
 
-def _claim(db, row_id: str, ch: Character, now: datetime) -> bool:
+def correction_choice(db, chat_id, row, ch, now, *, prefix=BT_PREFIX):
+    from app.services.audio_uploads import fix_number, extract_filename_chapter_index
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, row.book_id)
+    if not identities.is_narrator(ch.name, identities.character_ref(ch)) or fix_number(row.file_name) is None:
+        return None
+    if not extract_filename_chapter_index(row.file_name):
+        return [send(chat_id, "A narrator correction must name one chapter, for example Chapter1_Narrator_fix.wav.")]
+    if row.correction_mode in {"full", "patch"} and row.character_id == ch.id:
+        return None
+    row.character_id, row.role_name = ch.id, ch.name
+    row.updated_at = now
+    db.flush()
+    return [send(chat_id, "How should this narrator correction be used? A full replacement excludes all earlier narrator recordings, including lines missing from the new file.",
+        {"inline_keyboard": [
+            [{"text": "Full chapter replacement", "callback_data": f"{prefix}f:{row.id}:{ch.id}"}],
+            [{"text": "Short correction only", "callback_data": f"{prefix}s:{row.id}:{ch.id}"}],
+            [{"text": "Cancel", "callback_data": f"{prefix}x:{row.id}"}]]})]
+
+
+def full_choice_refusal(db, row, ch):
+    from app.models import ScriptChapter
+    from app.services.audio_uploads import extract_filename_chapter_index, derive_book_code
+    from app.services.narrator_recording import resolve_mode
+    named = extract_filename_chapter_index(row.file_name)
+    book = db.get(ScriptBook, row.book_id)
+    chapters = db.query(ScriptChapter).filter(ScriptChapter.book_id == row.book_id,
+        ScriptChapter.chapter_index == named).all()
+    try:
+        if book is None or len(chapters) != 1:
+            raise ValueError("full_correction_requires_published_chapter")
+        chapter = chapters[0]
+        resolve_mode(db, book_code=derive_book_code(book.title), role=ch.name,
+            chapter=str(chapter.chapter_title or "").strip() or f"Глава {chapter.chapter_index}",
+            filename=row.file_name, mode="full")
+    except ValueError:
+        return "A full replacement requires one published chapter named in the filename. Please check the chapter or choose Short correction only."
+    return ""
+
+
+def _claim(db, row_id: str, ch: Character, now: datetime, *, correction_mode=None) -> bool:
     """Захват одной записью, как у проб: два нажатия подряд — одна задача."""
     from app.v2.cast_ops import parse_actor_name
 
     actor, _ = parse_actor_name(ch.actor_name)
+    row = db.get(BotUpload, row_id)
+    mode = correction_mode if correction_mode is not None else str(getattr(row, "correction_mode", "") or "")
     claimed = (db.query(BotUpload)
                .filter(BotUpload.id == row_id, BotUpload.state == "choose", BotUpload.purpose == "take")
                .update({"state": "queued", "character_id": ch.id, "role_name": str(ch.name or "")[:120],
-                        "actor_name": actor[:120], "updated_at": now}, synchronize_session=False))
+                        "actor_name": actor[:120], "correction_mode": mode, "updated_at": now}, synchronize_session=False))
     return claimed == 1
 
 
@@ -180,6 +222,9 @@ def receive(db, *, tid: str, chat_id, user, info: dict, now: datetime) -> list[O
     if ch is None and info.get("kind") != "voice":
         ch = _role_from_filename(str(info.get("file_name") or ""), roles, book)
     if ch is not None:
+        choice = correction_choice(db, chat_id, row, ch, now)
+        if choice is not None:
+            return choice
         return _queued(db, chat_id, row) if _claim(db, row.id, ch, now) else []
     rows = [[{"text": str(ch.name)[:60], "callback_data": f"{BT_PREFIX}c:{row.id}:{ch.id}"}] for ch in roles]
     return [send(chat_id, "Which role is this?", {"inline_keyboard": [*rows, cancel]})]
@@ -203,7 +248,7 @@ def press(db, *, tid: str, chat_id, data: str, user, now: datetime) -> list[Outg
         if row.state in ("failed", "unsorted"):
             return [send(chat_id, "This file has already been sent to the studio.")]
         return [send(chat_id, f"This file is being processed and cannot be cancelled in the bot. If needed, {studio.write_to()}.")]
-    if action != "c" or row.state != "choose":
+    if action not in {"c", "f", "s"} or row.state != "choose":
         return []  # второе нажатие: ответ на первое уже ушёл, повтор только запутает
     if row.created_at < now - bot_uploads.CHOICE_TTL:
         return [send(chat_id, "This choice has expired. Please send the file again.")]
@@ -215,6 +260,23 @@ def press(db, *, tid: str, chat_id, data: str, user, now: datetime) -> list[Outg
         return [send(chat_id, f"This role is no longer assigned to you. If this is an error, {studio.write_to()}.")]
     if not take_format.allowed_filename(row.file_name, kind=row.kind):
         return [send(chat_id, take_format.REQUIRED)]
+    if action in {"f", "s"}:
+        if row.character_id != ch.id:
+            return []
+        from app.services.role_identity import book_roles
+        if not book_roles(db, book.id).is_narrator(ch.name):
+            return []
+        from app.services.audio_uploads import extract_filename_chapter_index, fix_number
+        if not extract_filename_chapter_index(row.file_name) or fix_number(row.file_name) is None:
+            return []
+        mode = "full" if action == "f" else "patch"
+        refusal = full_choice_refusal(db, row, ch) if mode == "full" else ""
+        if refusal:
+            return [send(chat_id, refusal)]
+        return _queued(db, chat_id, row) if _claim(db, row.id, ch, now, correction_mode=mode) else []
+    choice = correction_choice(db, chat_id, row, ch, now)
+    if choice is not None:
+        return choice
     if not _claim(db, row.id, ch, now):
         return []
     return _queued(db, chat_id, row)
@@ -727,8 +789,14 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
             parsed = parse_batch_audio_filename(_source_name(row), default_book_code=code, default_actor_name="",
                                                 normalize_role_label=normalize_role_label)
             named = int(parsed.get("filename_chapter_index") or 0)
-            is_fix = fix_number(_source_name(row)) is not None
+            is_fix = fix_number(_source_name(row)) is not None or row.correction_mode in {"full", "patch"}
+            if row.correction_mode == "full" and not named:
+                raise _Unsplittable("Full replacement requires a chapter in the filename")
             blocks = chapter_blocks(role_chapters, segments, language=language)
+            if row.correction_mode == "full":
+                from app.services.take_split import counts
+                if sum(counts(block) for block in blocks) > 1:
+                    raise _Unsplittable("Full replacement must contain one chapter only")
             try:
                 cuts = plan_cuts(blocks, duration, filename_chapter=named, is_fix=is_fix)
             except OutOfOrder as exc:
@@ -765,7 +833,11 @@ def _process(db, upload_id: str, *, fetch, transcribe_part, send_text, notify_ow
                             db, source=handle, mime_type=row.mime_type or "audio/mpeg", original_filename=original,
                             book_code=code, chapter=block.label, role=role, actor_name=actor, kind=TAKE,
                             safe_name=safe_name, size_hint=os.path.getsize(piece),
+                            correction_mode=row.correction_mode or None,
                         )
+                    if row.correction_mode:
+                        audio.uploaded_at = row.created_at
+                        audio.correction_source_id = row.id
                     db.commit()
                     stored.append({"chapter": block.chapter_index, "audio_id": audio.id})
                     job = asr_run.run_asr_for_take(

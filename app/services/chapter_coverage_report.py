@@ -86,7 +86,16 @@ def build_chapter_report(db, chapter_id: str, *, lost_takes: list[dict] | None =
         .order_by(AsrJob.expected_role.asc(), AsrJob.created_at.asc())
         .all()
     )
+    from app.services.narrator_recording import chapter_takes, clean_alignment, allowed_sources, full_intents
+    from app.services.role_identity import chapter_roles
+    identities = chapter_roles(db, chapter_id)
+    files = chapter_takes(db, chapter) if chapter is not None else []
+    current = {str(item.id): item for item in files}
+    allowed = set(current)
+    barrier = bool(any(item.correction_mode == "full" for item in takes) or (chapter is not None and full_intents(db, chapter)))
     for job in jobs:
+        if barrier and identities.is_narrator(job.expected_role, getattr(job, "role_ref", "")) and str(job.audio_file_id) not in allowed:
+            continue
         role = str(job.expected_role or "").strip()
         if job.status == "failed":
             failed.append({"role": role, "error": str(job.error_message or "").strip()})
@@ -94,6 +103,8 @@ def build_chapter_report(db, chapter_id: str, *, lost_takes: list[dict] | None =
         if job.status != "done":
             continue
         payload = json.loads(job.alignment_json or "{}")
+        if barrier and str(job.audio_file_id) in current:
+            payload = clean_alignment(payload, allowed_sources(db, chapter, files, current[str(job.audio_file_id)], identities=identities))
         for line in payload.get("lines") or []:
             text = str(line.get("text") or "").strip()
             if not text:
@@ -102,6 +113,20 @@ def build_chapter_report(db, chapter_id: str, *, lost_takes: list[dict] | None =
                 missing_by_role.setdefault(role, []).append(text)
             elif float(line.get("score") or 0.0) < WEAK_MATCH_CEILING:
                 weak.append({"role": role, "text": text, "score": float(line.get("score") or 0.0)})
+
+    if chapter is not None and barrier:
+        from app.services.asr_borrow import role_unheard_texts
+        from app.services.chapter_assembly import narrator_ready_reason
+        current_missing = role_unheard_texts(db, chapter_id)
+        for role in list(missing_by_role):
+            if identities.is_narrator(role):
+                missing_by_role.pop(role)
+        for role, texts in current_missing.items():
+            if identities.is_narrator(role):
+                missing_by_role[role] = texts
+        reason = narrator_ready_reason(db, chapter)
+        if reason:
+            failed.append({"role": "Рассказчик", "error": reason})
 
     # Оба пути ведут к одному: роль не проверена. Разделять их в письме владельцу
     # нечем — причина у обоих ложится в ту же строку.

@@ -255,7 +255,7 @@ def audit_findings_messages(*, role: str, chapter: str, book_title: str, items: 
     ]), 750)
     footer = ("Times refer approximately to the source recording. "
               "Listen to these passages and check the linked script. "
-              "If a correction is needed, record the whole line and upload it as _fix.") if items and not summary else ""
+              "For a full corrected chapter, upload the chapter file as _fix. For a short correction, record the whole line and explicitly choose Short correction only when uploading.") if items and not summary else ""
     if link:
         footer += "\n" + _short(link, 400)
     # Место под нумерацию резервируется до упаковки; длина emoji — две единицы.

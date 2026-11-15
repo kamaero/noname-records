@@ -88,7 +88,16 @@ def build_dictor_upload_handlers(deps: dict[str, Any]) -> dict[str, Callable[...
         # Владелец и автор решают каст сами — пробу на занятую роль им не запрещаем.
         decides_cast = has_any_role(request, {"admin", "author"})
         with session_local() as chapters_db:
-            for item in parsed_items:
+            for index, item in enumerate(parsed_items):
+                from app.services.narrator_recording import resolve_mode
+                override = overrides[index] if index < len(overrides) else {}
+                try:
+                    item["correction_mode"] = resolve_mode(chapters_db,
+                        book_code=str(item.get("book_code") or ""), role=str(item.get("role") or ""),
+                        chapter=str(item.get("chapter") or ""), filename=str(item.get("original_filename") or files[index].get("name") or ""),
+                        mode=str(override.get("correction_mode") or ""), kind=str(item.get("kind") or "take"))
+                except ValueError as exc:
+                    item["errors"] = [*item.get("errors", []), str(exc)]
                 if item.get("kind") == "audition" and item.get("role") and not decides_cast and role_taken_by_other(
                     chapters_db, book_code=str(item.get("book_code") or ""), role=str(item.get("role") or ""),
                     actor_name=str(item.get("actor_name") or ""),

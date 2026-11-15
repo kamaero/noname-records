@@ -168,6 +168,8 @@ def latest_narrator_take(db, chapter) -> "object | None":
         .order_by(AudioFile.uploaded_at.desc())
         .all()
     )
+    from app.services.narrator_recording import eligible_takes, order_key
+    takes = sorted(eligible_takes(db, chapter, takes), key=order_key, reverse=True)
     for take in takes:
         if not identities.owns_audio(take):
             continue
@@ -311,6 +313,10 @@ def _narrator_fingerprints(db, chapter_ids: list[str], *, identities_by_book=Non
             jobs_by_audio.setdefault(str(job.audio_file_id), []).append(job)
     from app.services.role_identity import book_roles
     identities_by_book = {bid: (identities_by_book or {}).get(bid) or book_roles(db, bid) for bid in books}
+    from app.models import BotUpload
+    from app.services.narrator_recording import eligible_takes, clean_alignment, allowed_sources
+    intents = db.query(BotUpload).filter(BotUpload.book_id.in_(books), BotUpload.purpose == "take",
+        BotUpload.correction_mode == "full", BotUpload.state != "cancelled").all()
     out = {}
     for chapter in chapters:
         try:
@@ -326,13 +332,16 @@ def _narrator_fingerprints(db, chapter_ids: list[str], *, identities_by_book=Non
             if any(not identities.owns_audio(item) and any(str(job.chapter_id) == str(chapter.id)
                    for job in jobs_by_audio.get(str(item.id), [])) for item in candidates):
                 raise AsrAuditError("narrator_source_scope_mismatch")
-            files = [item for item in candidates if identities.owns_audio(item)]
+            files = eligible_takes(db, chapter, [item for item in candidates if identities.owns_audio(item)],
+                identities=identities, intents=intents)
             by_role = {}
             for item in files:
                 by_role.setdefault(identities.name(getattr(item, "role_ref", ""), item.role), []).append(item)
             by_id = {str(item.id): item for item in files}
             chapter_heard = _lines_from_jobs([job for key in by_id for job in jobs_by_audio.get(key, [])
                                                if not job.chapter_id or str(job.chapter_id) == str(chapter.id)])
+            chapter_heard = {str(item.id): clean_alignment({"lines": chapter_heard.get(str(item.id), [])},
+                allowed_sources(db, chapter, files, item, identities=identities))["lines"] for item in files}
             placed = _place_by_script(replicas, by_role, chapter_heard, relative=False, files_by_id=by_id)
             out[str(chapter.id)] = _snapshot_from_parts(
                 lines, narrator, placed, books[chapter.book_id], by_id.get, identities=identities)["fingerprint"]

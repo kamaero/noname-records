@@ -183,7 +183,7 @@ export function useRecordingSelection({ rememberPosition = false } = {}) {
   }, []);
 
   const cast = useMemo<PanelRole[]>(() => {
-    const fromWorkspace = (workspace?.cast ?? []).map((item) => ({ name: item.name, lines: item.lines, actor: item.actor_name }));
+    const fromWorkspace = (workspace?.cast ?? []).map((item) => ({ name: item.name, lines: item.lines, actor: item.actor_name, isNarrator: item.is_narrator }));
     if (fromWorkspace.length || !preview) return fromWorkspace;
     return readerCast.map((item) => ({ name: item.name, lines: item.lines, actor: item.actor }));
   }, [workspace?.cast, preview, readerCast]);

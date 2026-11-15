@@ -975,7 +975,8 @@ def test_latest_audits_checks_many_chapters_with_bounded_queries(db, cached_chap
     try:
         current = asr_audit.latest_audits(db, chapter_ids, **extra)
         assert all(current[cid]["status"] == "done" for cid in chapter_ids)
-        assert len(queries) <= 10
+        # Один постоянный запрос новых намерений пересъёмки на весь пакет глав.
+        assert len(queries) <= 11
         assert len(chapter_queries) == (0 if cached_chapters == 20 else 1)
         segment = db.get(V2Segment, f"{chapter_ids[0]}:00000")
         segment.text = "Сценарий изменился."
@@ -985,7 +986,8 @@ def test_latest_audits_checks_many_chapters_with_bounded_queries(db, cached_chap
         current = asr_audit.latest_audits(db, chapter_ids, **extra)
         assert current[chapter_ids[0]]["status"] == "stale"
         assert all(current[cid]["status"] == "done" for cid in chapter_ids[1:])
-        assert len(queries) <= 10
+        # Один постоянный запрос новых намерений пересъёмки на весь пакет глав.
+        assert len(queries) <= 11
         assert len(chapter_queries) == (0 if cached_chapters == 20 else 1)
         job = db.query(AsrJob).filter(AsrJob.audio_file_id == "audio-1").one()
         job.alignment_json = "[]"

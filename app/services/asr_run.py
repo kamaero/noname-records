@@ -530,11 +530,8 @@ def chapter_take_fingerprint(db, chapter_id: str) -> str:
     label = str(chapter.chapter_title or "").strip()
     from app.services.role_identity import chapter_roles
     identities = chapter_roles(db, chapter.id)
-    return takes_fingerprint(
-        item.id
-        for item in db.query(AudioFile).filter(AudioFile.kind == TAKE, AudioFile.chapter == label).all()
-        if identities.owns_audio(item)
-    )
+    from app.services.narrator_recording import chapter_takes
+    return takes_fingerprint(item.id for item in chapter_takes(db, chapter))
 
 
 def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = False,
@@ -568,7 +565,8 @@ def run_asr_for_chapter(db, chapter_id: str, *, transcribe=None, force: bool = F
     )
     from app.services.role_identity import chapter_roles
     identities = chapter_roles(db, chapter.id)
-    takes = [take for take in takes if identities.owns_audio(take)]
+    from app.services.narrator_recording import eligible_takes
+    takes = eligible_takes(db, chapter, [take for take in takes if identities.owns_audio(take)])
     if identities.typed:
         # Проверяем весь набор до первой платной операции.
         for take in takes:

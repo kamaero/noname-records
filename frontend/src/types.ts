@@ -1176,6 +1176,7 @@ export type DictorRecentFile = {
 };
 
 export type DictorCastMember = {
+  is_narrator?: boolean;
   name: string;
   lines: number;
   color: string;
