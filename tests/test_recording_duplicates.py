@@ -16,6 +16,7 @@ import asyncio
 import hashlib
 import io
 import json
+import pytest
 
 from fastapi import UploadFile
 from sqlalchemy import create_engine
@@ -25,7 +26,7 @@ import app.services.audio_uploads as au
 from app.api.dictor_uploads import build_dictor_upload_handlers
 from app.api.recording import build_recording_handlers
 from app.db import Base
-from app.models import AudioFile, Character, ScriptBook
+from app.models import AudioFile, Character, ScriptBook, ScriptChapter
 from app.services.shared_runtime import normalize_role_label
 from app.time_utils import utcnow_naive
 
@@ -298,3 +299,26 @@ class TestThePreviewNoLongerChecksContent:
         assert body["items"][0]["ok"] is True
         assert "duplicate_in_storage" not in body["items"][0]["errors"]
         assert "duplicate_in_batch" not in body["items"][0]["errors"]
+
+
+@pytest.mark.parametrize("mode, expected", [(None, "full"), ("full", "full"), ("patch", "patch")])
+def test_narrator_batch_persists_explicit_replacement_intent(mode, expected):
+    sessions = _sessions(("Рассказчик", "Актёр"))
+    with sessions() as db:
+        book = db.query(ScriptBook).one()
+        db.add(ScriptChapter(book_id=book.id, chapter_index=11, chapter_title="Глава11", status="published"))
+        db.commit()
+    meta = _meta("Рассказчик", "Глава11")
+    if mode is not None:
+        meta["correction_mode"] = mode
+    status, body, _ = _post(sessions, [_upload("Sample_Ch11_Narrator_fix.wav", b"new chapter")], [meta])
+    assert status == 200
+    with sessions() as db:
+        assert db.get(AudioFile, body["saved"][0]["id"]).correction_mode == expected
+
+
+def test_narrator_batch_rejects_full_without_named_chapter_before_storage():
+    sessions = _sessions(("Рассказчик", "Актёр"))
+    status, body, stored = _post(sessions, [_upload("Sample_Narrator_fix.wav")], [_meta("Рассказчик", "Глава11")])
+    assert status == 400 and not stored
+    assert body["items"][0]["error"] == "full_correction_requires_named_chapter"

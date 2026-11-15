@@ -11,6 +11,10 @@ import type { UploadStatus } from "./useRecordingUploads";
 const ACCEPT = ".wav,.mp3,.m4a,.flac,.ogg,.aac,.opus,.webm,audio/*";
 
 const ERROR_TEXT: Record<string, string> = {
+  full_correction_requires_published_chapter: "a full replacement requires one unambiguous published chapter",
+  invalid_correction_mode: "choose full replacement or short correction",
+  correction_mode_requires_narrator: "correction modes apply only to narrator takes",
+  full_correction_requires_named_chapter: "a full replacement must explicitly name the selected chapter in its filename",
   chapter_required: "chapter not specified",
   role_required: "role not specified",
   duplicate_in_batch: "duplicate files in this batch",
@@ -34,6 +38,9 @@ function describeWarnings(warnings: string[] | undefined): string {
 
 type BatchUploadProps = {
   files: File[];
+  correctionModes?: Record<number, string>;
+  onCorrectionMode?: (index: number, mode: string) => void;
+  narrator?: boolean;
   preview: BatchValidatedItem[];
   status: UploadStatus;
   isUploading: boolean;
@@ -55,6 +62,9 @@ type BatchUploadProps = {
 
 export function BatchUpload({
   files,
+  correctionModes = {},
+  onCorrectionMode,
+  narrator = false,
   preview,
   status,
   isUploading,
@@ -165,13 +175,24 @@ export function BatchUpload({
 
       {files.length > 0 ? (
         <ul className="rec-files" aria-label="Files to upload">
-          {files.map((file) => {
+          {files.map((file, index) => {
             const item = previewByName.get(file.name);
             const bad = item ? !item.ok : false;
             const warning = bad ? "" : describeWarnings(item?.warnings);
             return (
               <li key={`${file.name}-${file.size}`} className={bad ? "rec-file is-bad" : "rec-file"}>
                 <span className="rec-file-name">{file.name}</span>
+                {narrator && onCorrectionMode ? (
+                  <label>Narrator recording
+                    <select className="ui-select" aria-label={`Narrator recording mode for ${file.name}`}
+                      disabled={locked} value={correctionModes[index] || ""}
+                      onChange={(event) => onCorrectionMode(index, event.target.value)}>
+                      <option value="">Automatic (_fix replaces the chapter)</option>
+                      <option value="full">Full chapter replacement</option>
+                      <option value="patch">Short correction only</option>
+                    </select>
+                  </label>
+                ) : null}
                 {item ? (
                   <span className={bad ? "rec-file-as rec-file-as--bad" : "rec-file-as mono"}>
                     {bad ? (item.error_text || describeErrors(item.errors)) : `Name preview: ${item.canonical_filename}`}

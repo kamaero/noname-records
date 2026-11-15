@@ -15,7 +15,7 @@ import { roleScriptHref } from "../../v2/roleRoutes";
 import "./recording.css";
 
 export type PanelBook = { id: string; title: string };
-export type PanelRole = { name: string; lines: number; actor?: string };
+export type PanelRole = { name: string; lines: number; actor?: string; isNarrator?: boolean };
 export type PanelChapter = { id: string; index: number; title: string; released?: boolean };
 
 const CUSTOM = "\u0000custom";
@@ -56,6 +56,8 @@ type RecordingPanelProps = {
 
   upload: {
     files: File[];
+    correctionModes?: Record<number, string>;
+    onCorrectionMode?: (index: number, mode: string) => void;
     preview: Parameters<typeof BatchUpload>[0]["preview"];
     status: UploadStatus;
     isUploading: boolean;
@@ -388,7 +390,7 @@ export function RecordingPanel(props: RecordingPanelProps) {
             Drop your audio with its original filename. The server names it using the book, chapter, role and voice actor selected above, and keeps its format. A naming preview appears below before upload; the server assigns the final take or correction number when saving. Additional takes receive a number automatically. If the original filename explicitly names a different chapter, please confirm your selection.
           </p>
           <p className="rec-naming-rule muted">
-            For a short correction, keep <code className="mono">_fix</code> or <code className="mono">_fixN</code> in the original filename; the server assigns its correction number.
+            For the narrator, a chapter file marked <code className="mono">_fix</code> replaces all earlier narrator recordings. Name the chapter in the file and choose Short correction only below for a few corrected lines. Missing lines in a full replacement stay missing. Other roles keep their existing correction behavior.
           </p>
           {/* Правило хранения исходников: запись на сервере лежит в одном экземпляре,
               и без копии у диктора её неоткуда восстановить, если она пропадёт. */}
@@ -403,6 +405,9 @@ export function RecordingPanel(props: RecordingPanelProps) {
           <h3 className="rec-label">Files</h3>
           <BatchUpload
             files={upload.files}
+            narrator={!audition && cast.some((item) => item.name === role && item.isNarrator)}
+            correctionModes={upload.correctionModes}
+            onCorrectionMode={upload.onCorrectionMode}
             preview={upload.preview}
             status={upload.status}
             isUploading={upload.isUploading}

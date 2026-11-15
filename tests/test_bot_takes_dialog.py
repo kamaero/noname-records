@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
-from app.models import BotUpload, Character, RoleDeadline, ScriptBook, TelegramAuthAccount, User, UserRole
+from app.models import BotUpload, Character, RoleDeadline, ScriptBook, ScriptChapter, TelegramAuthAccount, User, UserRole
 from app.services import bot_status, bot_takes, onboarding
 from app.services.bot_dialog import handle_update
 from app.services.studio_settings import set_active_book
@@ -318,3 +318,41 @@ def test_cancel_after_processing_names_the_state(db, state, text):
     db.commit()
     out = handle_update(db, _press(f"bt:x:{row.id}"), now=NOW)
     assert out[1].payload["text"] == text and db.get(BotUpload, row.id).state == state
+
+
+@pytest.mark.parametrize("action, expected", [("f", "full"), ("s", "patch")])
+def test_narrator_fix_asks_before_queue_and_freezes_selected_mode(db, action, expected):
+    db.add(ScriptChapter(book_id="b1", chapter_index=1, chapter_title="Chapter 1", status="published"))
+    db.commit()
+    _role(db, "system-narrator", "Рассказчик")
+    out = handle_update(db, _audio(name="Sample_Chapter1_Narrator_fix.wav"), now=NOW)
+    row = db.query(BotUpload).one()
+    assert row.state == "choose" and not _enqueued(out)
+    assert [label for label, _ in _buttons(out[0].payload)] == ["Full chapter replacement", "Short correction only", "Cancel"]
+    chosen = handle_update(db, _press(f"bt:{action}:{row.id}:system-narrator"), now=NOW)
+    assert _enqueued(chosen) == [{"id": row.id}]
+    db.refresh(row)
+    assert row.state == "queued" and row.correction_mode == expected
+    assert not _enqueued(handle_update(db, _press(f"bt:{action}:{row.id}:system-narrator"), now=NOW))
+
+
+def test_narrator_mode_choice_requires_same_user_role_and_unexpired_intake(db):
+    _role(db, "system-narrator", "Рассказчик")
+    handle_update(db, _audio(name="Sample_Chapter1_Narrator_fix.wav"), now=NOW)
+    row = db.query(BotUpload).one()
+    assert not _enqueued(handle_update(db, _press(f"bt:f:{row.id}:system-narrator", tid="42"), now=NOW))
+    assert not _enqueued(handle_update(db, _press(f"bt:f:{row.id}:system-narrator"), now=NOW + timedelta(days=2)))
+    db.refresh(row)
+    assert row.state == "choose" and row.correction_mode == ""
+
+
+
+def test_full_narrator_choice_rejects_missing_chapter_before_paid_queue(db):
+    _role(db, "system-narrator", "Рассказчик")
+    handle_update(db, _audio(name="Sample_Chapter1_Narrator_fix.wav"), now=NOW)
+    row = db.query(BotUpload).one()
+    out = handle_update(db, _press(f"bt:f:{row.id}:system-narrator"), now=NOW)
+    assert not _enqueued(out)
+    assert any("published chapter" in item.payload.get("text", "") for item in out)
+    db.refresh(row)
+    assert row.state == "choose" and row.correction_mode == ""

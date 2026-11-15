@@ -134,12 +134,22 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
     # иначе тысяча файлов книги проверялась бы по тысяче чуть разных мгновений.
     stale_cutoff = utcnow_naive() - timedelta(days=1)
     from types import SimpleNamespace
-    rows_of_files = db.query(
-        AudioFile.id, AudioFile.chapter, AudioFile.role, AudioFile.role_ref, AudioFile.role_book_id, AudioFile.book_code, AudioFile.verify_state, AudioFile.md5,
-        AudioFile.mirrored_at, AudioFile.mirror_state, AudioFile.uploaded_at,
-        AudioFile.canonical_filename, AudioFile.original_filename, AudioFile.stored_key,
-        AudioFile.size_bytes, AudioFile.mirror_proof_json,
-    ).filter(AudioFile.kind == TAKE).all()
+    files = db.query(AudioFile).filter(AudioFile.kind == TAKE).all()
+    from app.models import BotUpload
+    from app.services.narrator_recording import eligible_takes
+    intents = db.query(BotUpload).filter(BotUpload.book_id == book.id, BotUpload.purpose == "take",
+        BotUpload.correction_mode == "full", BotUpload.state != "cancelled").all()
+    files_by_label = {}
+    for item in files:
+        files_by_label.setdefault(item.chapter, []).append(item)
+    current_files = {chapter.id: eligible_takes(db, chapter,
+        [item for item in files_by_label.get(_chapter_label(chapter), []) if identities.owns_audio(item)],
+        identities=identities, intents=intents) for chapter in chapters}
+    eligible_ids = {str(item.id) for items in current_files.values() for item in items}
+    rows_of_files = [tuple(getattr(item, key) for key in (
+        "id", "chapter", "role", "role_ref", "role_book_id", "book_code", "verify_state", "md5",
+        "mirrored_at", "mirror_state", "uploaded_at", "canonical_filename", "original_filename", "stored_key",
+        "size_bytes", "mirror_proof_json")) for item in files]
     for audio_id, label, role, role_ref, role_book_id, book_code, verify_state, md5, mirrored_at, mirror_state, uploaded_at, canonical_filename, original_filename, stored_key, size_bytes, mirror_proof_json in rows_of_files:
         if not identities.owns_audio(SimpleNamespace(role_book_id=role_book_id, book_code=book_code)):
             continue
@@ -158,7 +168,8 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
                 "size_bytes": size_bytes, "mirror_proof_json": mirror_proof_json,
             })
         recorded.setdefault(chapter.id, set()).add(str(role or "").strip())
-        audio_of_chapter.setdefault(chapter.id, []).append(str(audio_id))
+        if str(audio_id) in eligible_ids:
+            audio_of_chapter.setdefault(chapter.id, []).append(str(audio_id))
         role_of_audio[str(audio_id)] = str(role or "").strip()
         all_files[chapter.id] = all_files.get(chapter.id, 0) + 1
         state = str(verify_state or "")
@@ -193,7 +204,13 @@ def book_recording_status(db, book_id: str, *, ambient: bool = False) -> dict | 
             if str(mirror_state or "") == MIRROR_MISMATCH or uploaded_at < stale_cutoff:
                 stale[chapter.id] = stale.get(chapter.id, 0) + 1
     chapter_by_audio = {audio_id: cid for cid, ids in audio_of_chapter.items() for audio_id in ids}
-    heard = _recognised_by_audio(db, list(chapter_by_audio), chapter_by_audio=chapter_by_audio)
+    policy, merge = {}, {}
+    for chapter in chapters:
+        chapter_policy, chapter_merge = _recognition_policy(db, chapter, current_files[chapter.id], identities)
+        policy.update(chapter_policy)
+        merge.update(chapter_merge)
+    heard = _recognised_by_audio(db, list(chapter_by_audio), chapter_by_audio=chapter_by_audio,
+        source_policy=policy, merge_groups=merge)
 
     rows = []
     for chapter in chapters:
@@ -446,6 +463,7 @@ def _take_row(item: AudioFile) -> dict:
     return {
         "id": str(item.id),
         "role": str(item.role or ""),
+        "correction_mode": str(getattr(item, "correction_mode", "") or ""),
         "actor_name": str(item.actor_name or ""),
         "original_filename": str(item.original_filename or ""),
         "canonical_filename": str(item.canonical_filename or ""),
@@ -482,7 +500,8 @@ def chapter_recording_status(db, chapter_id: str) -> dict | None:
         .order_by(AudioFile.uploaded_at.asc())
         .all()
     )
-    takes = [item for item in takes if identities.owns_audio(item)]
+    from app.services.narrator_recording import eligible_takes
+    takes = eligible_takes(db, chapter, [item for item in takes if identities.owns_audio(item)])
     by_role: dict[str, list[AudioFile]] = {}
     for item in takes:
         if not identities.owns_audio(item):
@@ -493,8 +512,9 @@ def chapter_recording_status(db, chapter_id: str) -> dict | None:
             role_name = identities.name(getattr(item, "role_ref", ""), item.role)
         by_role.setdefault(role_name, []).append(item)
 
+    policy, merge = _recognition_policy(db, chapter, takes, identities)
     heard = _recognised_by_audio(db, [item.id for item in takes],
-                                 chapter_by_audio={str(item.id): str(chapter.id) for item in takes})
+        chapter_by_audio={str(item.id): str(chapter.id) for item in takes}, source_policy=policy, merge_groups=merge)
     book = db.get(ScriptBook, chapter.book_id)
     language = str(getattr(book, "language", "ru") or "ru")
 
@@ -582,7 +602,15 @@ def _heard_paragraphs(entry: dict, paragraphs: int) -> int:
     return max(0, paragraphs - min(int(entry["missing"]), paragraphs))
 
 
-def _recognised_by_audio(db, audio_ids: list[str], *, chapter_by_audio=None) -> dict[str, dict]:
+def _recognition_policy(db, chapter, files, identities):
+    from app.services.narrator_recording import allowed_sources
+    policy = {str(item.id): allowed_sources(db, chapter, files, item, identities=identities) for item in files}
+    narrator = [item for item in files if identities.is_narrator(item.role, getattr(item, "role_ref", ""))]
+    merge = {str(item.id): chapter.id for item in narrator} if any(item.correction_mode == "full" for item in narrator) else {}
+    return policy, merge
+
+
+def _recognised_by_audio(db, audio_ids: list[str], *, chapter_by_audio=None, source_policy=None, merge_groups=None) -> dict[str, dict]:
     """Что распознавание сказало про каждый файл — числами, а не долей.
 
     Доля здесь бесполезна: складывать доли нельзя, а покрытие главы — это найденные
@@ -593,6 +621,7 @@ def _recognised_by_audio(db, audio_ids: list[str], *, chapter_by_audio=None) -> 
         return {}
     out: dict[str, dict] = {}
     allowed = set(audio_ids)
+    lines_by_audio = {}
     for job in db.query(AsrJob).filter(AsrJob.audio_file_id.in_(audio_ids), AsrJob.status == "done").all():
         if chapter_by_audio is not None and job.chapter_id and str(job.chapter_id) != str(chapter_by_audio.get(str(job.audio_file_id), "")):
             continue
@@ -600,9 +629,9 @@ def _recognised_by_audio(db, audio_ids: list[str], *, chapter_by_audio=None) -> 
             payload = json.loads(job.alignment_json or "{}")
         except ValueError:
             payload = {}
-        if any(line.get("source_audio_file_id") and str(line["source_audio_file_id"]) not in allowed
-               for line in payload.get("lines") or []):
-            continue
+        from app.services.narrator_recording import clean_alignment
+        payload = clean_alignment(payload, (source_policy or {}).get(str(job.audio_file_id), allowed))
+        lines_by_audio[str(job.audio_file_id)] = payload.get("lines") or []
         total = int(payload.get("total") or 0)
         missing = len(payload.get("missing") or [])
         out[str(job.audio_file_id)] = {
@@ -612,6 +641,19 @@ def _recognised_by_audio(db, audio_ids: list[str], *, chapter_by_audio=None) -> 
             "missing": missing,
             "coverage": (total - missing) / total if total else 0.0,
         }
+    # Поздние короткие правки дополняют только действующую полную запись.
+    groups = {}
+    for audio_id, group in (merge_groups or {}).items():
+        if audio_id in out:
+            groups.setdefault((group, out[audio_id]["language"]), []).append(audio_id)
+    for members in groups.values():
+        rows = [lines_by_audio.get(audio_id, []) for audio_id in members]
+        total = max(map(len, rows), default=0)
+        if not total:
+            continue
+        matched = sum(any(index < len(lines) and lines[index].get("matched") for lines in rows) for index in range(total))
+        for audio_id in members:
+            out[audio_id].update(total=total, matched=matched, missing=total - matched, coverage=matched / total)
     return out
 
 
@@ -840,6 +882,8 @@ def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | 
     for row in status["roles"]:
         if not include_unplaced or clips_by_role.get(row["role"]):
             continue
+        if any(getattr(item, "correction_mode", "") == "full" for item in by_role.get(row["role"], [])):
+            continue
         for item in by_role.get(row["role"], []):
             clips_by_role.setdefault(row["role"], []).append(SessionClip(
                 name=str(item.canonical_filename or row["role"]),
@@ -965,7 +1009,8 @@ def _script_layout(db, chapter_id: str, *, relative: bool = False):
         .order_by(AudioFile.uploaded_at.asc())
         .all()
     )
-    audio_files = [item for item in audio_files if identities.owns_audio(item)]
+    from app.services.narrator_recording import eligible_takes
+    audio_files = eligible_takes(db, chapter, [item for item in audio_files if identities.owns_audio(item)])
     by_role: dict[str, list[AudioFile]] = {}
     for item in audio_files:
         if not identities.owns_audio(item):
@@ -976,6 +1021,9 @@ def _script_layout(db, chapter_id: str, *, relative: bool = False):
             role_name = identities.name(getattr(item, "role_ref", ""), item.role)
         by_role.setdefault(role_name, []).append(item)
     heard = _lines_by_audio(db, [item.id for item in audio_files], chapter_id=chapter.id)
+    from app.services.narrator_recording import clean_alignment, allowed_sources
+    heard = {str(item.id): clean_alignment({"lines": heard.get(str(item.id), [])},
+        allowed_sources(db, chapter, audio_files, item))["lines"] for item in audio_files}
     title_approaches = _title_approaches_by_audio(db, [item.id for item in audio_files], chapter_id=chapter.id)
 
     replicas = chapter_replicas(db, chapter_id)

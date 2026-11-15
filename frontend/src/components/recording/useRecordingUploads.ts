@@ -45,6 +45,8 @@ export function useRecordingUploads(target: UploadTarget) {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
+  const [correctionModes, setCorrectionModes] = useState<Record<number, string>>({});
+  const correctionRef = useRef<Record<number, string>>({});
   const [preview, setPreview] = useState<BatchValidatedItem[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   /** 0…1 — сколько байт ушло. Дубль весит восемьдесят мегабайт, и без этого числа
@@ -87,7 +89,7 @@ export function useRecordingUploads(target: UploadTarget) {
         book_code: t.bookCode,
         actor_name: t.actorName.trim(),
         files: next.map((file) => ({ name: file.name, size: file.size })),
-        overrides: next.map(() => override),
+        overrides: next.map((_, index) => ({ ...override, correction_mode: correctionRef.current[index] || "" })),
       });
       if (seq === previewSeq.current) setPreview(result.items ?? []);
     } catch {
@@ -100,6 +102,8 @@ export function useRecordingUploads(target: UploadTarget) {
     (picked: File[]) => {
       const valid = picked.filter(Boolean);
       setFiles(valid);
+      correctionRef.current = {};
+      setCorrectionModes({});
       setConfirmChapter(false);
       setChapterMismatchRefused(false);
       setStatus(valid.length ? { text: `Files to upload: ${valid.length}.`, tone: "info" } : IDLE);
@@ -118,6 +122,13 @@ export function useRecordingUploads(target: UploadTarget) {
 
   /** Галочка «Глава выбрана верно» — снятие отказа перевалидирует пачку тем же вызовом,
       что и смена файлов, иначе кнопка осталась бы заблокированной до следующего события. */
+  const onCorrectionMode = useCallback((index: number, mode: string) => {
+    const next = { ...correctionRef.current, [index]: mode };
+    correctionRef.current = next;
+    setCorrectionModes(next);
+    void refreshPreview(files, confirmChapter);
+  }, [files, confirmChapter, refreshPreview]);
+
   const onConfirmChapter = useCallback(
     (value: boolean) => {
       setConfirmChapter(value);
@@ -131,6 +142,8 @@ export function useRecordingUploads(target: UploadTarget) {
   // mismatch — a target change starts the batch over, unconfirmed, same as `select`.
   const targetKey = `${target.bookCode}|${target.chapter}|${target.role}|${target.actorName}|${target.kind}`;
   useEffect(() => {
+    correctionRef.current = {};
+    setCorrectionModes({});
     setConfirmChapter(false);
     setChapterMismatchRefused(false);
     if (files.length) void refreshPreview(files, false);
@@ -156,7 +169,8 @@ export function useRecordingUploads(target: UploadTarget) {
     try {
       const fd = new FormData();
       files.forEach((file) => fd.append("files", file));
-      const meta = files.map(() => ({
+      const meta = files.map((_, index) => ({
+        correction_mode: correctionRef.current[index] || "",
         book_code: t.bookCode,
         chapter: t.chapter,
         role: t.role.trim(),
@@ -215,7 +229,7 @@ export function useRecordingUploads(target: UploadTarget) {
 
   const blocked = preview.some((item) => !item.ok);
   return {
-    files, preview, isUploading, progress, status, blocked,
+    files, preview, isUploading, progress, status, blocked, correctionModes, onCorrectionMode,
     confirmChapter, chapterMismatchRefused, onConfirmChapter, select, clear, uploadBatch,
   };
 }

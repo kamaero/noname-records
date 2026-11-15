@@ -54,6 +54,10 @@ BATCH_ERROR_TEXT: dict[str, str] = {
     "unknown_role_identity": "this role no longer exists in the cast; choose a current role before uploading",
     "ambiguous_role_identity": "several roles match this name; resolve duplicate names and aliases in the cast before uploading",
     "ambiguous_book_code": "more than one book uses this code; choose a unique book code before uploading",
+    "full_correction_requires_published_chapter": "a full replacement requires one unambiguous published chapter",
+    "invalid_correction_mode": "choose full replacement or short correction",
+    "correction_mode_requires_narrator": "correction modes apply only to narrator takes",
+    "full_correction_requires_named_chapter": "a full replacement must explicitly name the selected chapter in its filename",
     "chapter_required": "no chapter specified",
     "role_required": "no role specified",
     "duplicate_in_batch": "the batch contains duplicate files",
@@ -261,6 +265,13 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
                         raise
                     validation_errors.append({"index": idx, "file": up.filename or "", "error": str(exc)})
                 chapter = str((meta or {}).get("chapter") or "").strip()
+                from app.services.narrator_recording import resolve_mode
+                try:
+                    correction_mode = resolve_mode(db, book_code=book_code, role=role, chapter=chapter,
+                        filename=up.filename or "", mode=str((meta or {}).get("correction_mode") or ""), kind=kind)
+                except ValueError as exc:
+                    correction_mode = ""
+                    validation_errors.append({"index": idx, "file": up.filename or "", "error": str(exc)})
                 if not chapter and kind != "audition":
                     validation_errors.append({"index": idx, "file": up.filename or "", "error": "chapter_required"})
                 if not role:
@@ -309,6 +320,7 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
                         "role": role,
                         "actor_name": actor_name,
                         "kind": kind,
+                        "correction_mode": correction_mode,
                         "file": up,
                         # (глава из имени, выбранная глава) — только у подтверждённых
                         # вручную. След о них оставляют ниже, когда файл уже сохранён:
@@ -402,6 +414,7 @@ def build_recording_handlers(deps: dict[str, Any]) -> dict[str, Callable[..., An
                             role=item["role"],
                             actor_name=item["actor_name"],
                             kind=item["kind"],
+                            correction_mode=item["correction_mode"],
                             size_hint=int(getattr(item["file"], "size", 0) or 0),
                         )
                     except audio_mirror.LocalDiskFull:

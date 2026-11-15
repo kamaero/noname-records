@@ -34,6 +34,8 @@ def build_recording_workspace_payload(
     )
     selected_chapter = context.get("selected_chapter")
     book = db.get(ScriptBook, selected_chapter.book_id) if selected_chapter else None
+    from app.services.role_identity import book_roles
+    identities = book_roles(db, book.id) if book is not None else None
     line_counts = context.get("role_line_counts") or {}
     colors = context.get("cast_color_map") or {}
     text_colors = context.get("cast_text_color_map") or {}
@@ -72,6 +74,7 @@ def build_recording_workspace_payload(
                 "color": str(colors.get(name, "") or ""),
                 "text_color": str(text_colors.get(name, "") or ""),
                 "actor_name": str(actors.get(name, "") or ""),
+                "is_narrator": bool(identities and identities.is_narrator(name)),
             }
             for name in context.get("cast_names") or []
         ],

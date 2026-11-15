@@ -119,6 +119,8 @@ export function TakesPage() {
         notice={sel.preview ? "Preview: this book is unpublished; annotated chapters are shown." : undefined}
         upload={{
           files: upload.files,
+          correctionModes: upload.correctionModes,
+          onCorrectionMode: upload.onCorrectionMode,
           preview: upload.preview,
           status: upload.status,
           isUploading: upload.isUploading,
