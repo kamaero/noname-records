@@ -111,7 +111,7 @@ def build_chapter_report(db, chapter_id: str, *, lost_takes: list[dict] | None =
                 continue
             if not line.get("matched"):
                 missing_by_role.setdefault(role, []).append(text)
-            elif float(line.get("score") or 0.0) < WEAK_MATCH_CEILING:
+            elif not line.get("accepted_by_owner") and float(line.get("score") or 0.0) < WEAK_MATCH_CEILING:
                 weak.append({"role": role, "text": text, "score": float(line.get("score") or 0.0)})
 
     if chapter is not None and barrier:
