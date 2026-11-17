@@ -425,8 +425,13 @@ def handle_update(db, update: dict, *, now: datetime) -> list[Outgoing]:
             kind, user = _person(db, tid)
             if kind == "none" or not _sees_overview(_roles(db, tid, user)):
                 return out  # обзор — только админу, агенту и автору; чужое нажатие молча гасим
-            text_out = bot_studio.section(db, data[len(bot_studio.SS_PREFIX):], now=now)
-            return out + ([_send(chat_id, text_out, html_mode=True)] if text_out else [])
+            key = data[len(bot_studio.SS_PREFIX):]
+            if key in {"p", "d", "q"}:
+                text_out, markup = bot_studio.section(db, key, now=now), None
+            else:
+                from app.services.bot_book_summary import reply
+                text_out, markup = reply(db, key)
+            return out + ([_send(chat_id, text_out, markup, html_mode=True)] if text_out else [])
         if not data.startswith(CONFIRM_PREFIX) or not _confirmation_fresh(data, now_ts):
             return out + [_send(chat_id, STALE)]
         kind, user = _person(db, tid)

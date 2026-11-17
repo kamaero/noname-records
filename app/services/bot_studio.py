@@ -3,9 +3,9 @@
 Админ, агент и автор собирали картину студии по сайту и утреннему дайджесту сроков. Здесь —
 четыре раздела (пробы ждут решения, сроки, книги, кто молчит) и карточка диктора.
 
-Всё считается заново на каждый запрос, но за один проход: дубли, пробы, главы и сроки
-грузятся по разу. `role_progress` ходит в базу на каждого персонажа — на 612 персонажах
-прода это секунды, а обработчик вебхука один. `Studio.progress` обязан совпадать с ним
+Всё считается заново на каждый запрос. Основные списки используют общий снимок,
+а полнота книг и подробности — один источник, чтобы счётчики не расходились.
+`Studio.progress` для сроков обязан совпадать с `role_progress`
 (сторож — `test_progress_matches_role_progress`).
 
 Денег здесь нет: агент на сайте гонораров не видит, бот не открывает больше сайта.
@@ -216,18 +216,17 @@ class Studio:
     def books(self) -> list[BookProgress]:
         """По книгам: «записано: X/Y» (решение владельца 05.10 вместо «глав-ролей»). Роль
         без глав в книге не считается: её нельзя записать, и счётчик не дошёл бы до конца."""
+        from app.services.bot_book_summary import progress_rows
+
         found = []
-        for book_id, cast in self.cast_by_book.items():
+        for book_id in self.cast_by_book:
             recorded = approved = roles = 0
-            for ch in cast:
-                name, tentative = parse_actor_name(str(ch.actor_name or ""))
-                done, total = self.progress(ch, name if name and not tentative else "")
-                if total == 0:
-                    continue
+            for row in progress_rows(self.db, book_id):
+                name, tentative = parse_actor_name(row["actor_name"])
                 roles += 1
+                recorded += bool(row["complete"])
                 if name and not tentative:
                     approved += 1
-                    recorded += done >= total
             found.append(BookProgress(self.title(book_id), recorded, approved, roles - approved, roles))
         return sorted(found, key=lambda b: b.title.lower())
 
