@@ -62,6 +62,8 @@ def realign_job(db, job_id: str, *, write: bool = True) -> dict | None:
         alignment = title_alignment(db, job.chapter_id, heard, language=language, duration=audio.duration_seconds)
     else:
         alignment = align_transcript(expected, heard.get("segments") or [], language=language)
+    from app.services.asr_acceptance import apply_approval
+    alignment = apply_approval(db, audio, job.chapter_id, job_role(db, job), expected, alignment, heard)
     alignment.update(language=language, normalizer_version=ALIGNMENT_VERSION)
 
     report = {
