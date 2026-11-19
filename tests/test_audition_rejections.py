@@ -14,6 +14,64 @@ from app.services.audio_uploads import derive_book_code
 
 NOW = datetime(2026, 9, 25, 12, 0, 0)
 
+@pytest.mark.parametrize("same_person", [True, False])
+def test_releasing_candidate_does_not_confuse_people_with_two_common_names(db, same_person):
+    from app.models import RoleVote
+    book = _book(db)
+    actor = "Тестовый Первый Альфа"
+    other = "Тестовый Первый Бета"
+    _audition(db, book, role="Страж", actor=actor)
+    character = Character(book_id=book.id, name="Страж", actor_name=(actor if same_person else other) + "?")
+    db.add(character)
+    db.flush()
+    db.add_all([
+        RoleVote(character_id=character.id, actor_name="Альфа Первый Тестовый?", voter_uid="first", weight=1),
+        RoleVote(character_id=character.id, actor_name=other + "?", voter_uid="other", weight=1),
+    ])
+    db.commit()
+    _score(db, book, "author", 6, role="Страж", actor=actor)
+    _score(db, book, "studio", 6, role="Страж", actor=actor)
+    assert character.actor_name == ("" if same_person else other + "?")
+    remaining = db.query(RoleVote).filter_by(character_id=character.id).all()
+    assert len(remaining) == (1 if same_person else 2)
+    assert any(row.actor_name == other + "?" for row in remaining)
+
+
+@pytest.mark.parametrize("author,studio,freed", [(6, 6, True), (1, 6, True), (6, 7, False), (7, 6, False)])
+def test_low_scores_release_candidate_immediately_without_sending(db, mail, author, studio, freed):
+    from app.models import RoleVote
+    from app.services.casting import rebuild_assignments
+    book = _book(db)
+    _audition(db, book, role="Страж", actor="Кандидат Альфа")
+    character = Character(book_id=book.id, name="Страж", actor_name="Кандидат Альфа?")
+    db.add(character)
+    db.flush()
+    db.add(RoleVote(character_id=character.id, actor_name="Альфа Кандидат?", voter_uid="agent", weight=1))
+    rebuild_assignments(db, book.id)
+    db.commit()
+    _score(db, book, "author", author, role="Страж", actor="Кандидат Альфа")
+    assert character.actor_name == "Кандидат Альфа?"
+    _score(db, book, "studio", studio, role="Страж", actor="Кандидат Альфа")
+    assert character.actor_name == ("" if freed else "Кандидат Альфа?")
+    assert db.query(RoleVote).filter_by(character_id=character.id).count() == (0 if freed else 1)
+    assert not mail["direct"] and not mail["relay"]
+    if freed:
+        assert _rejections(db)[0].status == "pending"
+        assert db.query(AuditionScore).filter_by(book_id=book.id).count() == 2
+
+
+@pytest.mark.parametrize("assigned", ["Кандидат Альфа", "Другой актёр?"])
+def test_low_scores_preserve_approved_or_other_candidate(db, assigned):
+    book = _book(db)
+    _audition(db, book, role="Страж", actor="Кандидат Альфа")
+    character = Character(book_id=book.id, name="Страж", actor_name=assigned)
+    db.add(character)
+    db.commit()
+    _score(db, book, "author", 6, role="Страж", actor="Кандидат Альфа")
+    _score(db, book, "studio", 6, role="Страж", actor="Кандидат Альфа")
+    assert character.actor_name == assigned
+
+
 
 @pytest.fixture()
 def db():

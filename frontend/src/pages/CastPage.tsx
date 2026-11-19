@@ -191,6 +191,10 @@ function CastBookPage() {
       postScore(pair, lane, value, answer),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: auditionsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["auditions-feed"] });
+      void queryClient.invalidateQueries({ queryKey: ["book-budget", bookId] });
+      void queryClient.invalidateQueries({ queryKey: ["v2", "book-cast", bookId] });
+      void queryClient.invalidateQueries({ queryKey: mapQueryKey });
     },
     onError: (error) => {
       pushToast({ tone: "error", title: "Reaction not saved", detail: describeApiError(error, "Could not save the reaction.") });
