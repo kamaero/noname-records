@@ -1105,6 +1105,8 @@ def ambient_session_tracks(db, chapter_id: str, starts: dict[str, float], end: f
     from app.models import AmbientTrack
     from app.services.ambient_engine import done_tracks
 
+    from app.services.ambient_pairs import current_pairs, schema_ready
+    pairs = current_pairs(db, chapter_id)
     rows = (done_tracks(db, AmbientTrack, AudioFile)
             .filter(AmbientTrack.chapter_id == chapter_id)
             .order_by(AmbientTrack.created_at.asc(), AmbientTrack.id.asc())
@@ -1113,16 +1115,20 @@ def ambient_session_tracks(db, chapter_id: str, starts: dict[str, float], end: f
         return []
     # Готовый трек у сцены один (перегенерация переводит прежний в `replaced`); на всякий
     # случай берётся самый свежий.
-    file_of = {track.marker_id: item for track, item in rows}
+    has_pair_schema = schema_ready(db)
+    file_of = {track.marker_id: item for track, item in rows
+               if not has_pair_schema or track.variant not in ("A", "B")}
     spans = _spans_on_timeline(db, chapter_id, starts, end)
     placed = sorted(((spans[marker_id][0], index, file_of[marker_id])
-                     for index, marker_id in enumerate(spans) if marker_id in file_of),
+                     for index, marker_id in enumerate(spans) if marker_id in file_of and marker_id not in pairs),
                     key=lambda entry: (entry[0], entry[1]))
-    if not placed:
+    if not placed and not pairs:
         return []
-    tracks = [SessionTrack(name=name) for name in AMBIENT_TRACKS]
+    tracks = [SessionTrack(name=name, muted=bool(pairs) and index == 1,
+                           channel_type="stereo" if pairs else "mono")
+              for index, name in enumerate(AMBIENT_TRACKS)]
     for number, (start, _index, item) in enumerate(placed):
-        tracks[number % len(tracks)].clips.append(SessionClip(
+        tracks[0 if pairs else number % len(tracks)].clips.append(SessionClip(
             name=str(item.canonical_filename or ""),
             path=audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local")),
             start=float(start),
@@ -1130,7 +1136,17 @@ def ambient_session_tracks(db, chapter_id: str, starts: dict[str, float], end: f
             source_out=float(item.duration_seconds or 0.0),
             relative=str(item.canonical_filename or "") if relative else "",
         ))
-    return tracks
+    for marker_id, pair in pairs.items():
+        if marker_id not in spans:
+            continue
+        start, seconds = spans[marker_id]
+        for index, variant in enumerate(("A", "B")):
+            item = pair[variant]
+            tracks[index].clips.append(SessionClip(name=str(item.canonical_filename),
+                path=audio_storage.resolve_path(str(item.stored_key), location=str(item.location or "local")),
+                start=float(start), source_in=0, source_out=min(float(seconds), float(item.duration_seconds)),
+                relative=str(item.canonical_filename) if relative else ""))
+    return tracks if any(track.clips for track in tracks) else []
 
 
 def _marker_guid(marker_id: str) -> str:

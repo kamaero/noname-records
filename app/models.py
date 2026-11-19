@@ -1134,6 +1134,10 @@ class AmbientTrack(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     song_id: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    # Отложенные колонки сохраняют чтение старой установки до штатной миграции.
+    variant: Mapped[str] = mapped_column(String(1), nullable=False, default="", server_default="", deferred=True)
+    pair_key: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="", deferred=True)
+    scene_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="", deferred=True)
     # Прежние треки относятся к русскому профилю; смена книги не переименовывает их.
     language_snapshot: Mapped[str] = mapped_column(String(2), nullable=False, default="ru", server_default="ru")
     #: 'pending' | 'done' | 'failed' | 'replaced'
