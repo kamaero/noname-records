@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiGet, apiPostJson, describeApiError } from "../api/client";
 import { Icon } from "../components/Icon";
+import { hubKeys } from "../components/book/v2/hubApi";
 import { useToast } from "../components/ToastProvider";
 import { Button, PageHeader, ScoreScale } from "../ui";
 import type { SaveBudgetCharacterResponse } from "../types";
@@ -160,6 +161,9 @@ export function AuditionsPage() {
     setBusy(pair.key);
     try {
       await postScore(pair, lane, value, answer);
+      void queryClient.invalidateQueries({ queryKey: ["book-budget", pair.book_id] });
+      void queryClient.invalidateQueries({ queryKey: ["v2", "book-cast", pair.book_id] });
+      void queryClient.invalidateQueries({ queryKey: hubKeys.characterMap(pair.book_id) });
       await feedQuery.refetch();
     } catch (error) {
       pushToast({ tone: "error", title: "Rating not saved", detail: describeApiError(error, "") });

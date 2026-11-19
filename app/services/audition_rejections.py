@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from app.models import AudioFile, AuditionRejection, AuditionScore, Character, ScriptBook
+from app.models import AudioFile, AuditionRejection, AuditionScore, Character, RoleVote, ScriptBook
 from app.services import studio
 from app.services.audio_deletion import _find_book_for_audio
 from app.services.audio_uploads import AUDITION, derive_book_code
@@ -239,6 +239,8 @@ def sync_rejection_with_scores(db, *, book_id: str, role: str, actor_name: str, 
             and (not approved or names_match(approved, actor)):
         rej.status = CANCELLED
     db.flush()
+    if reject:
+        release_tentative_after_rejection(db, rej)
     return rej
 
 
@@ -399,6 +401,37 @@ def _cancel(db, rej: AuditionRejection, why: str) -> str:
     rej.sent_at = None
     db.commit()
     return rej.status
+
+
+def release_tentative_after_rejection(db, rej: AuditionRejection) -> bool:
+    """Снять предварительное назначение после решения по актуальной пробе.
+
+    Две низкие оценки — «нет» кандидату, а «Имя?» продолжало
+    висеть в касте кандидатом: по нему считались сроки и пересечения, и владельцу
+    приходилось снимать его руками. Голоса за отклонённого убираются тоже: иначе
+    арифметика голосов (`cast_role_vote`) вернёт имя в карточку при первом же
+    пересчёте. Снимается только предварительное назначение — утверждённый актёр
+    остаётся: отказ по пробе не отменяет чьего-то решения утвердить.
+    """
+    characters = db.query(Character).filter(Character.book_id == rej.book_id).all()
+    character = character_for_role(characters, str(rej.role or ""))
+    if character is None:
+        return False
+    name, tentative = parse_actor_name(str(character.actor_name or ""))
+    actor_key = sorted(normalize_name(name).split())
+    if not name or not tentative or actor_key != sorted(normalize_name(str(rej.actor_name or "")).split()):
+        return False
+    for vote in db.query(RoleVote).filter_by(character_id=character.id).all():
+        voted_name, _ = parse_actor_name(str(vote.actor_name or ""))
+        # Двух общих слов мало: одно имя и отчество бывают у разных людей.
+        if sorted(normalize_name(voted_name).split()) == actor_key:
+            db.delete(vote)
+    character.actor_name = ""
+    character.updated_at = utcnow_naive()
+    from app.services.casting import rebuild_assignments
+    rebuild_assignments(db, rej.book_id)
+    return True
+
 
 
 def _settle(db, rej: AuditionRejection, now: datetime) -> str:
