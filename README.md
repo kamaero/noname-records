@@ -79,6 +79,16 @@ The assigned actor sends `BookCode_Главы_Actor.wav` or `.flac` to the Teleg
 
 All heading segments form each chapter title. Recognized repeats are kept, including a return to an earlier chapter. Repeated subtitles without a chapter number and uncertain pronunciations are retained as review clips; they do not prove full heading coverage. Zero-length punctuation and event tags do not discard other valid takes, while words with unknown duration remain explicit gaps for review. Audition exports put complete title takes consecutively on the separate `Названия глав` track before the chapter body. Missing or ambiguous titles stay visible for studio review. Source recordings and paid ASR checkpoints are retained in `data/spool/bot_takes`; include this directory in backups. Resending the same file resumes a failed or incomplete upload with its existing source and paid cache when the actor, headings and recognition settings are unchanged. A request with an unknown payment outcome requires manual review before a paid retry.
 
+## Import scene alternatives A/B
+
+You can supply two already-generated PCM16 mono/stereo WAVs for an active scene. No generator, model files or external API key is needed for this import. The regular ElevenLabs BYOK generation remains available.
+
+After updating the installation (database migration `0071_ambient_pairs`), copy your WAVs into a directory mounted in the web container. List scenes with `docker compose exec web python scripts/import_ambient_pair.py --chapter-id CHAPTER_ID --list-scenes`. Validate a pair with `docker compose exec web python scripts/import_ambient_pair.py --chapter-id CHAPTER_ID --marker-id MARKER_ID --a /path/to/A.wav --b /path/to/B.wav`; add `--apply` to save it. Back up the database and audio before applying, as with other administrator imports.
+
+New chapter exports place both variants at their scene start, limited to the scene length: A on **Ambient 1**, B on **Ambient 2** with B muted. Switch mute states in Audition to compare them. Both WAVs travel with the chapter archive. Earlier media and manually edited projects are retained; export a new project to receive the pair. Reimporting the same pair reuses it. Replacing a pair keeps its previous media; editing a scene or changing the book language invalidates its imported pair until you import a matching pair again. Legacy scenes keep their existing generation and assembly behavior; in chapters mixing imported pairs with legacy audio, legacy audio remains audible on Ambient 1.
+
+This portable path imports existing audio. It does not automatically plan or generate alternatives, and it does not connect to a studio's private generation infrastructure.
+
 ## Maintenance
 
 Run commands from the installation directory (`~/noname-records` on Mac/Linux or `$HOME\noname-records` in Windows PowerShell):

@@ -72,6 +72,8 @@ class SessionTrack:
     effects_rack: str = ""
     #: тип канала: у дорожки с цепочкой — как в шаблоне, эффекты настроены под него
     channel_type: str = "mono"
+    # Вторая альтернатива не должна звучать одновременно с первой.
+    muted: bool = False
 
 
 @dataclass
@@ -147,6 +149,11 @@ def _track_xml(track: SessionTrack, *, track_id: int, index: int, rate: int, fil
         _component("Audition.Fader", "trackFader", "volume"),
         "        </trackAudioParameters>",
     ]
+    if track.muted:
+        lines.insert(-1, '          <component componentGuid="' + str(uuid4())
+                     + '" componentID="Audition.Mute" id="trackMute" name="Mute" powered="true">'
+                     + '<parameter index="0" parameterValue="1" />'
+                     + '<parameter index="1" name="mute" parameterValue="1" /></component>')
     if track.effects_rack:
         # там же, где её пишет сам Audition: после параметров дорожки, до клипов
         lines.append("        " + track.effects_rack)
