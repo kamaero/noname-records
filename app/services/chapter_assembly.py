@@ -91,6 +91,15 @@ def _publish(directory, name, write):
         os.unlink(pending, dir_fd=directory)
 
 
+def _next_session_name(directory, chapter_index, registered_names):
+    # Удалённая промежуточная версия не освобождает номер перед более поздней.
+    prefix = f"глава{chapter_index:02d}_ver"
+    pattern = re.compile(re.escape(prefix) + r"([0-9]+)\.sesx", re.IGNORECASE)
+    versions = (int(match[1]) for name in (*os.listdir(directory), *registered_names)
+                if (match := pattern.fullmatch(name)))
+    return f"{prefix}{max(versions, default=0) + 1}.sesx"
+
+
 def _media(directory, item):
     path = audio_storage.resolve_path(item.stored_key, location=item.location or "local")
     with open(path, "rb") as source:
@@ -225,7 +234,7 @@ def assemble_narrator_chapter(db, chapter_id):
             if latest is None or latest[3] != digest:
                 return {"written": False, "reason": "assembly_input_changed", "replaced": ""}
             chapter = latest[0]
-            name = f"{code}_Ch{chapter.chapter_index:02d}_{utcnow_naive():%Y%m%dT%H%M%S}_{uuid4().hex[:10]}.sesx"
+            name = _next_session_name(folder, chapter.chapter_index, (Path(chapter.session_key or "").name,))
             _publish(folder, name, lambda target: target.write(data))
             record_audit_assembly(db, chapter.id, narrator_only=True)
             chapter.session_key = "/".join((*parts, name))
