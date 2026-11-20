@@ -130,6 +130,9 @@ def test_new_revision_keeps_edited_manual_project_and_reuses_unchanged_media(stu
         chapter = db.get(ScriptChapter, "assembly-chapter")
         root = nas if chapter.session_location == "nas" else local
         old = root / first["session_key"]
+        assert old.name == "глава01_ver1.sesx"
+        manual = old.with_name("ГЛАВА01_ver10.SESX")
+        manual.write_bytes(b"manual session")
         old.write_bytes(b"manual editing must survive")
         media = list(old.parent.joinpath("assembly-media").iterdir())
         inode = media[0].stat().st_ino
@@ -138,11 +141,18 @@ def test_new_revision_keeps_edited_manual_project_and_reuses_unchanged_media(stu
         db.commit()
         second = assemble_narrator_chapter(db, "assembly-chapter")
         db.commit()
-        assert second["written"] and second["session_key"] != first["session_key"]
+        assert second["written"] and (root / second["session_key"]).name == "глава01_ver11.sesx"
+        assert manual.read_bytes() == b"manual session"
         assert old.read_bytes() == b"manual editing must survive"
         assert len(list(old.parent.joinpath("assembly-media").iterdir())) == 1
         assert media[0].stat().st_ino == inode
         assert len(list(old.parent.glob("*.sesx"))) == 2
+        renamed = root / second["session_key"]
+        renamed.write_bytes(b"final mix")
+        final = renamed.rename(old.with_name("Финал.sesx"))
+        third = assemble_narrator_chapter(db, "assembly-chapter")
+        assert third["written"] and (root / third["session_key"]).name == "глава01_ver12.sesx"
+        assert final.read_bytes() == b"final mix" and not renamed.exists()
 
 
 def test_confirmed_current_audit_causes_new_session_with_real_markers(studio, monkeypatch):
