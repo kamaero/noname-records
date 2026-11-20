@@ -23,7 +23,6 @@ from app.services.bot_dialog import handle_update
 from app.services.login_identity import TELEGRAM_PASSWORD_HASH
 
 NOW = datetime(2026, 10, 5, 9, 0, 0)
-DUE = datetime(2026, 12, 31, 20, 59, 59)
 # «Ольга» — двусмысленное имя: не указывает ни на кого
 CHATS = {"Ветрова Ольга": "41", "Иванов Пётр": "42"}
 KP = "Карта Приозерья"
@@ -65,7 +64,7 @@ def db(monkeypatch):
         for cid, name, actor, chapters in cast:
             session.add(Character(id=cid, book_id="b1", name=name, actor_name=actor, appears_in=chapters))
         session.add(RoleDeadline(character_id="c1", book_id="b1", actor_name="Ветрова Ольга", kind="role",
-                                 due_at=DUE, created_at=NOW))
+                                 due_at=None, created_at=NOW))
         session.add(RoleDeadline(character_id="c3", book_id="b1", actor_name="Ветрова Ольга", kind="audition",
                                  due_at=NOW + timedelta(hours=30), created_at=NOW))
         code = derive_book_code(KP)
@@ -104,7 +103,7 @@ def test_strangers_get_neither_help_nor_status(db):
 
 def test_status_lists_approved_roles_with_progress_and_deadline(db):
     text = _status(db)
-    assert "«Убув» — «Карта Приозерья»: completed 1 of 2 chapters, due 31 December 2026" in text
+    assert "«Убув» — «Карта Приозерья»: completed 1 of 2 chapters, As soon as possible!" in text
     assert "«Хоркон» — «Карта Приозерья»: completed 1 of 1 chapter ✓" in text
 
 

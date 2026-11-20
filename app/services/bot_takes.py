@@ -72,6 +72,13 @@ def _role_from_filename(filename: str, roles: list[Character], book: ScriptBook)
     from app.services.author_profile import normalize_name
     from app.services.shared_runtime import normalize_role_label
 
+    # В рекомендуемом имени пробелы принадлежат полю, а не разделяют поля.
+    fields = filename.rsplit(".", 1)[0].split("_")
+    if len(fields) >= 4 and fields[1].casefold() == "wholerole":
+        key = normalize_name(fields[2])
+        hits = [ch for ch in roles if key and key in _role_keys(ch)]
+        return hits[0] if len(hits) == 1 else None
+
     parsed = parse_batch_audio_filename(filename, default_book_code=derive_book_code(str(book.title or "")),
                                         default_actor_name="", normalize_role_label=normalize_role_label)
     token = str(parsed.get("role") or "")

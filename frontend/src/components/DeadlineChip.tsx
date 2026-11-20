@@ -5,8 +5,8 @@ import { deadlineTimeZone, usesIanaCalendar } from "../utils/serverTime";
 /** Срок пробы или роли: «проба до 3.10 18:00», «до 31.12 · 12/18 гл.», «просрочено 2 дн.». */
 export function deadlineLabel(deadline: RoleDeadlineView, now: Date = new Date()): string {
   const due = deadline.due_at ? new Date(deadline.due_at) : null;
-  if (!due) return "";
   const progress = deadline.kind === "role" && deadline.total ? ` · ${deadline.done}/${deadline.total} ch.` : "";
+  if (!due) return deadline.kind === "role" ? `As soon as possible!${progress}` : "";
   if (deadline.overdue) {
     const days = Math.max(1, Math.floor((now.getTime() - due.getTime()) / 86_400_000));
     return `overdue by ${days} ${days === 1 ? "day" : "days"}${progress}`;

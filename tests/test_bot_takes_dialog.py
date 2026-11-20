@@ -88,6 +88,15 @@ def test_single_role_queues_at_once(db):
     assert _enqueued(out) == [{"id": row.id}]
 
 
+def test_whole_role_filename_keeps_spaces_in_the_character_name():
+    from app.services.bot_takes import _role_from_filename
+
+    book = ScriptBook(title="Тестовая книга")
+    queen = Character(name="Снежная Королева", aliases="Snow Queen")
+    roles = [queen, Character(name="Снежная", aliases="Snow")]
+    assert _role_from_filename("Title_WholeRole_Snow Queen_Doe Jane.wav", roles, book) is queen
+
+
 def test_role_from_filename_among_several(db):
     for cid, name in (("c1", "Сэкле"), ("c2", "Лымэли"), ("c3", "Вякгы")):
         _role(db, cid, name)

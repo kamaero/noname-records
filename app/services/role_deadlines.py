@@ -1,8 +1,7 @@
 """Сроки проб и утверждённых ролей (спека 2026-10-01-role-deadlines).
 
-Решения владельца: проба — 48 часов с приглашения; утверждённая роль — до общей даты
-студии (`studio_settings.role_deadline_date`, конец дня по Москве); роль сдана, когда во
-всех её главах лежит дубль диктора; проба сдана, когда загружена проба.
+Проба — 48 часов с приглашения. У утверждённой роли дата может отсутствовать.
+Роль сдана, когда во всех её главах есть дубль диктора; проба — когда загружена запись.
 
 Сверка (`sync_book`) идёт из `casting.rebuild_assignments` — его зовут все пути смены
 актёра, поэтому срок не зависит от того, откуда пришло назначение. Письма и напоминания
@@ -31,7 +30,7 @@ SETTLED = ("done", "manual", "baseline")
 #: письмо о рекасте ждёт: опечатку в касте успевают исправить, и тогда письма нет
 RECAST_GRACE = timedelta(minutes=30)
 MSK = timedelta(hours=3)
-FALLBACK_ROLE_DATE = "2026-12-31"
+ROLE_DUE_ASAP = "As soon as possible!"
 
 
 def same_person(a: str, b: str) -> bool:
@@ -43,18 +42,18 @@ def _end_of_msk_day(day: date) -> datetime:
     return datetime(day.year, day.month, day.day, 23, 59, 59) - MSK
 
 
-def role_due_date(db) -> datetime:
+def role_due_date(db) -> datetime | None:
     from app.services.studio_settings import studio_settings
 
-    raw = str(getattr(studio_settings(db), "role_deadline_date", "") or FALLBACK_ROLE_DATE)
+    raw = str(getattr(studio_settings(db), "role_deadline_date", "") or "")
     try:
         day = date.fromisoformat(raw)
     except ValueError:
-        day = date.fromisoformat(FALLBACK_ROLE_DATE)
+        return None
     return end_of_day(day, studio_timezone(db))
 
 
-def due_for(db, kind: str, *, now: datetime) -> datetime:
+def due_for(db, kind: str, *, now: datetime) -> datetime | None:
     if kind == "audition":
         return now + timedelta(hours=AUDITION_HOURS)
     return role_due_date(db)
@@ -224,8 +223,10 @@ _MONTHS = ("January", "February", "March", "April", "May", "June", "July", "Augu
            "October", "November", "December")
 
 
-def format_due(due_at: datetime, *, kind: str, timezone: str = "") -> str:
-    """Срок для письма: проба — «3 октября, 18:00 МСК (48 часов)», роль — «31 декабря 2026»."""
+def format_due(due_at: datetime | None, *, kind: str, timezone: str = "") -> str:
+    """Показывает согласованную дату или просьбу сдать запись скорее."""
+    if due_at is None:
+        return ROLE_DUE_ASAP
     local = local_time(due_at, timezone)
     label = timezone_label(timezone, due_at)
     if kind == "audition":
@@ -368,6 +369,8 @@ def run_pass(db, *, now: datetime | None = None, send, send_buttons=None) -> dic
 
     open_rows = db.query(RoleDeadline).filter(RoleDeadline.closed_at.is_(None)).all()
     for row in open_rows:
+        if row.due_at is None:
+            continue
         character = db.get(Character, row.character_id)
         role, book_title = str(getattr(character, "name", "") or ""), titles.get(row.book_id, "")
         if now >= row.due_at and row.reminded_overdue_at is None:
@@ -390,7 +393,7 @@ def run_pass(db, *, now: datetime | None = None, send, send_buttons=None) -> dic
         day_end = end_of_day(local.date(), studio_timezone(db))
         due_today, overdue = [], []
         for row in open_rows:
-            if row.closed_at is not None:
+            if row.closed_at is not None or row.due_at is None:
                 continue
             character = db.get(Character, row.character_id)
             label = f"{row.actor_name} — «{getattr(character, 'name', '')}» («{titles.get(row.book_id, '')}»)"
@@ -430,7 +433,7 @@ def deadline_view(db, row: RoleDeadline, *, now: datetime | None = None) -> dict
     done, total = role_progress(db, character, row.actor_name) if (character is not None and row.kind == "role") else (0, 0)
     from app.time_utils import iso_utc
 
-    return {"id": row.id, "kind": row.kind, "due_at": iso_utc(row.due_at), "overdue": now >= row.due_at,
+    return {"id": row.id, "kind": row.kind, "due_at": iso_utc(row.due_at), "overdue": row.due_at is not None and now >= row.due_at,
             "done": done, "total": total}
 
 
@@ -467,10 +470,10 @@ def extend(db, deadline_id: str, *, days: int | None = None, until: str = "", by
         if timezone and row.kind == "role":
             # В новой IANA-установке дата роли означает конец местного дня:
             # прибавление 24 ч в UTC сдвигало бы его на час при переходе DST.
-            day = local_time(max(row.due_at, now), timezone).date() + timedelta(days=int(days))
+            day = local_time(max(row.due_at or now, now), timezone).date() + timedelta(days=int(days))
             new_due = end_of_day(day, timezone)
         else:
-            new_due = max(row.due_at, now) + timedelta(days=int(days))
+            new_due = max(row.due_at or now, now) + timedelta(days=int(days))
     if new_due <= now:
         raise DeadlineError("bad_date")
     row.due_at = new_due

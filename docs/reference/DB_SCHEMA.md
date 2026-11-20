@@ -4,7 +4,7 @@
 
 Всего таблиц: **69**.
 
-_Сгенерировано из коммита 39db22d._
+_Сгенерировано из коммита 40e1b54._
 
 ## Таблицы
 
@@ -23,11 +23,14 @@ _Сгенерировано из коммита 39db22d._
 | `id` | VARCHAR(36) | нет | да |  | python:<lambda>() |
 | `language_snapshot` | VARCHAR(2) | нет |  |  | python:'ru'; server:ru |
 | `marker_id` | VARCHAR(36) | нет |  |  |  |
+| `pair_key` | VARCHAR(64) | нет |  |  | python:''; server: |
 | `prompt` | TEXT | нет |  |  | python:'' |
+| `scene_fingerprint` | VARCHAR(64) | нет |  |  | python:''; server: |
 | `song_id` | VARCHAR(120) | нет |  |  | python:'' |
 | `status` | VARCHAR(12) | нет |  |  | python:'pending' |
 | `summary` | TEXT | нет |  |  | python:'' |
 | `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
+| `variant` | VARCHAR(1) | нет |  |  | python:''; server: |
 
 Индексы:
 
@@ -880,7 +883,7 @@ The base class of the class hierarchy.
 | `closed_at` | DATETIME | да |  |  |  |
 | `created_at` | DATETIME | нет |  |  | python:utcnow_naive() |
 | `declined_at` | DATETIME | да |  |  |  |
-| `due_at` | DATETIME | нет |  |  |  |
+| `due_at` | DATETIME | да |  |  |  |
 | `extend_request_at` | DATETIME | да |  |  |  |
 | `extend_request_days` | INTEGER | да |  |  |  |
 | `extended_by` | VARCHAR(120) | нет |  |  | python:''; server: |
@@ -1310,7 +1313,7 @@ Studio-wide defaults, one row (`id == "default"`).
 | `onboarding_no_limit` | BOOLEAN | нет |  |  | python:False |
 | `onboarding_result_seen_at` | DATETIME | да |  |  |  |
 | `recording_book_id` | VARCHAR(36) | нет |  |  | python:''; server: |
-| `role_deadline_date` | VARCHAR(10) | нет |  |  | python:'2026-12-31'; server:2026-12-31 |
+| `role_deadline_date` | VARCHAR(10) | нет |  |  | python:''; server: |
 | `sample_book_id` | VARCHAR(36) | нет |  |  | python:''; server: |
 | `spend_warned_month` | VARCHAR(16) | нет |  |  | python:''; server: |
 | `updated_at` | DATETIME | нет |  |  | python:utcnow_naive() |
@@ -1568,3 +1571,5 @@ A word the author has waved off: «ударение тут не нужно, ег
 | `0068_chapter_titles` | Отдельный диктор названий глав на уровне книги. | `0068_chapter_titles.py` |
 | `0069_narrator_assembly` | Рабочие версии проекта сохраняют путь независимо от прежнего ручного файла. | `0069_narrator_assembly.py` |
 | `0070_narrator_correction_mode` | Новые полные пересъёмки не переосмысляют исторические короткие фиксы. | `0070_narrator_correction_mode.py` |
+| `0071_ambient_pairs` | Готовые варианты сцен не меняют прежние треки ElevenLabs. | `0071_ambient_pairs.py` |
+| `0072_recording_due_asap` | Роль можно отслеживать без календарной даты сдачи. | `0072_recording_due_asap.py` |

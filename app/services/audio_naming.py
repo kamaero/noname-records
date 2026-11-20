@@ -1,17 +1,4 @@
-"""Как называется аудиофайл в студии.
-
-Одно имя в двух местах: то, что диктор набрал у себя на диске, и то, что лежит у нас
-в базе. Раньше сервер переименовывал загруженное по-своему, кириллицей, и на один
-файл приходилось два написания — как раз тот беспорядок, из-за которого никто не был
-уверен, что и куда попало.
-
-    утверждённая роль   KP_Ch01_Dgarnin_Zotov.wav
-    проба на роль       KP_Ch01_Osniva_NataliGolubeva_proba.wav
-
-Проба отличается от дубля одним хвостом. Глава у неё необязательна: читают пробу из
-какого-то куска, но роль ещё не назначена, и требование главы — ровно то, что
-заставляло диктора писать «пробы» внутрь имени файла.
-"""
+"""Подсказка для исходника и каноническое имя записи в хранилище."""
 from __future__ import annotations
 
 import re
@@ -56,6 +43,22 @@ def file_extension(original_filename: str, default: str = "wav") -> str:
     return match.group(1).lower() if match else default
 
 
+def recording_input_name(*, book_code: str, chapter: str, role: str, actor_name: str,
+                         original_filename: str = "recording.wav", kind: str = "take") -> str:
+    """Имя для исходника диктора, которое можно скопировать из подсказки."""
+    fields = [" ".join(part.replace("_", " ").split()) for part in (book_code, role, actor_name)]
+    if not all(fields):
+        return ""
+    chapter_part = chapter_token(chapter)
+    if kind == "audition":
+        if chapter_part:
+            fields.insert(1, chapter_part)
+        fields.append("proba")
+    else:
+        fields.insert(1, chapter_part or "WholeRole")
+    return "_".join(fields) + "." + file_extension(original_filename)
+
+
 #: хвост канонического имени: `_fixN` и/или порядковый номер `_M` перед расширением
 _NAME_SUFFIXES = re.compile(r"(?:_fix(\d+))?(?:_(\d+))?$", re.IGNORECASE)
 
@@ -87,7 +90,7 @@ def canonical_audio_name(
     ordinal: int = 1,
     fix: int | None = None,
 ) -> str:
-    """Имя, под которым файл ляжет в студию, — и то, которым диктору его назвать."""
+    """Имя записи для базы и хранилища."""
     parts = [book_token(book_code) or "BOOK"]
     chapter_part = chapter_token(chapter)
     if chapter_part:

@@ -879,10 +879,8 @@ class StudioSettings(Base):
     #: rubles per dollar, for providers that bill in dollars (DeepSeek). Set from the
     #: central bank rate on the day it was last touched; a number nobody updates in code.
     usd_rub_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    #: срок записи утверждённой роли, «ГГГГ-ММ-ДД», конец дня по Москве (решение владельца
-    #: 01.10: один общий срок, продление — по договорённости)
-    role_deadline_date: Mapped[str] = mapped_column(String(10), nullable=False, default="2026-12-31",
-                                                    server_default="2026-12-31")
+    #: дата сдачи по умолчанию, если студия договорилась об общем сроке
+    role_deadline_date: Mapped[str] = mapped_column(String(10), nullable=False, default="", server_default="")
     #: день (МСК), когда уже ушла утренняя сводка сроков владельцу — чтобы не дважды
     deadline_digest_day: Mapped[str] = mapped_column(String(10), nullable=False, default="", server_default="")
     #: когда бот последний раз составлял владельцу сводку «кто вышел на связь»
@@ -1331,7 +1329,7 @@ class RoleDeadline(Base):
     book_id: Mapped[str] = mapped_column(String(36), nullable=False)
     actor_name: Mapped[str] = mapped_column(String(120), nullable=False)
     kind: Mapped[str] = mapped_column(String(10), nullable=False)  # audition | role
-    due_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     #: done | manual | replaced | removed | changed | baseline | declined | voiced

@@ -164,7 +164,7 @@ function buildSteps(me: MeResponse): Step[] {
           </p>
           {me.auth_source === "telegram" ? (
             <p>
-              For a book currently in production, you can also send takes to the Telegram bot: a chapter file or the whole role in one file, with any filename. The bot will split it by chapter and send a report.
+              For a book currently in production, you can also send takes to the Telegram bot: name a whole-role file <code>Book_WholeRole_Character_Surname GivenName.wav</code>. The bot will split it by chapter and send a report.
             </p>
           ) : null}
         </>

@@ -99,7 +99,10 @@ def dictor_press(db, *, tid: str, chat_id, data: str, now: datetime) -> list[Out
         word = {1: "+1 day", 2: "+2 days", 7: "+7 days", 14: "+14 days"}
         buttons = {"inline_keyboard": [[{"text": word[d], "callback_data": f"{DL_PREFIX}e{d}:{character_id}"}
                                         for d in days_allowed]]}
-        now_due = f"Current deadline: {_due(db, row)}." if row.due_at > now else f"Deadline passed {_due(db, row)}."
+        if row.due_at is None:
+            now_due = _due(db, row)
+        else:
+            now_due = f"Current deadline: {_due(db, row)}." if row.due_at > now else f"Deadline passed {_due(db, row)}."
         return [send(chat_id, f"{now_due} How much more time do you need?", buttons)]
     if action.startswith("e") and action[1:].isdigit():
         days = int(action[1:])

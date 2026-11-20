@@ -225,7 +225,7 @@ def test_welcome_says_takes_can_be_sent_to_bot():
     from app.services.bot_dialog import WELCOME
     assert "send a file here" in WELCOME
     assert "for the book currently being recorded" in WELCOME
-    assert "with any filename" in WELCOME
+    assert "Book_WholeRole_Character_Surname GivenName.wav" in WELCOME
 
 
 def test_existing_russian_keyboard_still_routes_without_resetting_a_password(db):

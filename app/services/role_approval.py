@@ -54,59 +54,26 @@ def _help_lines() -> list[str]:
     return lines + [f"Need more time? {studio.write_to()}."]
 
 
-def naming_block(*, book_title: str, book_code: str, chapter_index: int, chapter_label: str, role: str,
-                 actor_name: str, audition: bool) -> list[str]:
-    """Как диктору называть файлы — с примером для него самого и его роли.
-
-    Беда: дикторы присылали файлы как придётся, а бот сопоставляет запись с главой и
-    ролью по имени. Пример собирает та же функция, что даёт имя при сохранении, иначе
-    транслитерация разъехалась бы: код книги — через `book_token` («КП» кириллицей, в файле — `KP`).
-    """
-    from app.services.audio_naming import book_token, chapter_token, file_extension, latin_word
-
-    # Токены считаем теми же помощниками, что собирают имя при сохранении, а не разбираем
-    # готовое имя обратно по «_»: у главы без номера («Пролог») токена главы в имени нет,
-    # и разбор по позициям падал бы, а письмо диктору не должно зависеть от подсказки.
-    book_token_ = book_token(book_code) or "BOOK"
-    chapter_token_ = chapter_token(chapter_label) or "Ch01"
-    role_token = latin_word(role) or "Role"
-    actor_token = latin_word(actor_name) or "Unknown"
-    example = f"{book_token_}_{chapter_token_}_{role_token}_{actor_token}.{file_extension('x.wav')}"
-    chapter_number = int(chapter_token_[2:])
-    first = ("Use the same naming format for auditions. After approval, record the role chapter by chapter: one file per chapter."
-             if audition else "Record the role chapter by chapter: one file per chapter.")
-    return [
-        first,
-        f"Filename example: {example}",
-        f"{book_token_} — book («{str(book_title or '').strip()}»)",
-        f"{chapter_token_} — chapter {chapter_number} (Chapter)",
-        f"{role_token} — role in Latin letters",
-        f"{actor_token} — actor surname and given name in Latin letters, without spaces",
-    ]
-
-
-def _naming_for(db, *, book_id: str, book_title: str, role: str, actor_name: str, audition: bool) -> list[str]:
-    """Блок для письма: первая по номеру глава роли; нет глав — `Ch01`."""
-    from app.models import Character
-    from app.services.audio_naming import chapter_token
+def naming_block(*, book_title: str, role: str, actor_name: str, audition: bool) -> list[str]:
+    """Пример для конкретной роли и диктора, без привязки к главе."""
+    from app.services.audio_naming import recording_input_name
     from app.services.audio_uploads import derive_book_code
-    from app.services.role_deadlines import role_chapters
 
-    character = db.query(Character).filter(Character.book_id == str(book_id or ""),
-                                           Character.name == str(role or "")).first()
-    chapters = role_chapters(db, character) if character is not None else {}
-    # Первая глава, из названия которой выходит номер: «Пролог» или «Эпилог» токена главы не
-    # дают, а пример в письме должен выглядеть как настоящее имя файла.
-    index, label = 1, 'Chapter 1'
-    for number in sorted(chapters):
-        if chapter_token(chapters[number]):
-            index, label = number, chapters[number]
-            break
+    example = recording_input_name(book_code=derive_book_code(book_title), chapter="", role=role,
+                                   actor_name=actor_name, kind="audition" if audition else "take")
+    if audition:
+        return [f"Name the audition file like this: {example}"] if example else []
+    lines = ["Name the whole-role file using this format: Book_WholeRole_Character_Surname GivenName.wav"]
+    if example:
+        lines.append(f"Filename example: {example}")
+    return lines
+
+
+def _naming_for(*, book_title: str, role: str, actor_name: str, audition: bool) -> list[str]:
     try:
-        return naming_block(book_title=book_title, book_code=derive_book_code(book_title), chapter_index=index,
-                            chapter_label=label, role=role, actor_name=actor_name, audition=audition)
-    except Exception:  # noqa: BLE001 — подсказка об именах не вправе сорвать письмо и смену диктора
-        logger.exception("не собрался блок об именах файлов для роли %r", role)
+        return naming_block(book_title=book_title, role=role, actor_name=actor_name, audition=audition)
+    except Exception:
+        logger.exception("Не удалось собрать пример имени файла для роли %r", role)
         return []
 
 
@@ -122,7 +89,7 @@ def approval_notice(*, role: str, book_title: str, link: str = "", also_in=(), d
         # Роль персонажа цикла — одна на все книги (профиль автора): одно письмо, не пачка.
         lines.append(f"Also in: {others}")
     lines += _terms_lines(due_text, cost_rub)
-    lines += list(naming) or ["Record the entire role chapter by chapter."]
+    lines += list(naming) or ["Name the whole-role file using this format: Book_WholeRole_Character_Surname GivenName.wav"]
     if str(link or "").strip():
         lines.append(f"All lines for this role: {link.strip()}")
     return "\n".join(lines + _help_lines())
@@ -406,14 +373,14 @@ def notify_role_approved(db, *, book_id: str, book_title: str, role: str, actor_
 
     due_text, cost_rub = _terms(db, book_id=book_id, role=role, kind="audition" if tentative else "role")
     if tentative:
-        naming = _naming_for(db, book_id=book_id, book_title=book_title, role=role, actor_name=name, audition=True)
+        naming = _naming_for(book_title=book_title, role=role, actor_name=name, audition=True)
         notice = audition_notice(role=role, book_title=book_title, link=link, due_text=due_text, cost_rub=cost_rub,
                                  naming=naming)
         relay = relay_notice(role=role, book_title=book_title, actor_name=name, link=link, header=header)
         return _deliver(db, chat_id=chat_id, actor_name=name, notice_text=notice, relay_text=relay, kind=kind,
                         character_id=character_id)
 
-    naming = _naming_for(db, book_id=book_id, book_title=book_title, role=role, actor_name=name, audition=False)
+    naming = _naming_for(book_title=book_title, role=role, actor_name=name, audition=False)
     notice = approval_notice(role=role, book_title=book_title, link=link, also_in=also_in, due_text=due_text,
                              cost_rub=cost_rub, naming=naming)
     relay = relay_notice(role=role, book_title=book_title, actor_name=name, link=link, header=header, also_in=also_in)

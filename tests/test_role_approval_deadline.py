@@ -51,7 +51,7 @@ def test_the_audition_letter_has_48_hours_cost_and_links(db, monkeypatch):
 
 def test_the_approval_letter_runs_to_the_studio_date(db, monkeypatch):
     text = _sent(db, monkeypatch, "Ветрова Ольга", cost=4200)
-    assert "Deadline: 31 December 2026" in text and "Role fee: 4 200 ₽" in text
+    assert "Deadline: As soon as possible!" in text and "Role fee: 4 200 ₽" in text
     assert "https://studio.example/app/help" in text
 
 
@@ -60,6 +60,7 @@ def test_no_cost_no_cost_line(db, monkeypatch):
 
 
 def test_format_due():
+    assert role_deadlines.format_due(None, kind="role") == "As soon as possible!"
     assert role_deadlines.format_due(datetime(2026, 10, 3, 15, 0, 0), kind="audition") == "3 October, 18:00 MSK (48 hours)"
     assert role_deadlines.format_due(datetime(2026, 12, 31, 20, 59, 59), kind="role") == "31 December 2026"
 
