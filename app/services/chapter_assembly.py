@@ -1,13 +1,14 @@
 """Рабочая сборка начинается с рассказчика; новые версии не заменяют ручной монтаж."""
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import fcntl
 import hashlib
 import json
 import os
 import re
 import errno
+import stat
 from pathlib import Path
 from uuid import uuid4
 from xml.etree import ElementTree as ET
@@ -48,19 +49,23 @@ def narrator_ready_reason(db, chapter):
     return ""
 
 
+def _open_child(parent, name):
+    if name in {"", ".", ".."} or "/" in name or '\\' in name:
+        raise ValueError("unsafe_assembly_directory")
+    try:
+        os.mkdir(name, mode=0o700, dir_fd=parent)
+    except FileExistsError:
+        pass
+    return os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+
+
 @contextmanager
 def _directory(root, parts):
     # Корень NAS не создаём: отсутствие точки монтирования должно остаться ошибкой.
     descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         for name in parts:
-            if name in {"", ".", ".."} or "/" in name or "\\" in name:
-                raise ValueError("unsafe_assembly_directory")
-            try:
-                os.mkdir(name, mode=0o700, dir_fd=descriptor)
-            except FileExistsError:
-                pass
-            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            child = _open_child(descriptor, name)
             os.close(descriptor)
             descriptor = child
         yield descriptor
@@ -114,7 +119,7 @@ def _media(directory, item):
         suffix = suffix if suffix in {".wav", ".flac", ".mp3", ".ogg", ".m4a", ".aiff", ".aif"} else ".audio"
         name = hashlib.sha256((str(item.id) + ":" + digest).encode()).hexdigest()[:32] + suffix
         try:
-            cached = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
+            cached = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
         except FileNotFoundError:
             needs_copy = True
         except OSError as exc:
@@ -123,8 +128,12 @@ def _media(directory, item):
             name = Path(name).stem + "_" + uuid4().hex[:12] + suffix
             needs_copy = True
         else:
-            with os.fdopen(cached, "rb") as existing:
-                needs_copy = _digest(existing) != (digest, size)
+            if not stat.S_ISREG(os.fstat(cached).st_mode):
+                os.close(cached)
+                needs_copy = True
+            else:
+                with os.fdopen(cached, "rb") as existing:
+                    needs_copy = _digest(existing) != (digest, size)
             if needs_copy:
                 # Ручной WAV не заменяем и не перемещаем: новая версия получает
                 # отдельное имя для исходных байтов, прежний монтаж остаётся цел.
@@ -200,7 +209,7 @@ def assemble_narrator_chapter(db, chapter_id):
     previous = str(chapter.session_key or "")
     # Копирование не держит SQLite writer; повторная сверка входа происходит ниже.
     db.commit()
-    with _directory(root, parts) as folder:
+    with _directory(root, parts) as folder, ExitStack() as opened:
         lock = os.open(".assembly.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
                        0o600, dir_fd=folder)
         try:
@@ -213,12 +222,30 @@ def assemble_narrator_chapter(db, chapter_id):
                 record_audit_assembly(db, chapter.id, narrator_only=True)
                 chapter.session_outdated_at = None
                 return {"written": False, "reason": "unchanged", "replaced": "", "session_key": previous}
+            # Отпечаток входа остаётся прежним: оформление новой рабочей копии
+            # само по себе не запускает пересборку уже собранной главы.
+            xml, skipped = delivery.build_chapter_session_with_stats(db, chapter.id, relative=True,
+                include_unplaced=True, include_missing=True, working_layout=True)
+            if not xml:
+                return {"written": False, "reason": "empty_session", "replaced": ""}
             mapping = {}
-            with _directory(root, (*parts, "assembly-media")) as media:
-                for item in sources:
-                    name, _checksum, _size = _media(media, item)
-                    path = os.path.abspath(audio_storage.resolve_path(item.stored_key, location=item.location or "local"))
-                    mapping[path] = "assembly-media/" + name
+            from app.services.role_identity import chapter_roles
+            identities = chapter_roles(db, chapter.id)
+            ambient_ids = {str(item.id) for item in delivery.chapter_ambient_files(db, chapter.id)}
+            directories = {}
+            for item in sources:
+                kind = identities.kind(item.role, getattr(item, "role_ref", ""))
+                # Это рабочие копии исходных байтов, а не результат конвертации
+                # Audition: старые проекты и пользовательские файлы не трогаем.
+                subfolder = ("" if kind == "system_narrator" or str(item.id) in ambient_ids else
+                             "Conformed Files" if kind == "character" else "Imported Files")
+                if subfolder and subfolder not in directories:
+                    descriptor = _open_child(folder, subfolder)
+                    opened.callback(os.close, descriptor)
+                    directories[subfolder] = descriptor
+                name, _checksum, _size = _media(directories.get(subfolder, folder), item)
+                path = os.path.abspath(audio_storage.resolve_path(item.stored_key, location=item.location or "local"))
+                mapping[path] = f"{subfolder}/{name}" if subfolder else name
             # Полная сериализация XML превращает CDATA пресетов эффектов в текст.
             # Проверяем документ безопасным парсером, переписываем только file-теги.
             def rewrite_file(match):
@@ -235,6 +262,17 @@ def assemble_narrator_chapter(db, chapter_id):
                 return {"written": False, "reason": "assembly_input_changed", "replaced": ""}
             chapter = latest[0]
             name = _next_session_name(folder, chapter.chapter_index, (Path(chapter.session_key or "").name,))
+            # После переименования открытый каталог ещё доступен через дескриптор,
+            # но сохранённый относительный путь уже ведёт в другое место.
+            try:
+                chapter_stat = os.stat(os.path.join(root, *parts), follow_symlinks=False)
+                same_folders = os.path.samestat(os.fstat(folder), chapter_stat) and all(
+                    os.path.samestat(os.fstat(fd), os.stat(path, dir_fd=folder, follow_symlinks=False))
+                    for path, fd in directories.items())
+            except FileNotFoundError:
+                same_folders = False
+            if not same_folders:
+                return {"written": False, "reason": "assembly_directory_changed", "replaced": ""}
             _publish(folder, name, lambda target: target.write(data))
             record_audit_assembly(db, chapter.id, narrator_only=True)
             chapter.session_key = "/".join((*parts, name))

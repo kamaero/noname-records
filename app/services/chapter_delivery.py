@@ -806,7 +806,7 @@ NOISE_HUE = 4 * HUE_STEP        # жёлтый
 CHARACTER_HUES = tuple(round(k * HUE_STEP, 1) for k in (0, *range(9, 19), *range(20, 25)))
 
 
-def colour_tracks(tracks: list[SessionTrack], *, identities=None) -> None:
+def colour_tracks(tracks: list[SessionTrack], *, identities=None, voices_only: bool = False) -> None:
     """Раскрасить дорожки сессии. Цвет персонажа выводится из имени — Хдыбдяр одного
     цвета во всех главах; совпади он с соседом по главе, берётся следующий свободный.
     Ролей больше, чем цветов (16), — дальше по кругу: лучше повтор, чем серая дорожка."""
@@ -816,11 +816,11 @@ def colour_tracks(tracks: list[SessionTrack], *, identities=None) -> None:
         name = str(track.name or "")
         if is_narrator(name):
             track.hue = NARRATOR_HUE
-        elif name in AMBIENT_TRACKS:
+        elif not voices_only and name in AMBIENT_TRACKS:
             track.hue = AMBIENT_HUE
-        elif name.startswith("Soundtrack"):
+        elif not voices_only and name.startswith("Soundtrack"):
             track.hue = SOUNDTRACK_HUE
-        elif name.startswith("Environmental"):
+        elif not voices_only and name.startswith("Environmental"):
             track.hue = NOISE_HUE
         else:
             # crc32, а не hash(): у hash() строк своя соль в каждом процессе
@@ -846,7 +846,7 @@ def build_chapter_session(db, chapter_id: str, *, sample_rate: int | None = None
 
 def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | None = None,
                                      relative: bool = False, include_audit: bool = True, include_unplaced: bool = True,
-                                     include_missing: bool = False) -> tuple[str | None, int]:
+                                     include_missing: bool = False, working_layout: bool = False) -> tuple[str | None, int]:
     """То же самое, что `build_chapter_session`, и вдобавок число маркеров без места.
 
     `None, 0` — главы нет. Число пропущенных — так архивация (см. `archive_chapter_session`)
@@ -894,20 +894,40 @@ def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | 
                 relative=str(item.canonical_filename or "") if relative else "",
             ))
 
-    tracks = [SessionTrack(name=row["role"], clips=clips_by_role.get(row["role"], [])) for row in status["roles"]]
+    voice_tracks = [SessionTrack(name=row["role"], clips=clips_by_role.get(row["role"], [])) for row in status["roles"]]
+    ambient_tracks = []
     try:
-        tracks += ambient_session_tracks(db, chapter_id, starts, end, relative=relative)
+        ambient_tracks = ambient_session_tracks(db, chapter_id, starts, end, relative=relative)
     except Exception:
         # Эмбиент — подложка поверх записанной главы: его сбой не должен срывать
         # архивацию дублей, как и сбой маркеров ниже.
         logger.exception("эмбиент не лёг в сессию главы %s — сессия соберётся без него", chapter_id)
-    tracks += [SessionTrack(name=name) for name in EXTRA_TRACKS]
+    reserve_tracks = [SessionTrack(name=name) for name in EXTRA_TRACKS]
     from app.services.role_identity import chapter_roles
-    colour_tracks(tracks, identities=chapter_roles(db, chapter_id))
+    identities = chapter_roles(db, chapter_id)
+    tracks = voice_tracks + ambient_tracks + reserve_tracks
+    if working_layout:
+        from app.services.chapter_titles import TITLE_ROLE
+        from app.services.shared_runtime import NARRATOR_DISPLAY_NAME
+        # Разделяем именно объекты дорожек: персонаж с именем «Ambient 1» или
+        # «Track 1» не должен вытеснить служебную дорожку или получить её пресет.
+        titles = [track for track in voice_tracks if track.name == TITLE_ROLE]
+        narrators = [track for track in voice_tracks if identities.is_narrator(track.name)]
+        special_ids = {id(track) for track in titles + narrators}
+        characters = [track for track in voice_tracks if id(track) not in special_ids]
+        ambient_tracks = ambient_tracks or [SessionTrack(name=name, channel_type="stereo") for name in AMBIENT_TRACKS]
+        titles = titles or [SessionTrack(name=TITLE_ROLE)]
+        narrators = narrators or [SessionTrack(name=NARRATOR_DISPLAY_NAME)]
+        tracks = (ambient_tracks + [SessionTrack(name="FX", channel_type="stereo")] + titles
+                  + [SessionTrack(name="Track 1", channel_type="stereo")] + narrators + characters + reserve_tracks)
+        colour_tracks(voice_tracks, identities=identities, voices_only=True)
+        colour_tracks(ambient_tracks + reserve_tracks, identities=identities)
+    else:
+        colour_tracks(tracks, identities=identities)
     # Пресеты владельца — из его шаблона (`session_template`); нет шаблона — дорожки голые.
     from app.services import session_template
 
-    session_template.apply_template(tracks, session_template.load_template(),
+    session_template.apply_template(voice_tracks if working_layout else tracks, session_template.load_template(),
                                     voices={row["role"] for row in status["roles"]})
     # Витрина «Автор - "Название"», а не голый `title`: имя сессии монтажёр читает,
     # а код книги для имён файлов берётся из `title` отдельно (ниже, `derive_book_code`).

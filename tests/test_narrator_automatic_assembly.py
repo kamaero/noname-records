@@ -86,7 +86,8 @@ def test_narrator_alone_builds_a_real_draft_and_reserves_audit_once(studio):
         xml = project.read_text(encoding="utf-8-sig")
         parsed = ET.fromstring(xml)
         assert "MISSING · Speaker" in xml and "The gate opened slowly." in xml
-        assert "Названия глав" not in xml or "MISSING" in xml
+        assert all(track.find("audioClip") is None for track in parsed.findall("./session/tracks/audioTrack")
+                   if track.findtext("trackParameters/name") == "Названия глав")
         assert not delivery.chapter_recording_status(db, chapter.id)["ready"]
         for file in parsed.findall("./files/file"):
             assert (project.parent / file.attrib["relativePath"]).read_bytes() == (local / "narrator.wav").read_bytes()
@@ -133,9 +134,9 @@ def test_new_revision_keeps_edited_manual_project_and_reuses_unchanged_media(stu
         assert old.name == "глава01_ver1.sesx"
         manual = old.with_name("ГЛАВА01_ver10.SESX")
         manual.write_bytes(b"manual session")
-        old.write_bytes(b"manual editing must survive")
-        media = list(old.parent.joinpath("assembly-media").iterdir())
+        media = [old.parent / entry.attrib["relativePath"] for entry in ET.fromstring(old.read_text(encoding="utf-8-sig")).findall("./files/file")]
         inode = media[0].stat().st_ino
+        old.write_bytes(b"manual editing must survive")
         db.get(V2Segment, "assembly-chapter:2").text = "Another synthetic sentence."
         db.get(V2Attribution, "assembly-attr-2").span_end = len("Another synthetic sentence.")
         db.commit()
@@ -144,7 +145,7 @@ def test_new_revision_keeps_edited_manual_project_and_reuses_unchanged_media(stu
         assert second["written"] and (root / second["session_key"]).name == "глава01_ver11.sesx"
         assert manual.read_bytes() == b"manual session"
         assert old.read_bytes() == b"manual editing must survive"
-        assert len(list(old.parent.joinpath("assembly-media").iterdir())) == 1
+        assert len(list(old.parent.glob("*.wav"))) == 1
         assert media[0].stat().st_ino == inode
         assert len(list(old.parent.glob("*.sesx"))) == 2
         renamed = root / second["session_key"]
@@ -278,7 +279,7 @@ def test_changed_cached_media_and_symlink_never_replace_user_files(studio):
         db.commit()
         root = nas if first["session_location"] == "nas" else local
         old = root / first["session_key"]
-        media = next(old.parent.joinpath("assembly-media").iterdir())
+        media = old.parent / ET.fromstring(old.read_text(encoding="utf-8-sig")).find("./files/file").attrib["relativePath"]
         media.write_bytes(b"manual media edits")
         db.get(V2Segment, "assembly-chapter:2").text = "A new synthetic gap."
         db.get(V2Attribution, "assembly-attr-2").span_end = len("A new synthetic gap.")
@@ -346,3 +347,197 @@ def test_known_completed_stale_audit_allows_only_new_input(studio, monkeypatch):
         assemble_narrator_chapter(db, "assembly-chapter")
         db.commit()
     assert lifecycle.enqueue_audit("assembly-chapter") and len(queued) == 1
+
+
+def test_working_layout_preserves_titles_pairs_presets_and_existing_folders(studio, monkeypatch):
+    from app.models import SoundMarker
+    from app.services import session_template
+    from app.services.ambient_pairs import import_pair
+    from app.services.chapter_titles import TITLE_ROLE
+    from app.services.role_identity import TITLE_REF
+    from tests.test_ambient_pairs import sources
+    from tests.test_session_template import _template, _track, VO
+
+    factory, local, nas, _ = studio
+    with factory() as db:
+        # Имя персонажа совпадает с пустой служебной дорожкой: обе нужны в XML.
+        db.get(Character, "speaker").name = "Track 1"
+        db.get(V2Attribution, "assembly-attr-1").speaker = "Track 1"
+        db.add(V2Segment(id="assembly-title", book_id="assembly-book", chapter_id="assembly-chapter",
+                         ordinal=-1, kind="heading", text="Chapter 1"))
+        for aid, role, ref in [("title-take", TITLE_ROLE, TITLE_REF), ("actor-take", "Track 1", "character:speaker")]:
+            payload = ("synthetic " + aid).encode()
+            (local / (aid + ".wav")).write_bytes(payload)
+            db.add(AudioFile(id=aid, role_book_id="assembly-book", role_ref=ref, role=role,
+                book_code="SB", chapter="Chapter 1", kind="take", original_filename=aid + ".wav",
+                canonical_filename=aid + ".wav", stored_key=aid + ".wav", mime_type="audio/wav",
+                size_bytes=len(payload), md5=hashlib.md5(payload).hexdigest(), duration_seconds=10))
+            lines = [{"matched": True, "start": 1., "end": 2.}]
+            if aid == "title-take":
+                lines[0]["takes"] = [{"start": 1., "end": 2.}, {"start": 4., "end": 5.}]
+            db.add(AsrJob(id=aid + "-job", audio_file_id=aid, chapter_id="assembly-chapter",
+                         status="done", language="en", alignment_json=json.dumps({"lines": lines})))
+        db.add(SoundMarker(id="assembly-scene", book_id="assembly-book", chapter_id="assembly-chapter",
+            segment_id="assembly-chapter:0", kind="scene", status="active", payload={}, text_sha256="sample"))
+        db.commit()
+        a, b = sources(local)
+        monkeypatch.setattr(settings, "local_reserve_gb", 0)
+        import_pair(db, chapter_id="assembly-chapter", marker_id="assembly-scene", variant_a=a, variant_b=b, apply=True)
+        db.commit()
+        monkeypatch.setattr(delivery, "_spans_on_timeline", lambda *_: {"assembly-scene": (3., 2.)})
+        template = session_template.parse_template(_template(_track("Track 1", [VO(0)])))
+        monkeypatch.setattr(session_template, "load_template", lambda: template)
+        root = nas if str(settings.audio_nas_path or "") else local
+        folder = root / "SB" / "Chapter01"
+        folder.mkdir(parents=True, exist_ok=True)
+        for subfolder in ("Imported Files", "Conformed Files", "assembly-media"):
+            (folder / subfolder).mkdir()
+            (folder / subfolder / "manual.wav").write_bytes(b"keep manual media")
+        (folder / "глава01_ver7.sesx").write_bytes(b"keep manual session")
+        first = assemble_narrator_chapter(db, "assembly-chapter")
+        db.commit()
+        project = root / first["session_key"]
+        parsed = ET.fromstring(project.read_text(encoding="utf-8-sig"))
+        tracks = parsed.findall("./session/tracks/audioTrack")
+        names = [track.findtext("trackParameters/name") for track in tracks]
+        assert names == ["Ambient 1", "Ambient 2", "FX", TITLE_ROLE, "Track 1", NARRATOR_DISPLAY_NAME,
+                         "Track 1", *delivery.EXTRA_TRACKS]
+        assert project.name == "глава01_ver8.sesx"
+        assert tracks[4].find("audioClip") is None and tracks[4].find("effectsRack") is None
+        assert tracks[4].find("trackAudioParameters").get("audioChannelType") == "stereo"
+        assert tracks[6].find("audioClip") is not None and tracks[6].find("effectsRack") is not None
+        assert tracks[0].find("trackAudioParameters/component[@id='trackMute']") is None
+        assert tracks[1].find("trackAudioParameters/component[@id='trackMute']") is not None
+        assert len(tracks[3].findall("audioClip")) == 2
+        files = {entry.get("id"): entry for entry in parsed.findall("./files/file")}
+        assert {(project.parent / entry.get("relativePath")).read_bytes() for entry in files.values()} == {
+            (local / name).read_bytes() for name in ("narrator.wav", "title-take.wav", "actor-take.wav", "a.wav", "b.wav")}
+        expected_subfolders = {0: ".", 1: ".", 3: "Imported Files", 5: ".", 6: "Conformed Files"}
+        for index, expected in expected_subfolders.items():
+            for clip in tracks[index].findall("audioClip"):
+                entry = files[clip.get("fileID")]
+                relative = Path(entry.get("relativePath"))
+                assert str(relative.parent) == expected
+                assert (project.parent / relative).read_bytes() == Path(entry.get("absolutePath")).read_bytes()
+        snapshot = project.read_bytes()
+        db.get(V2Segment, "assembly-chapter:2").text = "A changed ending."
+        db.get(V2Attribution, "assembly-attr-2").span_end = len("A changed ending.")
+        db.commit()
+        second = assemble_narrator_chapter(db, "assembly-chapter")
+        db.commit()
+        assert Path(second["session_key"]).name == "глава01_ver9.sesx"
+        assert project.read_bytes() == snapshot
+        assert assemble_narrator_chapter(db, "assembly-chapter")["reason"] == "unchanged"
+        for subfolder in ("Imported Files", "Conformed Files", "assembly-media"):
+            assert (folder / subfolder / "manual.wav").read_bytes() == b"keep manual media"
+        assert (folder / "глава01_ver7.sesx").read_bytes() == b"keep manual session"
+        ordinary = ET.fromstring(delivery.build_chapter_session(db, "assembly-chapter", relative=True).lstrip("\ufeff"))
+        assert ordinary.find("./session/tracks/audioTrack").findtext("trackParameters/name") not in {"Ambient 1", "Ambient 2", "FX"}
+        assert all("/" not in item.get("relativePath") for item in ordinary.findall("./files/file"))
+
+
+def test_existing_legacy_layout_snapshot_is_unchanged_after_upgrade(studio, monkeypatch):
+    from app.services.chapter_assembly import _inputs
+
+    factory, local, nas, _ = studio
+    with factory() as db:
+        state, reason = _inputs(db, "assembly-chapter")
+        assert not reason
+        chapter, legacy_xml, _sources, digest, _skipped = state
+        root = nas if str(settings.audio_nas_path or "") else local
+        key = "SB/Chapter01/глава01_ver3.sesx"
+        path = root / key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(legacy_xml, encoding="utf-8")
+        chapter.session_key, chapter.session_location = key, "nas" if root == nas else "local"
+        chapter.session_input_sha256 = digest
+        chapter.session_archived_at = utcnow_naive()
+        db.commit()
+        previous = path.read_bytes()
+        build = delivery.build_chapter_session_with_stats
+        def unchanged_only(*args, **kwargs):
+            assert not kwargs.get("working_layout"), "unchanged snapshot must not render or publish a replacement"
+            return build(*args, **kwargs)
+        monkeypatch.setattr(delivery, "build_chapter_session_with_stats", unchanged_only)
+        assert assemble_narrator_chapter(db, chapter.id)["reason"] == "unchanged"
+        assert path.read_bytes() == previous
+        assert list(path.parent.glob("*.sesx")) == [path]
+
+
+@pytest.mark.parametrize("collision", ["symlink", "directory"])
+def test_working_media_collision_preserves_foreign_entry(studio, collision):
+    from app.services.chapter_assembly import _media
+    import os
+
+    factory, local, _nas, _ = studio
+    with factory() as db:
+        item = db.get(AudioFile, "assembly-narrator")
+        name = hashlib.sha256((item.id + ":" + item.md5).encode()).hexdigest()[:32] + ".wav"
+        folder = local / "collision"
+        folder.mkdir()
+        existing = folder / name
+        if collision == "symlink":
+            existing.symlink_to(local / "narrator.wav")
+        else:
+            existing.mkdir()
+        descriptor = os.open(folder, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            copied, _digest, _size = _media(descriptor, item)
+        finally:
+            os.close(descriptor)
+        assert copied != name
+        assert (folder / copied).read_bytes() == (local / "narrator.wav").read_bytes()
+        assert existing.is_symlink() if collision == "symlink" else existing.is_dir()
+
+
+def test_renamed_media_directory_prevents_publication(studio, monkeypatch):
+    from app.services import chapter_assembly
+
+    factory, local, nas, queued = studio
+    root = nas if settings.audio_nas_path else local
+    chapter = root / "SB" / "Chapter01"
+    voices = chapter / "Conformed Files"
+    moved = chapter / "manual voices"
+    voices.mkdir(parents=True)
+    (voices / "manual.wav").write_bytes(b"original edit")
+    media = chapter_assembly._media
+    copied = []
+
+    def rename_after_first_voice(directory, item):
+        result = media(directory, item)
+        if item.id.startswith("voice-"):
+            copied.append(result[0])
+            if len(copied) == 1:
+                voices.rename(moved)
+                voices.mkdir()
+                (voices / "manual.wav").write_bytes(b"new edit")
+        return result
+
+    monkeypatch.setattr(chapter_assembly, "_media", rename_after_first_voice)
+    with factory() as db:
+        for index in range(2):
+            aid = f"voice-{index}"
+            role = f"Actor {index}"
+            ref = "character:" + aid
+            db.add(Character(id=aid, book_id="assembly-book", name=role))
+            sid = f"voice-line-{index}"
+            db.add(V2Segment(id=sid, chapter_id="assembly-chapter", book_id="assembly-book",
+                             ordinal=3 + index, text="Hello.", kind="paragraph"))
+            db.add(V2Attribution(id="attr-" + aid, segment_id=sid, version=1, speaker=role,
+                                 role_ref=ref, span_start=0, span_end=6))
+            (local / (aid + ".wav")).write_bytes(aid.encode())
+            db.add(AudioFile(id=aid, role_book_id="assembly-book", role_ref=ref, role=role,
+                book_code="SB", chapter="Chapter 1", kind="take", original_filename=aid + ".wav",
+                canonical_filename=aid + ".wav", stored_key=aid + ".wav", mime_type="audio/wav",
+                size_bytes=len(aid), md5=hashlib.md5(aid.encode()).hexdigest(), duration_seconds=2))
+            db.add(AsrJob(id="job-" + aid, audio_file_id=aid, chapter_id="assembly-chapter", status="done",
+                          alignment_json=json.dumps({"lines": [{"matched": True, "start": 0., "end": 1.}]})))
+        db.commit()
+        result = assemble_narrator_chapter(db, "assembly-chapter")
+        assert result["reason"] == "assembly_directory_changed" and not result["written"]
+        db.commit()
+        assert not db.get(ScriptChapter, "assembly-chapter").session_key
+    assert len(copied) == 2 and all((moved / name).is_file() for name in copied)
+    assert (moved / "manual.wav").read_bytes() == b"original edit"
+    assert (voices / "manual.wav").read_bytes() == b"new edit"
+    assert not list(chapter.glob("*.sesx")) and not queued
