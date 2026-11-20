@@ -46,7 +46,7 @@ class TestWhatTheMessageSays:
     def test_it_says_what_to_do_next(self):
         text = approval_notice(role="Дгарнин", book_title="Карта переправы")
 
-        assert "chapter by chapter" in text
+        assert "Book_WholeRole_Character_Surname GivenName" in text
 
     def test_it_carries_a_link_to_the_role_when_there_is_one(self):
         text = approval_notice(role="Дгарнин", book_title="Карта переправы", link="https://studio.example/app/reader/role/b1")

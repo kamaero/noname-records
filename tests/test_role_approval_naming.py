@@ -1,5 +1,4 @@
-"""Письма об утверждении и о пробе учат называть файлы — пример собирает та же функция,
-что даёт имя при сохранении, поэтому транслитерация живёт в одном месте."""
+"""Примеры имён файлов в письмах об утверждении и о пробе."""
 from datetime import datetime
 
 import pytest
@@ -8,11 +7,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 from app.db import Base
-from app.models import Character, ScriptBook, ScriptChapter, TelegramAuthAccount, User, UserRole
+from app.models import Character, ScriptBook, TelegramAuthAccount, User, UserRole
 from app.services import role_approval
-
-EXAMPLE = "TO_Ch13_Mirael_MorkenMelvis.wav"
-
 
 @pytest.fixture()
 def db(monkeypatch):
@@ -23,8 +19,6 @@ def db(monkeypatch):
         session.add(ScriptBook(id="b1", title="Тайны Острова", display_title="Тайны Острова",
                                source_filename="x.docx", source_format="docx", total_chars=0,
                                author_sheets_x1000=0, chapter_count=2, has_chapters="true", status="processing"))
-        session.add(ScriptChapter(id="ch13", book_id="b1", chapter_index=13, chapter_title="Глава 13"))
-        session.add(ScriptChapter(id="ch20", book_id="b1", chapter_index=20, chapter_title="Глава 20"))
         session.add(Character(id="c1", book_id="b1", name="Мираэль", aliases="", character_color="",
                               appears_in="20,13"))
         session.add(Character(id="c2", book_id="b1", name="Безглавый", aliases="", character_color=""))
@@ -47,42 +41,19 @@ def _letter(db, monkeypatch, actor, role="Мираэль"):
 
 def test_approval_letter_teaches_file_names(db, monkeypatch):
     text = _letter(db, monkeypatch, "Моркен Мелвис")
-    assert EXAMPLE in text
-    assert 'TO — book («Тайны Острова»)' in text
-    assert 'one file per chapter' in text
-    assert 'Ch13 — chapter 13 (Chapter)' in text
-    assert 'Mirael — role in Latin letters' in text
-    assert 'MorkenMelvis — actor surname and given name in Latin letters, without spaces' in text
-    assert 'Record the entire role chapter by chapter.' not in text
+    assert "Book_WholeRole_Character_Surname GivenName.wav" in text
+    assert "ТО_WholeRole_Мираэль_Моркен Мелвис.wav" in text
 
 
 def test_audition_letter_teaches_file_names(db, monkeypatch):
     text = _letter(db, monkeypatch, "Моркен Мелвис?")
-    assert EXAMPLE in text
-    assert 'TO — book («Тайны Острова»)' in text
-    assert 'Use the same naming format for auditions. After approval, record the role chapter by chapter: one file per chapter.' in text
+    assert "ТО_Мираэль_Моркен Мелвис_proba.wav" in text
 
 
-def test_role_without_chapters_uses_ch01(db, monkeypatch):
-    text = _letter(db, monkeypatch, "Моркен Мелвис", role="Безглавый")
-    assert "TO_Ch01_" in text
-    assert 'Ch01 — chapter 1 (Chapter)' in text
-
-
-def test_prologue_as_first_chapter_does_not_break_the_letter(db, monkeypatch):
-    """У «Пролога» нет токена главы — раньше разбор имени по «_» падал IndexError."""
-    db.add(ScriptChapter(id="ch0", book_id="b1", chapter_index=0, chapter_title="Пролог"))
-    db.get(Character, "c1").appears_in = "0,20,13"
-    db.commit()
-    text = _letter(db, monkeypatch, "Моркен Мелвис")
-    assert EXAMPLE in text and 'Ch13 — chapter 13 (Chapter)' in text
-
-
-def test_a_failing_naming_block_never_breaks_the_letter(db, monkeypatch):
+def test_a_failing_naming_block_keeps_generic_instructions(db, monkeypatch):
     def boom(**kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(role_approval, "naming_block", boom)
     text = _letter(db, monkeypatch, "Моркен Мелвис")
-    assert "Мираэль" in text and 'How to name files' not in text
-    assert 'Record the entire role chapter by chapter.' in text
+    assert "Book_WholeRole_Character_Surname GivenName.wav" in text

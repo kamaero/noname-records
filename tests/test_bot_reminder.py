@@ -27,7 +27,6 @@ NOW = datetime(2026, 10, 5, 9, 0, 0)
 def _studio_settings(monkeypatch):
     monkeypatch.setattr(settings, "app_base_url", "https://studio.example")
     monkeypatch.setattr(settings, "studio_contact_name", "в студию")
-DUE = datetime(2026, 12, 31, 20, 59, 59)
 CHATS = {"Ветрова Ольга": "41", "Иванов Пётр": "42", "Сидорова Анна": "44"}
 
 
@@ -66,7 +65,7 @@ def db(monkeypatch):
         for cid, bid, name, actor, chapters in roles:
             session.add(Character(id=cid, book_id=bid, name=name, actor_name=actor, appears_in=chapters))
             closed = NOW if cid == "c3" else None
-            session.add(RoleDeadline(character_id=cid, book_id=bid, actor_name=actor, kind="role", due_at=DUE,
+            session.add(RoleDeadline(character_id=cid, book_id=bid, actor_name=actor, kind="role", due_at=None,
                                      created_at=NOW, closed_at=closed, close_reason="done" if closed else None))
         session.add(RoleDeadline(character_id="c1", book_id="b1", actor_name="Иванов Пётр", kind="audition",
                                  due_at=NOW, created_at=NOW))
@@ -126,7 +125,7 @@ def test_the_letter_word_for_word(db):
         "«Сезон ветров. Книга 3»:\n"
         "• «Астрид» — 3 chapters\n"
         "\n"
-        "Deadline: 31 December 2026.\n"
+        "As soon as possible!\n"
         "Upload recordings at studio.example. For the book currently being recorded, "
         "you can also send files to the bot. If you need help or more time, "
         "contact в студию."

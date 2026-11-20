@@ -30,7 +30,7 @@ class RoleLine:
     book_title: str
     role: str
     chapters: int
-    due_at: datetime
+    due_at: datetime | None
 
 
 @dataclass
@@ -85,8 +85,9 @@ def reminder_text(target: Target, *, timezone: str = "") -> str:
     for title, roles in sorted(by_book.items(), key=lambda item: item[0].lower()):
         lines.append(f"«{title}»:")
         lines += [f"• «{r.role}» — {_chapters_word(r.chapters)}" for r in roles]
-    due = min(r.due_at for r in target.roles)
-    lines += ["", f"Deadline: {format_due(due, kind='role', timezone=timezone)}.",
+    due = min((r.due_at for r in target.roles if r.due_at is not None), default=None)
+    due_text = format_due(due, kind="role", timezone=timezone)
+    lines += ["", f"Deadline: {due_text}." if due is not None else due_text,
               f"Upload recordings at {studio.site_host()}. For the book currently being recorded, "
               "you can also send files to the bot. If you need help or more time, "
               f"{studio.write_to()}."]

@@ -151,8 +151,11 @@ def person_lines(db, owns: Callable[[str], bool], *, now: datetime, you: bool = 
         if total and done >= total:
             line += " ✓"
         elif deadline is not None and deadline.kind == "role":
-            late = " — overdue" if deadline.due_at < now else ""
-            line += f", due {format_due(deadline.due_at, kind='role', timezone=studio_timezone(db))}{late}"
+            if deadline.due_at is None:
+                line += f", {format_due(None, kind='role')}"
+            else:
+                late = " — overdue" if deadline.due_at < now else ""
+                line += f", due {format_due(deadline.due_at, kind='role', timezone=studio_timezone(db))}{late}"
         roles.append(line)
 
     rejected: list[str] = []

@@ -188,3 +188,15 @@ def test_no_role_notice_for_an_audition_or_a_role_left_without_lines(db):
     _file(db, "Глава 1", kind="audition")
     sent, _ = _run(db)
     assert [c for c, _ in sent if c == "900000100"] == []
+
+
+def test_role_without_a_date_is_never_overdue(db):
+    row = _deadline(db, kind="role", due=None)
+    sent = []
+
+    stats = role_deadlines.run_pass(db, now=NOW + timedelta(days=365), send=lambda *args: sent.append(args))
+    view = role_deadlines.deadline_view(db, row, now=NOW + timedelta(days=365))
+
+    assert stats["before"] == stats["overdue"] == 0
+    assert view["due_at"] is None and view["overdue"] is False
+    assert not sent

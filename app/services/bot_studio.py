@@ -204,7 +204,7 @@ class Studio:
         overdue, soon = [], []
         for row in self.open_deadlines:
             ch = self.character_by_id.get(row.character_id)
-            if ch is None:
+            if ch is None or row.due_at is None:
                 continue
             due = Due(str(row.actor_name or ""), str(row.kind), str(ch.name or ""), self.title(row.book_id), row.due_at)
             if row.due_at < self.now:
@@ -238,7 +238,7 @@ class Studio:
         """Утверждены и не начали — в книгах, где запись идёт; позваны и не загрузили пробу —
         в любой книге (у пробы срок 48 часов). Один человек — одна строка."""
         people: list[Silent] = []
-        for row in sorted(self.open_deadlines, key=lambda r: (r.created_at, r.due_at)):
+        for row in sorted(self.open_deadlines, key=lambda r: (r.created_at, r.due_at or r.created_at)):
             ch = self.character_by_id.get(row.character_id)
             if ch is None:
                 continue

@@ -11,7 +11,6 @@ from app.services import role_deadlines
 from app.services.audio_uploads import derive_book_code
 
 NOW = datetime(2026, 10, 1, 12, 0, 0)
-ROLE_DUE = datetime(2026, 12, 31, 20, 59, 59)  # конец 31.12 по Москве, в UTC
 
 
 @pytest.fixture()
@@ -63,7 +62,7 @@ def test_approval_replaces_the_audition_with_the_role_until_the_studio_date(db):
     role_deadlines.sync_book(db, "b1", now=NOW + timedelta(hours=1))
     rows = db.query(RoleDeadline).order_by(RoleDeadline.created_at).all()
     assert [(r.kind, r.close_reason) for r in rows] == [("audition", "changed"), ("role", None)]
-    assert rows[1].due_at == ROLE_DUE
+    assert rows[1].due_at is None
     assert rows[0].recast_notified_at is None and not role_deadlines.needs_recast_notice(rows[0])
 
 
