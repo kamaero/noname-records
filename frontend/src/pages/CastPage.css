@@ -335,8 +335,8 @@
 .cast-lines-actions { display: inline-flex; align-items: center; gap: 0.45em; }
 .cast-print { display: inline-flex; padding: 3px; }
 .cast-print svg { width: 14px; height: 14px; }
-.cast-script-links { display: flex; flex-wrap: wrap; gap: 2px 12px; padding: 1px 4px; font-size: 12px; }
-.cast-script-links a { color: var(--accent); text-decoration: underline; overflow-wrap: anywhere; }
+.cast-song-row > td { padding: 7px 12px; white-space: normal; overflow-wrap: anywhere; }
+.cast-song-row a { color: var(--accent); text-decoration: underline; }
 .cast-lines-mobile { display: none; font-size: 12px; }
 @container (max-width: 560px) {
   .cast-lines-mobile { display: inline; }
@@ -374,3 +374,10 @@
    запускает необратимое действие — тот же арм-и-подтверди шаг, что у удаления. */
 .cast-merge-cost { margin: 0; font-size: 13.5px; line-height: 1.5; }
 .cast-merge-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.cast-table .ui-table-section-row th {
+  padding: 9px 12px;
+  color: var(--text-dim);
+  text-align: center;
+  background: var(--surface-2);
+}
