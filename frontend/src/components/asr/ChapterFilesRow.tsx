@@ -180,7 +180,10 @@ export function ChapterFilesRow({ chapterId, canDelete, bookId, nasDelivery }: C
       // И опись, и строка покрытия над ней: у роли стало меньше дублей, а глава могла
       // перестать быть готовой.
       await queryClient.invalidateQueries({ queryKey: ["v2", "chapter-recording", chapterId] });
-      await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] }),
+        queryClient.invalidateQueries({ queryKey: ["v2", "role-progress", bookId] }),
+      ]);
     },
     onError: (error) =>
       pushToast({ tone: "error", title: "Could not complete the action", detail: describeApiError(error, "the server did not respond") }),

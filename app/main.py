@@ -95,6 +95,7 @@ from app.v2.api import (
     api_v2_book_auditions,
     api_v2_audition_score,
     api_v2_book_recording,
+    api_v2_role_progress,
     api_v2_book_language,
     api_v2_chapter_archive,
     api_v2_chapter_asr,
@@ -389,6 +390,7 @@ app.add_api_route("/api/v2/chapters/{chapter_id}/narrator-audit/{audit_id}/sourc
 app.add_api_route("/api/v2/chapters/{chapter_id}/narrator-audit/{audit_id}/sources/{audio_id}/labels.txt",
                   api_v2_narrator_audit_labels, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/recording", api_v2_book_recording, methods=["GET"])
+app.add_api_route("/api/v2/books/{book_id}/role-progress", api_v2_role_progress, methods=["GET"])
 app.add_api_route("/api/studio/calendar", api_studio_calendar, methods=["GET"])
 app.add_api_route("/api/v2/books/{book_id}/language", api_v2_book_language, methods=["GET", "POST"])
 app.add_api_route("/api/v2/chapters/{chapter_id}/recording", api_v2_chapter_recording, methods=["GET"])

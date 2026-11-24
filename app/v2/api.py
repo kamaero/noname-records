@@ -485,6 +485,18 @@ def api_v2_book_recording(request: Request, book_id: str):
     return JSONResponse({"ok": True, **status, "can_download": _can_edit(request)})
 
 
+def api_v2_role_progress(request: Request, book_id: str):
+    if not _is_authenticated(request):
+        return unauthorized_response()
+    from app.services.role_recording_progress import book_recording_progress
+
+    with SessionLocal() as db:
+        progress = book_recording_progress(db, str(book_id or "").strip())
+    if progress is None:
+        return not_found_response("book_not_found")
+    return JSONResponse({"ok": True, "summary": progress["summary"]})
+
+
 async def api_v2_book_language(request: Request, book_id: str):
     """Смена профиля касается будущих задач, сохранённые данные не переписываются."""
     if not _is_authenticated(request):
