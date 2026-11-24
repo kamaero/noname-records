@@ -50,6 +50,7 @@ export function RecordingPage() {
     if (sel.role.trim()) params.set("role", sel.role.trim());
     params.delete("stress");
     params.delete("preview");
+    params.delete("segment");
     const query = params.toString();
     return `/takes${query ? `?${query}` : ""}`;
   }, [searchParams, sel.bookId, sel.chapterId, sel.role]);
@@ -162,6 +163,7 @@ export function RecordingPage() {
         allowedChapterIds={sel.allowedChapterIds}
         onLoaded={sel.onReaderLoaded}
         readingPosition={sel.readerPosition}
+        targetSegmentId={searchParams.get("chapter_id") === sel.chapterId ? searchParams.get("segment") || undefined : undefined}
         openStressQueue={openStressQueue}
         onStressQueueOpened={clearStressRequest}
         roleScriptBase="/recording/role"

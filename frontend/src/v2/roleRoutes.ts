@@ -1,3 +1,8 @@
+export function chapterScriptHref(chapterId: string, segmentId?: string): string {
+  const path = "/reader/" + encodeURIComponent(chapterId);
+  return segmentId ? path + "?" + new URLSearchParams({ segment: segmentId }) : path;
+}
+
 export type RoleScriptBase = "/reader/role" | "/recording/role";
 
 function queryParams(search: string): URLSearchParams {

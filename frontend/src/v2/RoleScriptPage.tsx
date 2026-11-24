@@ -30,7 +30,8 @@ import { useReaderPrefs } from "./useReaderPrefs";
 import { useRoleCursor } from "./useRoleCursor";
 import type { WordTarget } from "./useEditorState";
 import type { ReaderSegment, RoleStyle } from "./types";
-import { recordingHref } from "./roleRoutes";
+import { chapterScriptHref, recordingHref } from "./roleRoutes";
+import { splitScriptNote } from "./scriptNote";
 import "./ScriptReader.css";
 
 type RoleSegment = ReaderSegment & { mine: boolean; after_gap: boolean };
@@ -162,7 +163,8 @@ export function RoleScriptPage() {
     const row = (cast.data?.characters ?? []).find((entry) => entry.name === role);
     if (!row) return null;
     const facts = [row.race, row.temperament].filter(Boolean).join(" · ");
-    return row.note || facts ? { facts, note: row.note } : null;
+    const note = splitScriptNote(row.note || "").text;
+    return note || facts ? { facts, note } : null;
   }, [cast.data, role]);
   const styles = useMemo(() => {
     const map = new Map<string, RoleStyle>();
@@ -234,9 +236,13 @@ export function RoleScriptPage() {
   const { counts } = data;
   const inChapters = data.in_chapters ?? [];
   const shownChapters = new Set(data.chapters.map((chapter) => chapter.chapter_id));
-  const chapterHref = (chapterId: string) => (recordingContext
-    ? recordingHref(bookId, params.toString(), chapterId)
-    : `/reader/${encodeURIComponent(chapterId)}`);
+  const chapterHref = (chapterId: string, segmentId?: string) => {
+    if (!recordingContext) return chapterScriptHref(chapterId, segmentId);
+    const chapterParams = new URLSearchParams(params);
+    if (segmentId) chapterParams.set("segment", segmentId);
+    else chapterParams.delete("segment");
+    return recordingHref(bookId, chapterParams.toString(), chapterId);
+  };
   return (
     <div className={`v2r v2r--font-${prefs.font} v2r--role-mode v2r--rolescript${canVoice ? " v2r--editor" : ""}`}>
       <header className="v2r-toolbar">
@@ -493,7 +499,7 @@ export function RoleScriptPage() {
               {data.chapters.map((chapter) => (
                 <section key={chapter.chapter_id} id={`role-ch-${chapter.chapter_id}`} className="v2r-rolescript-chapter">
                   <h2 className="v2r-rolescript-h">
-                    <Link to={chapterHref(chapter.chapter_id)} title="Open full chapter">
+                    <Link to={chapterHref(chapter.chapter_id, chapter.segments.find((segment) => segment.mine)?.id)} title="Open chapter at the role’s lines">
                       {chapterHeading(chapter.chapter_index, chapter.chapter_title)}
                     </Link>
                     <span className="num">
