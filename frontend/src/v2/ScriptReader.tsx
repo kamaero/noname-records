@@ -24,7 +24,7 @@ import { reassignImpactToast } from "./consilium";
 import { CastLegend, CastLegendPrint } from "./CastLegend";
 import { ChapterRail } from "./ChapterRail";
 import { LegendConflicts, LegendEditor } from "./LegendEditor";
-import { Paragraph } from "./Paragraph";
+import { Paragraph, segmentDomId } from "./Paragraph";
 import { ProfilePanel } from "./ProfilePanel";
 import { ReaderToolbar } from "./ReaderToolbar";
 import { Sheet } from "../ui";
@@ -143,6 +143,7 @@ export type ScriptReaderProps = {
   onLoaded?: (payload: ReaderChapterPayload) => void;
   /** Личная позиция чтения; только хост «Сценарий» передаёт её после проверки главы. */
   readingPosition?: ReadingPosition;
+  targetSegmentId?: string;
   /** open with the split view on or off, whatever the reader's own preference says */
   forceCompare?: boolean;
   /** one-shot route request to open the stress queue after permissions load */
@@ -192,6 +193,7 @@ export function ScriptReaderPage() {
   return (
     <ScriptReader
       chapterId={chapterId}
+      targetSegmentId={searchParams.get("segment") || undefined}
       forceCompare={asked === null ? undefined : asked !== "0"}
       openStressQueue={openStressQueue}
       onStressQueueOpened={clearStressRequest}
@@ -213,6 +215,7 @@ export function ScriptReader({
   allowedChapterIds,
   onLoaded,
   readingPosition,
+  targetSegmentId,
   forceCompare,
   openStressQueue = false,
   onStressQueueOpened,
@@ -274,6 +277,7 @@ export function ScriptReader({
 
   const data = chapterQuery.data;
   const segments = data?.segments ?? NO_SEGMENTS;
+  const linkedSegmentId = segments.some((segment) => segment.id === targetSegmentId) ? targetSegmentId : undefined;
   const allChapters = data?.chapters ?? NO_CHAPTERS;
   const chapters = useMemo(
     () => (allowedChapterIds ? allChapters.filter((chapter) => allowedChapterIds.has(chapter.id)) : allChapters),
@@ -320,7 +324,9 @@ export function ScriptReader({
   // the split measures itself again whenever one of these moves.
   const layoutKey = [chapterId, data ? "1" : "0", prefs.font, prefs.rail, prefs.cast, canEdit, canVoice].join("|");
   const split = useSplitView(compare, layoutKey);
-  useReadingPosition(readingPosition, chapterId, pageEl, compare, split.scriptRef, split.sourceRef);
+  // Явный переход важнее последнего места чтения, а запись новой позиции сохраняется.
+  const positionToRestore = linkedSegmentId && readingPosition?.initial ? { ...readingPosition, initial: undefined } : readingPosition;
+  useReadingPosition(positionToRestore, chapterId, pageEl, compare, split.scriptRef, split.sourceRef);
 
   // A new chapter, a fresh link, a moved divider: both panes start from the top of
   // the same paragraph instead of wherever the previous chapter left them.
@@ -421,6 +427,16 @@ export function ScriptReader({
     setQuery("");
     setExpanded(new Set());
   }, []);
+  // Данные и фильтр роли могут прийти позже адреса. Открываем абзац после
+  // отрисовки полного текста, чтобы ссылка работала и при обновлении вкладки.
+  useEffect(() => {
+    if (!linkedSegmentId || !pageEl) return;
+    reveal();
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(segmentDomId(linkedSegmentId))?.scrollIntoView({ block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [linkedSegmentId, pageEl, reveal]);
   // The editor's cross-chapter jump navigates by path; an embedded host gets the id instead.
   const editorNavigate = useMemo<NavigateFunction>(() => {
     if (!onChapterChange) return navigate;
@@ -799,7 +815,7 @@ export function ScriptReader({
         ),
       )}
       <Paragraph
-        current={segment.id === roleCursor.currentSegmentId}
+        current={segment.id === (roleCursor.currentSegmentId || linkedSegmentId)}
         segment={segment}
         styleOf={styleOf}
         showStress={prefs.stress}

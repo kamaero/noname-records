@@ -145,6 +145,7 @@ export function useRecordingSelection({ rememberPosition = false } = {}) {
         (current) => {
           const next = new URLSearchParams(current);
           next.set("chapter_id", id);
+          next.delete("segment");
           return next;
         },
         { replace: true },
@@ -165,6 +166,7 @@ export function useRecordingSelection({ rememberPosition = false } = {}) {
           const next = new URLSearchParams(current);
           next.set("book_id", id);
           next.delete("chapter_id");
+          next.delete("segment");
           next.delete("role");
           return next;
         },

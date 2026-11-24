@@ -1,5 +1,6 @@
 import { roleLabel } from "./types";
 import type { CSSProperties, ReactNode } from "react";
+import { splitScriptNote } from "./scriptNote";
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { NARRATOR, UNSURE, type ReaderCastEntry } from "./types";
@@ -97,8 +98,8 @@ export function CastLegend({
                 </span>
                 {/* who the character is, and how the author wants him voiced */}
                 {entry.note || entry.about ? (
-                  <span className="v2r-role-about" title={[entry.about, entry.note].filter(Boolean).join("\n")}>
-                    {entry.note || entry.about}
+                  <span className="v2r-role-about" title={[entry.about, splitScriptNote(entry.note || "").text].filter(Boolean).join("\n")}>
+                    {splitScriptNote(entry.note || "").text || entry.about}
                   </span>
                 ) : null}
               </button>

@@ -5,6 +5,8 @@ import { Icon } from "../Icon";
 import { chapterMismatch, characterSwatchStyle, describeChapterMismatch, type CastRow, type CastSortDir, type CastSortKey } from "../../viewModels/booksCast";
 import type { RoleIntersectionForRole } from "../../pages/CastPage";
 import type { CharacterAbout } from "../../v2/editorApi";
+import { roleScriptHref } from "../../v2/roleRoutes";
+import { splitScriptNote } from "../../v2/scriptNote";
 import { InlineCell } from "./InlineCell";
 import { RoleCell } from "./RoleCell";
 import { RoleDetailRow } from "./RoleDetailRow";
@@ -178,6 +180,7 @@ export function CastTable({
             </button>
             <RoleCell
               row={row}
+              bookId={bookId}
               open={openAliases.has(row.character_id)}
               onToggle={toggleAliases}
               saving={savingIds.has(row.character_id)}
@@ -251,7 +254,7 @@ export function CastTable({
               multiline
               saving={savingIds.has(row.character_id)}
               label={`Role note: ${row.name}`}
-              display={row.note ? <span className="cast-who-note">{row.note}</span> : undefined}
+              display={row.note ? <span className="cast-who-note">{splitScriptNote(row.note).text || "Voice note"}</span> : undefined}
               onCommit={(next) => onSaveAbout(row, { note: next })}
             />
           </span>
@@ -263,20 +266,27 @@ export function CastTable({
         align: "right",
         className: "cast-col-lines",
         nowrap: true,
-        render: (row) =>
-          row.lines_count > 0 && bookId ? (
-            <Link
-              className="cast-lines num"
-              to={`/reader/role/${encodeURIComponent(bookId)}?role=${encodeURIComponent(row.name)}&print=1`}
-              target="_blank"
-              rel="noopener"
-              title={`PDF with all lines for «${row.name}», with context; opens in a new tab`}
-            >
-              {row.lines_count.toLocaleString("en-US")}
-            </Link>
-          ) : (
-            <span className="num">{row.lines_count.toLocaleString("en-US")}</span>
-          ),
+        render: (row) => {
+          const count = row.lines_count.toLocaleString("en-US");
+          if (!row.lines_count || !bookId) return <span className="num">{count}</span>;
+          return (
+            <span className="cast-lines-actions">
+              <Link className="cast-lines num" to={roleScriptHref(bookId, row.name)} aria-label={"Lines for " + row.name + " (" + count + ")"}>
+                {count}
+              </Link>
+              <Link
+                className="cast-lines cast-print"
+                to={roleScriptHref(bookId, row.name, "/reader/role", "print=1")}
+                target="_blank"
+                rel="noopener"
+                aria-label={"PDF of all lines for " + row.name}
+                title="Print in a new tab"
+              >
+                <Icon name="doc" />
+              </Link>
+            </span>
+          );
+        },
       },
       {
         key: "auditions",
