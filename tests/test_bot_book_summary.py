@@ -159,3 +159,35 @@ def test_typed_book_uses_explicit_role_and_book_identity(db):
     assert rows["Done"]["recorded_chapters"] == 0
 
 
+
+def test_asr_progress_distinguishes_typed_character_named_narrator(db):
+    from app.models import BookBudget
+    from app.services.role_recording_progress import book_recording_progress
+    from app.services.role_identity import NARRATOR_REF, TITLE_REF
+    from app.v2.models import V2Attribution, V2Segment
+
+    db.get(ScriptBook, "b1").role_identity_mode = "typed_v1"
+    db.get(ScriptChapter, "ch1").released_at = NOW
+    db.get(Character, "Done").name = "Narrator"
+    db.add(BookBudget(book_id="b1", narrator_actor_name="Voice A"))
+    for ordinal, speaker, role_ref in (
+        (1, "Former character name", "character:Done"),
+        (2, "Рассказчик", NARRATOR_REF),
+        (3, "Partial", "character:Partial"),
+    ):
+        segment_id = f"segment-{ordinal}"
+        db.add(V2Segment(id=segment_id, book_id="b1", chapter_id="ch1", ordinal=ordinal,
+                         kind="paragraph", text="Speech.", char_start=0, char_end=7))
+        db.add(V2Attribution(id=f"attribution-{ordinal}", segment_id=segment_id, span_start=0, span_end=7,
+                             speaker=speaker, role_ref=role_ref, confidence=1, source="operator", version=1))
+    db.commit()
+    take(db, "Narrator", 1, role_book_id="b1", role_ref="character:Done")
+    take(db, "Narrator", 1, role_book_id="b1", role_ref=NARRATOR_REF)
+    take(db, "Chapter title", 1, role_book_id="b1", role_ref=TITLE_REF)
+    assert book_recording_progress(db, "b1")["summary"] == {
+        "chapters_total": 3,
+        "chapters_released": 1,
+        "narrator_recorded_chapters": 1,
+        "characters_recorded": 1,
+        "characters_total": 2,
+    }

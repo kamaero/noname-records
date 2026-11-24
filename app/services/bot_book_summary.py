@@ -15,38 +15,10 @@ GROUPS = {
 
 
 def progress_rows(db, book_id):
-    from app.models import AudioFile, Character, ScriptChapter
-    from app.services.chapter_delivery import _chapter_label
-    from app.services.role_deadlines import same_person, wanted_chapters
-    from app.services.role_identity import RoleIdentityError, book_roles
-    from app.v2.cast_ops import is_placeholder_name
+    from app.services.role_recording_progress import book_recording_progress
 
-    identities = book_roles(db, book_id)
-    chapters = db.query(ScriptChapter).filter_by(book_id=book_id).all()
-    takes = db.query(AudioFile).filter_by(kind="take").all()
-    rows = []
-    for character in db.query(Character).filter_by(book_id=book_id).all():
-        if is_placeholder_name(character.name):
-            continue
-        wanted = wanted_chapters(db, character)
-        required = [chapter for chapter in chapters if chapter.chapter_index in wanted]
-        if not required:
-            continue
-        actor, tentative = parse_actor_name(character.actor_name)
-        labels = set()
-        for audio in takes:
-            try:
-                matches = identities.matches_character_audio(audio, character)
-            except RoleIdentityError:
-                matches = False
-            if matches and actor and not tentative and same_person(audio.actor_name, actor):
-                labels.add(str(audio.chapter or "").strip())
-        missing = sorted(chapter.chapter_index for chapter in required if _chapter_label(chapter) not in labels)
-        rows.append({"character_id": character.id, "name": character.name,
-                     "actor_name": character.actor_name or "", "recorded_chapters": len(required) - len(missing),
-                     "total_chapters": len(required), "missing_chapters": missing,
-                     "complete": bool(actor and not tentative and not missing)})
-    return rows
+    progress = book_recording_progress(db, book_id)
+    return [row for row in progress["roles"] if row["character_id"]] if progress else []
 
 
 def groups(rows):

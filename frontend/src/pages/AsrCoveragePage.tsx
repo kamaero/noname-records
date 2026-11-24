@@ -82,6 +82,19 @@ export function AsrCoveragePage() {
   const bookId = params.get("book_id") || books[0]?.id || "";
   const book = books.find((item) => item.id === bookId);
 
+  const roleProgress = useQuery({
+    queryKey: ["v2", "role-progress", bookId],
+    queryFn: () => apiGet<{ summary: {
+      chapters_total: number;
+      chapters_released: number;
+      narrator_recorded_chapters: number;
+      characters_recorded: number;
+      characters_total: number;
+    } }>(`/api/v2/books/${encodeURIComponent(bookId)}/role-progress`),
+    enabled: Boolean(bookId),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
   const coverage = useQuery({
     queryKey: ["v2", "book-recording", bookId],
     queryFn: () => apiGet<BookRecordingResponse>(`/api/v2/books/${encodeURIComponent(bookId)}/recording`),
@@ -166,7 +179,10 @@ export function AsrCoveragePage() {
         { released: !chapter.released_at },
       ),
     onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] }),
+        queryClient.invalidateQueries({ queryKey: ["v2", "role-progress", bookId] }),
+      ]);
       if (result.all_released && !result.voiced && window.confirm("All chapters are delivered. Mark the book as recorded?")) {
         try {
           await apiPostJson(`/api/v2/books/${encodeURIComponent(bookId)}/voiced`, { voiced: true });
@@ -564,24 +580,27 @@ export function AsrCoveragePage() {
   const assembled = chapters.filter((chapter) => chapter.assembly.assembled).length;
   const bookPercent = chapters.length ? Math.round((assembled / chapters.length) * 100) : 0;
 
-  const ready = coverage.data?.ready_chapters ?? 0;
-  const started = coverage.data?.started_chapters ?? 0;
-  const total = coverage.data?.total_chapters ?? 0;
-  const missingLines = coverage.data?.missing_lines ?? 0;
-  const delivered = coverage.data?.delivered_chapters ?? 0;
-  const released = chapters.filter((chapter) => chapter.released_at).length;
+  const summary = roleProgress.data?.summary;
+  let subtitle: ReactNode = "No chapters";
+  if (booksQuery.isLoading || (bookId && roleProgress.isPending)) {
+    subtitle = "Calculating coverage…";
+  } else if (booksQuery.isError || (bookId && !summary)) {
+    subtitle = "Could not load the recording summary";
+  } else if (summary?.chapters_total) {
+    const { chapters_total, chapters_released, narrator_recorded_chapters, characters_recorded, characters_total } = summary;
+    const narratorChapters = narrator_recorded_chapters === 1 ? "chapter" : "chapters";
+    subtitle = <>
+      Chapters {chapters_total} · in progress {chapters_total - chapters_released} · delivered {chapters_released}
+      {" · "}Narrator recorded in {narrator_recorded_chapters} {narratorChapters}
+      {" · "}<span title="Accepted recordings cover every chapter of the role">characters recorded {characters_recorded}/{characters_total}</span>
+    </>;
+  }
 
   return (
     <div className="asr">
       <PageHeader
         title="ASR · coverage"
-        subtitle={
-          coverage.isLoading
-            ? "Calculating coverage…"
-            : total
-              ? `Chapters: ${total} · in progress ${started} · ready ${ready} · all recorded ${delivered} · delivered ${released}${missingLines ? ` · missing lines ${missingLines}` : ""}`
-              : "No chapters"
-        }
+        subtitle={subtitle}
         actions={
           books.length > 1 ? (
             <select
@@ -625,7 +644,7 @@ export function AsrCoveragePage() {
         >
           Started only
         </Button>
-        {onlyStarted ? <span className="asr-count num">{rows.length} of {total}</span> : null}
+        {onlyStarted ? <span className="asr-count num">{rows.length} of {chapters.length}</span> : null}
       </div>
 
       {coverage.data?.asr_language_stale ? (
