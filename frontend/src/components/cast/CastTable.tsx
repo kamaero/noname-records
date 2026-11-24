@@ -9,6 +9,7 @@ import { roleScriptHref } from "../../v2/roleRoutes";
 import { splitScriptNote } from "../../v2/scriptNote";
 import { InlineCell } from "./InlineCell";
 import { RoleCell } from "./RoleCell";
+import { CastSongGroup, CastSongLoadError, useCastSongs } from "./CastSongs";
 import { RoleDetailRow } from "./RoleDetailRow";
 import { DeadlineChip } from "../DeadlineChip";
 import { ActorPicker, type PickerDictor } from "./ActorPicker";
@@ -394,6 +395,8 @@ export function CastTable({
     [openDetail, intersectionsByRole, defaultRate, savingIds, onSaveAbout, onSaveRate, onAcknowledge, onMerge, onDelete],
   );
 
+  const { groups: songGroups, retry } = useCastSongs(bookId, rows);
+
   return (
     <div className="cast-table">
       <DataTable
@@ -406,6 +409,13 @@ export function CastTable({
         empty={empty}
         maxHeight={maxHeight}
         renderDetail={renderDetail}
+        renderRowsBefore={(index, columnCount) => {
+          if (index !== rows.length) return null;
+          if (retry) return <CastSongLoadError retry={retry} columnCount={columnCount} />;
+          return songGroups.map(([chapter, songs]) => (
+            <CastSongGroup key={chapter} chapter={chapter} songs={songs} bookId={bookId} columnCount={columnCount} />
+          ));
+        }}
       />
     </div>
   );

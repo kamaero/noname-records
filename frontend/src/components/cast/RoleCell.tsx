@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import { roleScriptHref } from "../../v2/roleRoutes";
-import { splitScriptNote } from "../../v2/scriptNote";
 import { roleLabel } from "../../v2/types";
 import { pluralRu, splitCastAliases, type CastRow } from "../../viewModels/booksCast";
 import { InlineCell } from "./InlineCell";
@@ -19,7 +18,6 @@ type RoleCellProps = {
 export function RoleCell({ row, bookId, open, onToggle, saving, onRename }: RoleCellProps) {
   const aliases = splitCastAliases(row);
   const show = open && aliases.length > 0;
-  const { links } = splitScriptNote(row.note || "");
   return (
     <div className="cast-role">
       <div className="cast-role-line">
@@ -47,13 +45,6 @@ export function RoleCell({ row, bookId, open, onToggle, saving, onRename }: Role
         <Link className="cast-lines cast-lines-mobile" to={roleScriptHref(bookId, row.name)}>
           {row.lines_count.toLocaleString("en-US")} {row.lines_count === 1 ? "line" : "lines"}
         </Link>
-      ) : null}
-      {links.length > 0 ? (
-        <div className="cast-script-links">
-          {links.map(({ label, href }) => (
-            <Link key={href + label} to={href + "&" + new URLSearchParams({ book_id: bookId })}>{label}</Link>
-          ))}
-        </div>
       ) : null}
       {show ? <div className="cast-aliases">{aliases.join(" · ")}</div> : null}
     </div>

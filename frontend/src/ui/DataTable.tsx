@@ -31,6 +31,8 @@ type DataTableProps<Row> = {
   /** a full-width row drawn right after its own, when it returns non-null (e.g. a
       disclosure triangle's expanded detail); a row with nothing to show returns null */
   renderDetail?: (row: Row) => ReactNode;
+  /** Additional body rows before an index. rows.length places rows after the last item. */
+  renderRowsBefore?: (index: number, columnCount: number) => ReactNode;
   "aria-label"?: string;
 };
 
@@ -54,6 +56,7 @@ export function DataTable<Row>({
   className,
   maxHeight,
   renderDetail,
+  renderRowsBefore,
   "aria-label": ariaLabel,
 }: DataTableProps<Row>) {
   const clickable = Boolean(onRowClick);
@@ -95,12 +98,13 @@ export function DataTable<Row>({
                   ))}
                 </tr>
               ))
-            : rows.map((row) => {
+            : rows.map((row, index) => {
                 const key = rowKey(row);
                 const selected = selectedKey != null && selectedKey === key;
                 const detail = renderDetail?.(row);
                 return (
                   <Fragment key={key}>
+                    {renderRowsBefore?.(index, columns.length)}
                     <tr
                       className={[clickable ? "is-clickable" : "", selected ? "is-selected" : "", rowClassName?.(row) ?? ""].filter(Boolean).join(" ") || undefined}
                       onClick={clickable ? () => onRowClick?.(row) : undefined}
@@ -124,6 +128,7 @@ export function DataTable<Row>({
                   </Fragment>
                 );
               })}
+          {!loading ? renderRowsBefore?.(rows.length, columns.length) : null}
           {!loading && rows.length === 0 && empty ? (
             <tr className="ui-table-empty">
               <td colSpan={columns.length}>{empty}</td>
