@@ -130,6 +130,8 @@ def test_a_b_a_all_takes_survive_and_body_starts_after_title_lane(studio, tmp_pa
     layout = _script_layout(db, 'chapter1')
     clips = [clip for role, clip in layout[3] if role == TITLE_ROLE]
     assert len(clips) == 2 and clips[1].start >= clips[0].start + clips[0].length
+    assert clips[0].start == 10
+    assert layout.body_start == pytest.approx(clips[-1].start + clips[-1].length + 2.5)
     body_start = layout[4].get('chapter1:1')
     assert body_start is None or body_start >= clips[-1].start + clips[-1].length
     db.get(BotUpload, rowid).state = 'queued'
@@ -727,3 +729,40 @@ def test_failed_legacy_timing_validation_resumes_from_paid_cache(studio, tmp_pat
     assert run(db, rowid, tmp_path, transcript, transcribe=lambda _: pytest.fail('paid again')) == 'done'
     assert len(calls) == 1
     assert 'error' not in json.loads(db.get(BotUpload, rowid).result_json)
+
+
+def test_opening_keeps_space_for_an_unrecorded_first_paragraph(studio, tmp_path):
+    from defusedxml import ElementTree as ET  # Сессия генерируется приложением.
+    from app.services.chapter_delivery import CHARS_PER_SECOND, GAP_SECONDS, build_chapter_session
+
+    db, book = studio
+    assert run(db, register(db, book), tmp_path,
+               heard('Chapter 1 Red Harbor', 'Chapter 2 Blue Field')('')) == 'done'
+    db.add(V2Segment(id='chapter1:2', book_id=book.id, chapter_id='chapter1', ordinal=2,
+                     kind='paragraph', text='A boat drifts.'))
+    db.add(V2Attribution(id=str(uuid.uuid4()), segment_id='chapter1:2', speaker=NARRATOR_DISPLAY_NAME,
+                         role_ref='narrator:system', span_start=0, span_end=len('A boat drifts.'),
+                         source='operator'))
+    audio = AudioFile(id='body', book_code=derive_book_code(book.title), chapter='Chapter 1 Red Harbor',
+                      role=NARRATOR_DISPLAY_NAME, role_ref='narrator:system', role_book_id=book.id, kind='take',
+                      stored_key='body.wav', canonical_filename='body.wav',
+                      original_filename='body.wav', location='local', duration_seconds=5,
+                      mime_type='audio/wav', size_bytes=100)
+    db.add(audio)
+    db.flush()
+    body = asr_run.chapter_replicas(db, 'chapter1')[1:]
+    db.add(AsrJob(audio_file_id=audio.id, chapter_id='chapter1', status='done',
+                  alignment_json=json.dumps({"lines": [
+                      {"matched": False, "text": body[0]["text"]},
+                      {"matched": True, "text": body[1]["text"], "start": 1, "end": 3},
+                  ]})))
+    db.flush()
+
+    tree = ET.fromstring(build_chapter_session(db, 'chapter1', sample_rate=48000, include_audit=False))
+    tracks = {track.findtext('trackParameters/name'): track for track in tree.findall('.//audioTrack')}
+    title = tracks[TITLE_ROLE].find('audioClip')
+    first_voice = tracks[NARRATOR_DISPLAY_NAME].findall('audioClip')
+    assert len(first_voice) == 1
+    pause = (int(first_voice[0].get('startPoint')) - int(title.get('endPoint'))) / 48000
+    assert pause == pytest.approx(2.5 + max(1., len(body[0]['text']) / CHARS_PER_SECOND) + GAP_SECONDS,
+                                  abs=1/48000)

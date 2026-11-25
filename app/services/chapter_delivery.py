@@ -33,6 +33,7 @@ from app.services.audio_naming import book_token, chapter_token
 from app.services.chapter_storage_status import assembly_status, nas_delivery
 from app.services.audio_uploads import TAKE, derive_book_code
 from app.services.audition_session import SessionClip, SessionMarker, SessionTrack, build_session_xml
+from app.services.chapter_opening import opening_cue, place_opening
 from app.services.author_profile import normalize_name
 from app.services.shared_runtime import SERVER_TIMEZONE, is_narrator_name
 from app.services.asr_run import chapter_replicas
@@ -873,6 +874,8 @@ def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | 
     if layout is None:
         return None, 0
     status, book, by_role, placed, starts, end = layout
+    body_start = getattr(layout, "body_start", None)
+    unplaced_roles = set()
 
     clips_by_role: dict[str, list[SessionClip]] = {row["role"]: [] for row in status["roles"]}
     for role, clip in placed:
@@ -885,19 +888,23 @@ def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | 
         if any(getattr(item, "correction_mode", "") == "full" for item in by_role.get(row["role"], [])):
             continue
         for item in by_role.get(row["role"], []):
+            unplaced_roles.add(row["role"])
             clips_by_role.setdefault(row["role"], []).append(SessionClip(
                 name=str(item.canonical_filename or row["role"]),
                 path=audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local")),
-                start=0.0,
+                start=body_start or 0.0,
                 source_in=0.0,
                 source_out=float(item.duration_seconds or 0.0),
                 relative=str(item.canonical_filename or "") if relative else "",
             ))
 
-    voice_tracks = [SessionTrack(name=row["role"], clips=clips_by_role.get(row["role"], [])) for row in status["roles"]]
+    # Неразложенный исходник не должен звучать поверх заставки и первого абзаца.
+    voice_tracks = [SessionTrack(name=row["role"], clips=clips_by_role.get(row["role"], []),
+                                 muted=body_start is not None and row["role"] in unplaced_roles)
+                    for row in status["roles"]]
     ambient_tracks = []
     try:
-        ambient_tracks = ambient_session_tracks(db, chapter_id, starts, end, relative=relative)
+        ambient_tracks = ambient_session_tracks(db, chapter_id, starts, end, relative=relative, body_start=body_start)
     except Exception:
         # Эмбиент — подложка поверх записанной главы: его сбой не должен срывать
         # архивацию дублей, как и сбой маркеров ниже.
@@ -1006,6 +1013,13 @@ def session_rate(by_role: dict[str, list]) -> int:
     return max(counts, key=lambda rate: (counts[rate], rate))
 
 
+class _ChapterLayout(tuple):
+    def __new__(cls, values, body_start):
+        result = super().__new__(cls, values)
+        result.body_start = body_start
+        return result
+
+
 def _script_layout(db, chapter_id: str, *, relative: bool = False, metadata_only: bool = False):
     """Раскладка главы по сценарию — общая для `.sesx` и `scene_spans`.
 
@@ -1048,14 +1062,17 @@ def _script_layout(db, chapter_id: str, *, relative: bool = False, metadata_only
 
     replicas = chapter_replicas(db, chapter_id)
     starts: dict[str, float] = {}
+    gaps = []
     placed = _place_by_script(replicas, by_role, heard, relative=relative, metadata_only=metadata_only,
                               files_by_id={str(item.id): item for item in audio_files}, starts=starts,
-                              title_approaches=title_approaches)
+                              title_approaches=title_approaches, gaps=gaps)
+    body_start = place_opening(replicas, placed, starts, gaps,
+                               chars_per_second=CHARS_PER_SECOND, gap_seconds=GAP_SECONDS)
     # Конец сцены до конца главы — это конец РАЗЛОЖЕННЫХ по сценарию клипов, а не целых
     # дублей запасного пути: у тех нет согласованного места на общем таймлайне (см.
     # докстринг `_place_by_script`), и мерить сцену их концом было бы враньём монтажёру.
     end = max((clip.start + clip.length for _role, clip in placed), default=0.0)
-    return status, book, by_role, placed, starts, end
+    return _ChapterLayout((status, book, by_role, placed, starts, end), body_start)
 
 
 def active_scene_rows(db, chapter_id: str) -> tuple[list[dict], dict]:
@@ -1114,7 +1131,7 @@ AMBIENT_KIND = "ambient"
 
 
 def ambient_session_tracks(db, chapter_id: str, starts: dict[str, float], end: float, *,
-                           relative: bool = False) -> list[SessionTrack]:
+                           relative: bool = False, body_start: float | None = None) -> list[SessionTrack]:
     """Дорожки «Ambient 1/2» проекта главы: готовые (`done`) треки сцен, нашедших место на
     таймлайне, по порядку начала сцены — поочерёдно, каждый целиком от начала своей сцены.
 
@@ -1147,7 +1164,9 @@ def ambient_session_tracks(db, chapter_id: str, starts: dict[str, float], end: f
     tracks = [SessionTrack(name=name, muted=bool(pairs) and index == 1,
                            channel_type="stereo" if pairs else "mono")
               for index, name in enumerate(AMBIENT_TRACKS)]
-    for number, (start, _index, item) in enumerate(placed):
+    for number, (start, scene_index, item) in enumerate(placed):
+        start, _, fade_in, gain_db = opening_cue(start, item.duration_seconds or 0,
+                                                 first=scene_index == 0, body_start=body_start)
         tracks[0 if pairs else number % len(tracks)].clips.append(SessionClip(
             name=str(item.canonical_filename or ""),
             path=audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local")),
@@ -1155,17 +1174,21 @@ def ambient_session_tracks(db, chapter_id: str, starts: dict[str, float], end: f
             source_in=0.0,
             source_out=float(item.duration_seconds or 0.0),
             relative=str(item.canonical_filename or "") if relative else "",
+            fade_in=fade_in, gain_db=gain_db,
         ))
-    for marker_id, pair in pairs.items():
-        if marker_id not in spans:
+    for scene_index, (marker_id, (start, seconds)) in enumerate(spans.items()):
+        pair = pairs.get(marker_id)
+        if not pair:
             continue
-        start, seconds = spans[marker_id]
+        start, seconds, fade_in, gain_db = opening_cue(start, seconds,
+                                                     first=scene_index == 0, body_start=body_start)
         for index, variant in enumerate(("A", "B")):
             item = pair[variant]
             tracks[index].clips.append(SessionClip(name=str(item.canonical_filename),
                 path=audio_storage.resolve_path(str(item.stored_key), location=str(item.location or "local")),
                 start=float(start), source_in=0, source_out=min(float(seconds), float(item.duration_seconds)),
-                relative=str(item.canonical_filename) if relative else ""))
+                relative=str(item.canonical_filename) if relative else "",
+                fade_in=fade_in, gain_db=gain_db))
     return tracks if any(track.clips for track in tracks) else []
 
 
@@ -1364,7 +1387,8 @@ def _clip_name(text: str, number: int, total: int) -> str:
 
 
 def _place_by_script(replicas, by_role, heard, *, relative: bool, metadata_only: bool = False, files_by_id=None,
-                     starts: dict[str, float] | None = None, title_approaches=None) -> list[tuple[str, SessionClip]]:
+                     starts: dict[str, float] | None = None, title_approaches=None,
+                     gaps: list[dict] | None = None) -> list[tuple[str, SessionClip]]:
     """Разложить реплики по таймлайну одну за другой, как они идут в главе.
 
     `files_by_id` — все файлы главы: строка, найденная у соседней роли того же актёра
@@ -1519,7 +1543,11 @@ def _place_by_script(replicas, by_role, heard, *, relative: bool, metadata_only:
             found = (source, takes)
         if found is None:
             # Пропущенная реплика — пауза по длине её текста, чтобы дыра была видна
-            clock += max(1.0, len(str(replica.get("text") or "")) / CHARS_PER_SECOND) + GAP_SECONDS
+            duration = max(1.0, len(str(replica.get("text") or "")) / CHARS_PER_SECOND)
+            if gaps is not None:
+                gaps.append({"role": role, "segment_id": str(replica.get("segment_id") or ""),
+                             "start": clock, "duration": duration})
+            clock += duration + GAP_SECONDS
             continue
         item, takes = found
         path = ("" if metadata_only else audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local")))
