@@ -56,6 +56,8 @@ class SessionClip:
     segment_id: str = ""
     role_index: int | None = None
     role: str = ""
+    fade_in: float = 0.0
+    gain_db: float = 0.0
 
     @property
     def length(self) -> float:
@@ -119,6 +121,14 @@ def _clip_xml(clip: SessionClip, *, clip_id: int, file_id: int, z_order: int, ra
     source_in = _samples(clip.source_in, rate)
     source_out = _samples(clip.source_out, rate)
     length = max(0, source_out - source_in)
+    fade_in = min(length, _samples(clip.fade_in, rate))
+    gain = _component("Audition.Fader", "clipGain", "volume")
+    if clip.gain_db:
+        # В параметрах фейдера Audition хранит линейную амплитуду, а в UI — дБ.
+        volume = 10 ** (clip.gain_db / 20)
+        gain = (gain.removesuffix(" />") + '>'
+                + '<parameter ' + _attrs(index=0, name="volume", parameterValue=volume) + ' />'
+                + '<parameter index="1" name="static gain" parameterValue="1" /></component>')
     return [
         "        <audioClip " + _attrs(
             clipAutoCrossfade="true", crossFadeHeadClipID="-1", crossFadeTailClipID="-1",
@@ -127,10 +137,10 @@ def _clip_xml(clip: SessionClip, *, clip_id: int, file_id: int, z_order: int, ra
             select="false", sourceInPoint=source_in, sourceOutPoint=source_out,
             startPoint=start, zOrder=z_order,
         ) + ">",
-        _component("Audition.Fader", "clipGain", "volume"),
+        gain,
         _component("Audition.Mute", "clipMute", "Mute"),
         _component("Audition.StereoPanner", "clipPan", "StereoPanner"),
-        '          <fadeIn crossFadeLinkType="linkedAsymmetric" endPoint="0" shape="19" startPoint="0" type="log" />',
+        f'          <fadeIn crossFadeLinkType="linkedAsymmetric" endPoint="{fade_in}" shape="19" startPoint="0" type="log" />',
         f'          <fadeOut crossFadeLinkType="linkedAsymmetric" endPoint="{length}" shape="19" startPoint="{length}" type="log" />',
         "          <channelMap />",
         "        </audioClip>",
