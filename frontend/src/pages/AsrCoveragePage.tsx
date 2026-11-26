@@ -420,9 +420,13 @@ export function AsrCoveragePage() {
         render: (row) => {
           const audit = row.audit;
           const busy = audit?.status === "queued" || audit?.status === "running";
+          const failed = audit?.status === "failed";
+          const canRun = isAdmin && row.recorded_roles > 0;
+          const canResume = canRun && audit?.resume_available && audit.audit_id;
+          const resumeLabel = failed ? "Failed. Retry?" : "resume";
           const label = !audit ? "—" : audit.status === "unknown" ? "outcome unknown" : busy ? "auditing…"
             : audit.status === "stale" ? "outdated"
-            : audit.status === "failed" ? "audit failed"
+            : failed ? "Failed."
             : audit.status === "skipped" ? "skipped"
             : audit.status === "done" ? `${audit.confirmed} ${audit.confirmed === 1 ? "error" : "errors"}` : "no result";
           const title = !audit ? "No audit yet"
@@ -435,15 +439,17 @@ export function AsrCoveragePage() {
             : `Strict audit (${audit.model}): flagged ${audit.flags}, confirmed ${audit.confirmed}. STT cost ${audit.stt_cost_rub == null ? "unknown" : `${audit.stt_cost_rub.toFixed(2)} ₽`}`;
           return (
             <span className="asr-links">
-              <span className={audit?.confirmed ? "num asr-holes" : "cast-muted"} title={title}>{label}</span>
-              {isAdmin && row.recorded_roles > 0 ? <>
-                {audit?.resume_available && audit.audit_id ? (
+              {failed && canResume ? null : (
+                <span className={audit?.confirmed ? "num asr-holes" : "cast-muted"} title={title}>{label}</span>
+              )}
+              {canRun ? <>
+                {canResume ? (
                   <button type="button" className="asr-run asr-audit-resume"
                     disabled={busy || runAudit.isPending}
-                    aria-label={`Resume the narrator check for chapter ${row.chapter_index} using the saved transcription`}
+                    aria-label={`${failed ? resumeLabel + " " : ""}Resume the narrator check for chapter ${row.chapter_index} using the saved transcription`}
                     title="Resume without full audio recognition; text review and short confirmation checks may incur charges"
                     onKeyDown={(event) => event.stopPropagation()}
-                    onClick={stopRow(() => requestAudit(row, true))}>resume</button>
+                    onClick={stopRow(() => requestAudit(row, true))}>{resumeLabel}</button>
                 ) : null}
                 <button type="button" className="asr-run asr-audit-refresh"
                   disabled={busy || runAudit.isPending}
