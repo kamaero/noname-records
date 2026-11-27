@@ -18,15 +18,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPostJson, describeApiError } from "../../api/client";
 import { Button } from "../../ui";
 import { useToast } from "../ToastProvider";
-import type { ChapterRecordingResponse, ChapterRecordingRole, ChapterTake, NasDelivery } from "../../types";
+import type { BookRecordingChapter, ChapterRecordingResponse, ChapterRecordingRole, ChapterTake, NasDelivery } from "../../types";
 
 type ChapterFilesRowProps = {
   chapterId: string;
+  audit: BookRecordingChapter["audit"];
   /** только владелец и автор; у остальных кнопки нет вовсе, а не серой */
   canDelete: boolean;
   /** на какой запрос покрытия навесить пересчёт после удаления */
   bookId: string;
   nasDelivery?: NasDelivery;
+};
+
+type NarratorAuditLabels = {
+  labels_by_take: Record<string, string>;
 };
 
 function formatSize(bytes: number): string {
@@ -77,8 +82,9 @@ function confirmDelete(take: ChapterTake): boolean {
   );
 }
 
-function TakeLine({ take, canDelete, deleting, onDelete, onCopyPath, nasDelivery }: {
+function TakeLine({ take, labelsUrl, canDelete, deleting, onDelete, onCopyPath, nasDelivery }: {
   take: ChapterTake;
+  labelsUrl?: string;
   nasDelivery?: NasDelivery;
   canDelete: boolean;
   deleting: boolean;
@@ -119,12 +125,22 @@ function TakeLine({ take, canDelete, deleting, onDelete, onCopyPath, nasDelivery
           ) : null}
         </div>
       </div>
+      {labelsUrl ? (
+        <div className="cf-labels">
+          <span>narrator-labels.txt</span>
+          <a className="cf-link" href={labelsUrl} download
+            aria-label={`Download narrator labels for ${take.canonical_filename}`}>
+            download
+          </a>
+        </div>
+      ) : null}
     </li>
   );
 }
 
-function RoleBlock({ role, canDelete, deletingId, onDelete, onCopyPath, nasDelivery }: {
+function RoleBlock({ role, labelsByTake, canDelete, deletingId, onDelete, onCopyPath, nasDelivery }: {
   role: ChapterRecordingRole;
+  labelsByTake?: Record<string, string>;
   nasDelivery?: NasDelivery;
   canDelete: boolean;
   deletingId: string | undefined;
@@ -147,6 +163,7 @@ function RoleBlock({ role, canDelete, deletingId, onDelete, onCopyPath, nasDeliv
             <TakeLine
               key={take.id}
               take={take}
+              labelsUrl={labelsByTake?.[take.id]}
               canDelete={canDelete}
               deleting={take.id === deletingId}
               onDelete={onDelete}
@@ -160,7 +177,7 @@ function RoleBlock({ role, canDelete, deletingId, onDelete, onCopyPath, nasDeliv
   );
 }
 
-export function ChapterFilesRow({ chapterId, canDelete, bookId, nasDelivery }: ChapterFilesRowProps) {
+export function ChapterFilesRow({ chapterId, audit, canDelete, bookId, nasDelivery }: ChapterFilesRowProps) {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
 
@@ -170,6 +187,17 @@ export function ChapterFilesRow({ chapterId, canDelete, bookId, nasDelivery }: C
     queryKey: ["v2", "chapter-recording", chapterId],
     queryFn: () => apiGet<ChapterRecordingResponse>(`/api/v2/chapters/${encodeURIComponent(chapterId)}/recording`),
     staleTime: 15_000,
+  });
+  const labels = useQuery({
+    // Опись остаётся открытой, когда фоновая проверка заканчивается и выдаёт новые метки.
+    queryKey: ["v2", "narrator-audit-labels", chapterId, audit?.audit_id, audit?.status],
+    queryFn: () => apiGet<NarratorAuditLabels>(
+      `/api/v2/chapters/${encodeURIComponent(chapterId)}/narrator-audit?view=labels`,
+    ),
+    enabled: opis.data?.roles.some((role) => role.takes.length > 0) ?? false,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   const remove = useMutation({
@@ -183,6 +211,7 @@ export function ChapterFilesRow({ chapterId, canDelete, bookId, nasDelivery }: C
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["v2", "book-recording", bookId] }),
         queryClient.invalidateQueries({ queryKey: ["v2", "role-progress", bookId] }),
+        queryClient.invalidateQueries({ queryKey: ["v2", "narrator-audit-labels", chapterId] }),
       ]);
     },
     onError: (error) =>
@@ -209,6 +238,7 @@ export function ChapterFilesRow({ chapterId, canDelete, bookId, nasDelivery }: C
   }
 
   const { roles, orphan_takes: orphans } = opis.data;
+  const labelsByTake = labels.isSuccess && !labels.isFetching ? labels.data.labels_by_take : undefined;
   if (roles.length === 0 && orphans.length === 0) {
     return <p className="cf-note">This chapter has no speaking roles.</p>;
   }
@@ -219,6 +249,7 @@ export function ChapterFilesRow({ chapterId, canDelete, bookId, nasDelivery }: C
         <RoleBlock
           key={role.role}
           role={role}
+          labelsByTake={labelsByTake}
           canDelete={canDelete}
           deletingId={remove.isPending ? remove.variables?.id : undefined}
           onDelete={(take) => remove.mutate(take)}

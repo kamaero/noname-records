@@ -215,6 +215,36 @@ def test_invalid_finding_is_not_exposed(studio, change):
     assert client.get(_path()).json()["items"] == []
 
 
+def test_asr_inventory_exposes_only_current_downloadable_label_links(studio):
+    from urllib.parse import quote
+
+    client, factory, _, _ = studio
+    path = _path() + "?view=labels"
+    item = client.get(_path()).json()["items"][0]
+    label_url = item["labels_download_url"] + "?name=asr"
+    links = client.get(path)
+    assert links.status_code == 200
+    assert links.headers["cache-control"] == "private, no-store"
+    assert links.json() == {"labels_by_take": {"take-export": label_url}}
+    download = client.get(label_url)
+    assert download.status_code == 200
+    assert download.content == client.get(item["labels_download_url"]).content
+    assert download.headers["content-disposition"].endswith(quote("narrator-labels.txt", safe=""))
+
+    _login(client, "other")
+    assert client.get(path).status_code == 403
+    assert client.get(label_url).status_code == 403
+    _login(client)
+
+    _change_flag(factory, lambda flag: flag.update(word_anchors=[], anchor=None, source_windows=[]))
+    assert client.get(path).json() == {"labels_by_take": {}}
+
+    with factory() as db:
+        db.get(AsrAudit, "audit-export").status = "failed"
+        db.commit()
+    assert client.get(path).json() == {"labels_by_take": {}}
+
+
 @pytest.mark.parametrize("change", ["bytes", "size", "missing_md5", "nonwav", "symlink", "directory", "parent"])
 def test_download_rejects_tampered_unsafe_or_unbound_sources(studio, change):
     client, factory, directory, content = studio

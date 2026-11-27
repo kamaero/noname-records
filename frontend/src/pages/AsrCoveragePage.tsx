@@ -574,7 +574,7 @@ export function AsrCoveragePage() {
           {row.session_outdated ? <span className="asr-broken">Project outdated</span> : null}
           {row.session_markers_skipped > 0 ? <span className="asr-broken">{row.session_markers_skipped} {plural(row.session_markers_skipped, "marker", "markers", "markers")} without a position</span> : null}
         </div>
-        <ChapterFilesRow chapterId={row.chapter_id} bookId={bookId} canDelete={canDeleteTakes} nasDelivery={row.nas_delivery} />
+        <ChapterFilesRow chapterId={row.chapter_id} audit={row.audit} bookId={bookId} canDelete={canDeleteTakes} nasDelivery={row.nas_delivery} />
         </> : null}
       </>;
     },
