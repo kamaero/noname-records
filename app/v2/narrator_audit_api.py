@@ -22,6 +22,13 @@ def api_v2_narrator_audit(request: Request, chapter_id: str):
     try:
         with SessionLocal() as db:
             payload, _ = current_export(db, str(session_payload(request).get("uid") or ""), chapter_id)
+        if request.query_params.get("view") == "labels":
+            # Без временных границ замечание остаётся в проверке, а пустой TXT в описи не нужен.
+            payload = {"labels_by_take": {
+                item["audio_file_id"]: item["labels_download_url"] + "?name=asr"
+                for item in payload["items"]
+                if any(finding["markers"] for finding in item["findings"])
+            }}
         return JSONResponse(payload, headers={"Cache-Control": "private, no-store"})
     except ExportError as error:
         return _error(error)
@@ -83,7 +90,8 @@ def api_v2_narrator_audit_labels(request: Request, chapter_id: str, audit_id: st
             if (fresh["audit_id"] != payload["audit_id"] or fresh["fingerprint"] != payload["fingerprint"]
                     or fresh_item != item):
                 raise ExportError("audit_not_current")
-        filename = PurePosixPath(item["filename"]).stem + "_labels.txt"
+        filename = ("narrator-labels.txt" if request.query_params.get("name") == "asr"
+                    else PurePosixPath(item["filename"]).stem + "_labels.txt")
         return Response(labels, media_type="text/plain; charset=utf-8",
                         headers={"Content-Disposition": 'attachment; filename="narrator-labels.txt"; '
                                  + "filename*=UTF-8''" + quote(filename, safe=""),
