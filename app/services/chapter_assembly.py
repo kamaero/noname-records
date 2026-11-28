@@ -166,6 +166,7 @@ def _inputs(db, chapter_id):
         return None, "empty_session"
     items = [item for rows in layout[2].values() for item in rows]
     items += delivery.chapter_ambient_files(db, chapter.id)
+    items += delivery.marker_effects.files(db, chapter.id)
     by_path = {os.path.abspath(audio_storage.resolve_path(item.stored_key, location=item.location or "local")): item
                for item in items}
     document = safe_fromstring(xml.lstrip("\ufeff"))
