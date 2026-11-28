@@ -26,7 +26,7 @@ from uuid import NAMESPACE_URL, uuid5
 from app.time_utils import iso_utc, utcnow_naive
 
 from app.models import AsrJob, AudioFile, Character, ScriptBook, ScriptChapter
-from app.services import audio_storage, nas_health
+from app.services import audio_storage, marker_effects, nas_health
 from app.services.audio_integrity import MISMATCH, MISSING, OK
 from app.services.audio_mirror import MISMATCH as MIRROR_MISMATCH
 from app.services.audio_naming import book_token, chapter_token
@@ -728,11 +728,12 @@ def build_chapter_archive(db, chapter_id: str, target_path: str) -> dict | None:
     # Эмбиент — в архив рядом с дублями (сессия зовёт его по имени), но в счёт записи
     # не идёт: `files_written`/`files_missing` — по-прежнему только дубли.
     ambient = chapter_ambient_files(db, chapter.id)
+    fx_files = marker_effects.files(db, chapter_id)
     # Старые записи ещё лежат на NAS. Без подтверждённого «жив» к ним не идём вовсе:
     # мёртвое монтирование держит запрос вместе с сессией базы, а архив без части
     # дублей звукорежиссёр принял бы за полный. До ZIP и до отметки «сдана».
     if nas_health.nas_online() is not True and any(
-        str(item.location or "local") == "nas" for item in (*files, *ambient)
+        str(item.location or "local") == "nas" for item in (*files, *ambient, *fx_files)
     ):
         raise StorageUnavailable(chapter.id)
     written, skipped = 0, []
@@ -750,6 +751,8 @@ def build_chapter_archive(db, chapter_id: str, target_path: str) -> dict | None:
                 continue
             archive.write(source, arcname=str(item.canonical_filename or os.path.basename(source)))
             written += 1
+        for item in fx_files:
+            marker_effects.write_zip_member(archive, item)
         for item in ambient:
             source = audio_storage.resolve_path(str(item.stored_key or ""), location=str(item.location or "local"))
             if not os.path.isfile(source):
@@ -912,7 +915,8 @@ def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | 
     reserve_tracks = [SessionTrack(name=name) for name in EXTRA_TRACKS]
     from app.services.role_identity import chapter_roles
     identities = chapter_roles(db, chapter_id)
-    tracks = voice_tracks + ambient_tracks + reserve_tracks
+    fx = marker_effects.session_track(db, chapter_id, starts, relative=relative)
+    tracks = voice_tracks + ambient_tracks + reserve_tracks + ([fx] if fx.clips else [])
     if working_layout:
         from app.services.chapter_titles import TITLE_ROLE
         from app.services.shared_runtime import NARRATOR_DISPLAY_NAME
@@ -925,7 +929,7 @@ def build_chapter_session_with_stats(db, chapter_id: str, *, sample_rate: int | 
         ambient_tracks = ambient_tracks or [SessionTrack(name=name, channel_type="stereo") for name in AMBIENT_TRACKS]
         titles = titles or [SessionTrack(name=TITLE_ROLE)]
         narrators = narrators or [SessionTrack(name=NARRATOR_DISPLAY_NAME)]
-        tracks = (ambient_tracks + [SessionTrack(name="FX", channel_type="stereo")] + titles
+        tracks = (ambient_tracks + [fx] + titles
                   + [SessionTrack(name="Track 1", channel_type="stereo")] + narrators + characters + reserve_tracks)
         colour_tracks(voice_tracks, identities=identities, voices_only=True)
         colour_tracks(ambient_tracks + reserve_tracks, identities=identities)
@@ -1725,6 +1729,9 @@ def archive_chapter_session(db, chapter_id: str, *, book_status: dict | None = N
     # именам, и без этой проверки лёг бы на NAS рядом с битой копией.
     # Треки эмбиента проект тоже зовёт по имени — битая копия любого из них так же
     # не пускает `.sesx` на NAS. Ещё не доехавший трек не держит: приедет сам.
+    fx_files = marker_effects.files(db, chapter.id)
+    if any(item.mirror_state != "ok" for item in fx_files):
+        return {"written": False, "reason": "fx_mirror_pending", "replaced": ""}
     if any(
         str(item.mirror_state or "") == MIRROR_MISMATCH
         for item in [*chapter_files(db, chapter.id), *chapter_ambient_files(db, chapter.id)]

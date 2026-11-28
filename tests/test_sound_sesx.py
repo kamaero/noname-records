@@ -59,6 +59,46 @@ def _transition(db, chapter_id, ordinal, what):
     return row
 
 
+
+def test_marker_effect_registers_once_and_follows_its_live_marker(db, tmp_path, monkeypatch):
+    import hashlib
+    import io
+    import wave
+
+    from app.services import audio_storage, marker_effects
+    monkeypatch.setattr(audio_storage, "local_root", lambda: str(tmp_path))
+    row = _sound(db, "c1", 0, "")
+    with io.BytesIO() as buffer:
+        with wave.open(buffer, "wb") as audio:
+            audio.setparams((1, 2, 16000, 0, "NONE", ""))
+            audio.writeframes(b"\x01\x00" * 1600)
+        data = buffer.getvalue()
+    entry = dict(marker_effects.candidate(row), recipe="wood-knock", generator="Lumina SFX",
+                 credits=[], sha256=hashlib.sha256(data).hexdigest())
+    assert marker_effects.register(db, "c1", entry, data) == "ready"
+    assert not marker_effects.files(db, "c1")
+    assert marker_effects.register(db, "c1", entry, data, apply=True) == "registered"
+    db.commit()
+    assert marker_effects.register(db, "c1", entry, data, apply=True) == "unchanged"
+    assert len(marker_effects.files(db, "c1")) == 1
+    track = marker_effects.session_track(db, "c1", {"c1:00001": 7.5}, relative=True)
+    assert [(clip.start, clip.length) for clip in track.clips] == [(7.5, 0.1)]
+    assert track.clips[0].relative == marker_effects.files(db, "c1")[0].canonical_filename
+    from pathlib import Path
+    from app.services.chapter_delivery import build_chapter_archive, StorageUnavailable
+    wav_path = Path(track.clips[0].path)
+    wav_path.write_bytes(data[:-1] + bytes([data[-1] ^ 1]))
+    with pytest.raises(StorageUnavailable, match="fx_integrity_failed"):
+        build_chapter_archive(db, "c1", str(tmp_path / "broken.zip"))
+    assert db.get(ScriptChapter, "c1").delivered_at is None
+    assert not marker_effects.session_track(db, "c1", {}, relative=True).clips
+    row.payload = {"description": "updated"}
+    db.commit()
+    assert not marker_effects.files(db, "c1")
+    with pytest.raises(ValueError, match="marker_changed"):
+        marker_effects.register(db, "c1", entry, data, apply=True)
+
+
 class TestSceneRunsToTheNextScene:
     def test_two_scenes_split_the_timeline_between_them(self, db):
         _scene(db, "c1", 0)

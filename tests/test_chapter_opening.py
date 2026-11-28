@@ -44,6 +44,7 @@ def test_working_session_serializes_opening_fade_and_aligned_voices(monkeypatch,
                       [(TITLE_ROLE, title), ("Рассказчик", voice)],
                       {"title": 10., "body": 14.5}, 24.5))
     monkeypatch.setattr(delivery, "_script_layout", lambda *a, **k: layout)
+    monkeypatch.setattr(delivery.marker_effects, "records", lambda *args: [])
     monkeypatch.setattr(delivery, "_chapter_heading", lambda status: "Глава")
     monkeypatch.setattr(delivery, "_spans_on_timeline",
                         lambda *a: {"first": (10., 10.), "next": (20., 4.5)})
